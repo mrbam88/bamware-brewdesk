@@ -1,0 +1,43 @@
+{
+  "count": 2,
+  "venues": [
+    {
+      "id": "curated-devocin",
+      "name": "Devoción",
+      "lat": 40.7166,
+      "lng": -73.9625,
+      "neighborhood": "Williamsburg",
+      "borough": "Brooklyn",
+      "vertical": "cafe",
+      "attributes": {
+        "wifi": { "value": "fast", "detail": null, "mbpsRange": [50, 120], "timeWindow": null, "source": "curated", "confidence": 0.75, "observedAt": "2026-08-01" },
+        "outlets": { "value": "some", "source": "curated", "confidence": 0.75, "observedAt": "2026-08-01" },
+        "laptopPolicy": { "value": "unrestricted", "timeWindow": null, "source": "curated", "confidence": 0.75, "observedAt": "2026-08-01" },
+        "noise": { "value": "lively", "source": "curated", "confidence": 0.75, "observedAt": "2026-08-01" }
+      },
+      "vibeTags": ["plant wall", "gorgeous light"],
+      "workScore": 78,
+      "lastVerified": "2026-08-01",
+      "distance_m": 640
+    },
+    {
+      "id": "osm-node-12345",
+      "name": "Some Random Cafe",
+      "lat": 40.72,
+      "lng": -73.99,
+      "address": "1 Example St",
+      "neighborhood": "Lower East Side",
+      "borough": "Manhattan",
+      "hoursRaw": "Mo-Fr 07:00-19:00",
+      "vertical": "cafe",
+      "attributes": {
+        "wifi": { "value": "unknown", "detail": "estimated from category priors — unverified", "source": "estimate", "confidence": 0.3, "observedAt": "2026-08-01" },
+        "outlets": { "value": "some", "detail": "estimated from category priors — unverified", "source": "estimate", "confidence": 0.3, "observedAt": "2026-08-01" },
+        "laptopPolicy": { "value": "unknown", "detail": "estimated from category priors — unverified", "source": "estimate", "confidence": 0.3, "observedAt": "2026-08-01" },
+        "noise": { "value": "moderate", "detail": "estimated from category priors — unverified", "source": "estimate", "confidence": 0.3, "observedAt": "2026-08-01" }
+      },
+      "vibeTags": [],
+      "workScore": 52
+    }
+  ]
+}
