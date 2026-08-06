@@ -54,6 +54,11 @@ Authentication uses the shared Bamware Auth service with the isolated
 `bamware-cafe` tenant. Access and refresh tokens are stored in the iOS Keychain;
 an expired access token is refreshed during app launch when possible.
 
+The authenticated `Ask` tab is a transport-agnostic conversation thread for
+human-to-human or human-to-agent messaging. The current `DemoAgentTransport`
+returns local prototype replies; replace it with a backend transport conforming
+to `ConversationTransport` without changing the thread UI or composer.
+
 ## Develop shared modules
 
 For normal app work and CI, `BamwareCafe.xcodeproj` resolves the remote,

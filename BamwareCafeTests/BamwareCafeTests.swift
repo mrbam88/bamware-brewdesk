@@ -74,3 +74,57 @@ import Testing
         ])
     }
 }
+
+@Suite @MainActor struct ConversationModelTests {
+    private let user = ConversationParticipant(id: "user", displayName: "Bilal", kind: .human)
+    private let agent = ConversationParticipant(id: "agent", displayName: "Guide", kind: .agent)
+
+    @Test func sendsTrimmedMessageAndAppendsReply() async {
+        let model = ConversationModel(
+            threadID: "thread",
+            currentUser: user,
+            otherParticipant: agent,
+            transport: ReplyTransport(author: agent)
+        )
+        model.draft = "  Find somewhere quiet  "
+
+        await model.send()
+
+        #expect(model.messages.map(\.text) == ["Find somewhere quiet", "Reply"])
+        #expect(model.messages.last?.author.kind == .agent)
+        #expect(!model.isWaitingForReply)
+        #expect(model.errorMessage == nil)
+    }
+
+    @Test func failedTransportMarksOutgoingMessage() async {
+        let model = ConversationModel(
+            threadID: "thread",
+            currentUser: user,
+            otherParticipant: agent,
+            transport: FailingTransport()
+        )
+        model.draft = "Hello"
+
+        await model.send()
+
+        #expect(model.messages.count == 1)
+        #expect(model.messages[0].delivery == .failed)
+        #expect(model.errorMessage == "Message not sent. Try again.")
+    }
+}
+
+private struct ReplyTransport: ConversationTransport {
+    let author: ConversationParticipant
+
+    func send(text: String, threadID: String, senderID: String) async throws -> ConversationMessage? {
+        ConversationMessage(author: author, text: "Reply")
+    }
+}
+
+private struct FailingTransport: ConversationTransport {
+    private enum Failure: Error { case unavailable }
+
+    func send(text: String, threadID: String, senderID: String) async throws -> ConversationMessage? {
+        throw Failure.unavailable
+    }
+}
