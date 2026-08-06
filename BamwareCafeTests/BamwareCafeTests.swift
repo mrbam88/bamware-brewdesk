@@ -57,6 +57,17 @@ import Testing
     }
 }
 
+@Suite struct ReleaseConfigurationTests {
+    @Test func usesBrewDeskIdentityAndCanonicalURLs() {
+        let configuration = AppConfiguration.cafe
+
+        #expect(configuration.appName == "BrewDesk")
+        #expect(configuration.termsURL.absoluteString == "https://bamware.io/brewdesk/terms")
+        #expect(configuration.privacyURL.absoluteString == "https://bamware.io/brewdesk/privacy")
+        #expect(configuration.supportURL.absoluteString == "https://bamware.io/brewdesk/support")
+    }
+}
+
 @Suite(.serialized) struct StoreKitConfigurationTests {
     @Test func loadsMonthlyAndAnnualProducts() throws {
         _ = try SKTestSession(configurationFileNamed: "Products")

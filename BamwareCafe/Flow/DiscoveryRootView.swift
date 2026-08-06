@@ -4,7 +4,7 @@ import SwiftUI
 import VenueKit
 
 struct DiscoveryRootView: View {
-    let auth: AuthSessionStore
+    let configuration: AppConfiguration
     let locationService: LocationService
     @State private var model = VenuesModel(api: Container.shared.venueAPI())
 
@@ -16,8 +16,8 @@ struct DiscoveryRootView: View {
             CafeListScreen(model: model)
                 .tabItem { Label("Nearby", systemImage: "cup.and.saucer.fill") }
 
-            account
-                .tabItem { Label("Account", systemImage: "person.crop.circle") }
+            about
+                .tabItem { Label("About", systemImage: "info.circle") }
         }
         .task {
             if let coordinate = locationService.location?.coordinate {
@@ -32,22 +32,30 @@ struct DiscoveryRootView: View {
         }
     }
 
-    private var account: some View {
+    private var about: some View {
         NavigationStack {
             List {
-                if case .authenticated(let user) = auth.state {
-                    Section("Signed in") {
-                        LabeledContent("Name", value: user.name)
-                        LabeledContent("Email", value: user.email)
-                    }
-                }
                 Section {
-                    Button("Sign out", role: .destructive) {
-                        Task { await auth.logout() }
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(configuration.appName)
+                            .font(.title2.bold())
+                        Text(configuration.tagline)
+                            .foregroundStyle(.secondary)
                     }
+                    .padding(.vertical, 4)
+                }
+
+                Section("Help & legal") {
+                    Link("Support", destination: configuration.supportURL)
+                    Link("Privacy Policy", destination: configuration.privacyURL)
+                    Link("Terms of Use", destination: configuration.termsURL)
+                }
+
+                Section("Data sources") {
+                    Link("OpenStreetMap contributors", destination: URL(string: "https://www.openstreetmap.org/copyright")!)
                 }
             }
-            .navigationTitle("Account")
+            .navigationTitle("About")
         }
     }
 }

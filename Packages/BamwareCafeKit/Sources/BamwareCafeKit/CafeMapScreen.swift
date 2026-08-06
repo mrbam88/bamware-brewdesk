@@ -47,15 +47,39 @@ public struct CafeMapScreen: View {
         }
         .safeAreaInset(edge: .top) { searchHeader }
         .safeAreaInset(edge: .bottom) { discoveryShelf }
+        .overlay { loadStatus }
         .sheet(item: $selected) { venue in
             NavigationStack {
-                VenueDetailScreen(venue: venue, model: model)
+                VenueDetailScreen(venue: venue)
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
         .onChange(of: model.centerLat) { _, latitude in
             position = .region(Self.region(lat: latitude, lng: model.centerLng))
+        }
+    }
+
+    @ViewBuilder
+    private var loadStatus: some View {
+        switch model.phase {
+        case .loading where model.venues.isEmpty:
+            ProgressView("Finding work-friendly cafes…")
+                .padding()
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+        case .failed:
+            ContentUnavailableView {
+                Label("Cafe service unavailable", systemImage: "wifi.exclamationmark")
+            } description: {
+                Text("Check your connection and try again.")
+            } actions: {
+                Button("Retry") { reload() }
+                    .buttonStyle(.borderedProminent)
+            }
+            .padding()
+            .background(.regularMaterial)
+        default:
+            EmptyView()
         }
     }
 

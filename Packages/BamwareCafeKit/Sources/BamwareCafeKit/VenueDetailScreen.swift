@@ -4,14 +4,10 @@ import BamwareUI
 
 public struct VenueDetailScreen: View {
     @Environment(\.colorScheme) private var colorScheme
-    @State private var venue: Venue
-    @State private var testing = false
-    @State private var testResult: String?
-    private let model: VenuesModel
+    private let venue: Venue
 
-    public init(venue: Venue, model: VenuesModel) {
-        self._venue = State(initialValue: venue)
-        self.model = model
+    public init(venue: Venue) {
+        self.venue = venue
     }
 
     private var theme: CafeTheme { CafeTheme(isDarkMode: colorScheme == .dark) }
@@ -49,32 +45,6 @@ public struct VenueDetailScreen: View {
                 ClaimRow(title: "Noise", systemImage: "speaker.wave.2", claim: venue.attributes.noise)
             }
 
-            Section {
-                Button {
-                    runSpeedTest()
-                } label: {
-                    HStack {
-                        if testing {
-                            ProgressView().padding(.trailing, 6)
-                        } else {
-                            Image(systemName: "gauge.with.needle")
-                        }
-                        Text(testing ? "Measuring…" : "Run speed test here")
-                    }
-                }
-                .disabled(testing || !model.supportsSpeedTest)
-
-                if let testResult {
-                    Text(testResult)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            } footer: {
-                Text(model.supportsSpeedTest
-                    ? "Submits a measured observation. The engine updates the wifi claim and rescores this venue live."
-                    : "Speed observations are disabled while using the local development engine.")
-            }
-
             if let hours = venue.hoursRaw {
                 Section("Hours (OSM)") {
                     Text(hours).font(.caption)
@@ -85,22 +55,4 @@ public struct VenueDetailScreen: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func runSpeedTest() {
-        testing = true
-        testResult = nil
-        Task {
-            defer { testing = false }
-            do {
-                let updated = try await model.runSpeedTest(for: venue)
-                venue = updated
-                if let range = updated.attributes.wifi.mbpsRange, let first = range.first {
-                    testResult = "Measured ~\(first.formatted(.number.precision(.fractionLength(0)))) Mbps → wifi is now “\(updated.attributes.wifi.value)” · score \(updated.workScore)"
-                } else {
-                    testResult = "Submitted — score is now \(updated.workScore)"
-                }
-            } catch {
-                testResult = "Speed test failed: \(String(describing: error))"
-            }
-        }
-    }
 }

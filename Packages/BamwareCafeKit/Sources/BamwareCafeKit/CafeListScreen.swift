@@ -15,11 +15,11 @@ public struct CafeListScreen: View {
                 case .idle, .loading:
                     ProgressView("Finding work-friendly cafes…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                case .failed(let message):
+                case .failed:
                     ContentUnavailableView {
                         Label("Cafe service unavailable", systemImage: "wifi.exclamationmark")
                     } description: {
-                        Text("Pull to retry. \(message)")
+                        Text("Check your connection and try again.")
                     } actions: {
                         Button("Retry") { Task { await model.load() } }
                             .buttonStyle(.borderedProminent)
@@ -44,7 +44,7 @@ public struct CafeListScreen: View {
             }
             .navigationTitle("Nearby")
             .navigationDestination(for: Venue.self) { venue in
-                VenueDetailScreen(venue: venue, model: model)
+                VenueDetailScreen(venue: venue)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

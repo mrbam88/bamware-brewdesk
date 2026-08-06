@@ -8,6 +8,11 @@ final class BamwareCafeUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Explore"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.tabBars.buttons["Nearby"].exists)
-        XCTAssertTrue(app.tabBars.buttons["Account"].exists)
+        XCTAssertTrue(app.tabBars.buttons["About"].exists)
+
+        app.tabBars.buttons["About"].tap()
+        XCTAssertTrue(app.navigationBars["About"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["BrewDesk"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["OpenStreetMap contributors"].exists)
     }
 }
