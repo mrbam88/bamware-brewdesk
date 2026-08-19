@@ -1,0 +1,23 @@
+Know why a cafe fits your workday.
+
+BrewDesk evaluates NYC cafes for Wi-Fi, outlets, laptop policy, and noise, then shows the source, confidence, and date behind every claim. Work Fit scores stay transparent, so you can judge the evidence before ordering a coffee and opening your laptop.
+
+SEE THE EVIDENCE
+Inspect where each claim came from, how confident it is, and when it was observed. Estimates stay labeled instead of pretending to be facts.
+
+PLAN A BETTER WORK SESSION
+• Compare Wi-Fi, outlets, laptop policy, and noise
+• Browse 2,000+ cafes across New York City
+• Search by cafe name
+• Filter for laptop-friendly spaces, faster Wi-Fi, and available outlets
+• Sort nearby cafes using a clear Work Fit score
+
+LOCATION IS OPTIONAL
+Use your current location to rank nearby cafes, or browse from Union Square without granting location access. BrewDesk does not create a location history.
+
+FREE AND ACCOUNTLESS
+BrewDesk v1 has no account, subscription, advertising, analytics, or tracking.
+
+Cafe conditions can change. BrewDesk displays source and freshness information so you can make an informed choice, but always confirm important details with the venue.
+
+Venue data combines OpenStreetMap with curated research and existing observations. © OpenStreetMap contributors.

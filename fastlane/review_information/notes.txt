@@ -1,0 +1,12 @@
+BrewDesk is a free, accountless NYC work-cafe guide. It has no purchases, subscriptions, advertising, analytics, or user-generated content. No review credentials are required.
+
+Location is optional. On the location-introduction screen, choose “Use Union Square instead” to review the full app without granting permission.
+
+The app’s distinguishing feature is visible claim-level evidence rather than an opaque crowd rating. To inspect it:
+1. Open Explore and search for “Housing Works”.
+2. Open Housing Works Bookstore Cafe.
+3. Review the Workability section. Each Wi-Fi, outlet, laptop-policy, and noise claim displays its source, confidence, and observation date.
+
+Work Fit combines those work-specific signals. The app also exposes explicit laptop policy, labels estimates, and is curated specifically for New York City.
+
+The production service is https://venuekit-ashen.vercel.app. Privacy, terms, support, and OpenStreetMap attribution are linked from the About tab.

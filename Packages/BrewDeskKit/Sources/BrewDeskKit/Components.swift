@@ -56,8 +56,8 @@ struct ClaimRow: View {
             }
             Text("\(claim.sourceLabel) · \(claim.confidencePercent)% confidence · \(claim.observedAt.prefix(10))")
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
-            if let detail = claim.detail, !claim.isEstimate {
+                .foregroundStyle(.secondary)
+            if let detail = claim.detail, !claim.isEstimate, detail != claim.sourceLabel {
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
