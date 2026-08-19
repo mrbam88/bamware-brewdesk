@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# macOS minutes are expensive: newest run wins, stale runs die.
+concurrency:
+  group: brewdesk-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      # The development workspace references the sibling ../bamware-ios
+      # checkout, so CI reproduces the sibling layout with two checkouts.
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          path: bamware-brewdesk
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          repository: mrbam88/bamware-ios
+          path: bamware-ios
+
+      - name: Select Xcode 26.5
+        run: sudo xcode-select --switch /Applications/Xcode_26.5.app
+
+      - name: BrewDeskKit package tests
+        working-directory: bamware-brewdesk/Packages/BrewDeskKit
+        run: |
+          xcodebuild -scheme BrewDeskKit-Package \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+
+      - name: Simulator build (no signing)
+        working-directory: bamware-brewdesk
+        run: |
+          xcodebuild -workspace BrewDeskDevelopment.xcworkspace -scheme BrewDesk \
+            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
