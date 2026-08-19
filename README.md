@@ -9,7 +9,7 @@ identifier `io.bamware.brewdesk`; repository `mrbam88/bamware-brewdesk`.
 
 ## Status
 
-- Version `1.0 (1)` is processed and working through internal TestFlight.
+- Version `1.0 (2)` is processed and available through internal TestFlight.
 - The app has not been submitted for App Review.
 - The primary review risk is Guidelines 4.2/4.3. Evidence and provenance must
   remain central in the binary, screenshots, and review notes.
