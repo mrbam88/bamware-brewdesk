@@ -1,0 +1,41 @@
+name: TestFlight
+
+on:
+  workflow_dispatch:
+
+# Store uploads must queue. A newer dispatch must never cancel an upload that
+# has already started.
+concurrency:
+  group: brewdesk-testflight
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: macos-26
+    environment: production
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Select Xcode 26.5
+        run: sudo xcode-select --switch /Applications/Xcode_26.5.app
+
+      - name: Verify release identity
+        run: ./.github/scripts/check-identity.sh
+
+      - name: Build and upload to TestFlight
+        run: bundle exec fastlane ios ship_testflight
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_B64: ${{ secrets.ASC_KEY_P8_B64 }}
+          IOS_DISTRIBUTION_CERT_P12_B64: ${{ secrets.IOS_DISTRIBUTION_CERT_P12_B64 }}
+          IOS_DISTRIBUTION_CERT_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERT_PASSWORD }}

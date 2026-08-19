@@ -6,3 +6,9 @@ DerivedData/
 .swiftpm/
 Packages/BrewDeskKit/Package.resolved
 *.xcuserstate
+build/
+*.ipa
+*.mobileprovision
+*.dSYM.zip
+fastlane/README.md
+fastlane/report.xml
