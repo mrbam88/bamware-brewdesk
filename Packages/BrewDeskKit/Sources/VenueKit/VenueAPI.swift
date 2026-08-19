@@ -26,22 +26,16 @@ public enum VenueAPIError: Error, LocalizedError, Sendable {
     }
 }
 
-public protocol VenueServing: Sendable {
+public protocol VenueListing: Sendable {
+    func fetchVenues(_ query: VenueQuery) async throws -> [Venue]
+}
+
+public protocol VenueDetailServing: Sendable {
+    func fetchVenue(id: String) async throws -> Venue
+}
+
+public protocol VenueMeasuring: Sendable {
     var supportsSpeedTest: Bool { get }
-
-    func fetchVenues(
-        lat: Double?,
-        lng: Double?,
-        radiusM: Int,
-        wifiMin: String?,
-        outletsMin: String?,
-        laptopFriendly: Bool,
-        neighborhood: String?,
-        query: String?,
-        sort: String,
-        limit: Int
-    ) async throws -> [Venue]
-
     func submitSpeedTest(venueId: String, mbpsDown: Double) async throws -> Venue
     func measureDownloadMbps(samples: Int) async throws -> Double
 }
@@ -49,7 +43,7 @@ public protocol VenueServing: Sendable {
 /// Async client for the bamware-venue-engine master API.
 /// The iOS Simulator reaches `http://localhost:3000` on the host Mac directly.
 /// The app target permits local HTTP networking in its Debug configuration.
-public struct VenueAPI: VenueServing, Sendable {
+public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, Sendable {
     public static var defaultBaseURL: URL {
         #if DEBUG
         URL(string: "http://localhost:3000")!
@@ -70,41 +64,21 @@ public struct VenueAPI: VenueServing, Sendable {
         baseURL.scheme == "https" && baseURL.host != "localhost" && baseURL.host != "127.0.0.1"
     }
 
-    public func fetchVenues(
-        lat: Double? = nil,
-        lng: Double? = nil,
-        radiusM: Int = 2000,
-        wifiMin: String? = nil,
-        outletsMin: String? = nil,
-        laptopFriendly: Bool = false,
-        neighborhood: String? = nil,
-        query: String? = nil,
-        sort: String = "work_score",
-        limit: Int = 50
-    ) async throws -> [Venue] {
+    public func fetchVenues(_ query: VenueQuery) async throws -> [Venue] {
         var comps = URLComponents(
             url: baseURL.appendingPathComponent("/v1/venues"),
             resolvingAgainstBaseURL: false
         )!
-        var items: [URLQueryItem] = [
-            .init(name: "sort", value: sort),
-            .init(name: "limit", value: String(limit)),
-            .init(name: "radius_m", value: String(radiusM)),
-        ]
-        if let lat { items.append(.init(name: "lat", value: String(lat))) }
-        if let lng { items.append(.init(name: "lng", value: String(lng))) }
-        if let wifiMin { items.append(.init(name: "wifi_min", value: wifiMin)) }
-        if let outletsMin { items.append(.init(name: "outlets_min", value: outletsMin)) }
-        if laptopFriendly { items.append(.init(name: "laptops", value: "friendly")) }
-        if let neighborhood { items.append(.init(name: "neighborhood", value: neighborhood)) }
-        if let query { items.append(.init(name: "q", value: query)) }
-        comps.queryItems = items
+        comps.queryItems = query.urlQueryItems
         guard let url = comps.url else { throw VenueAPIError.badURL }
         return try await get(VenueListResponse.self, from: url).venues
     }
 
-    public func fetchVenue(id: String) async throws -> VenueDetailResponse {
-        try await get(VenueDetailResponse.self, from: baseURL.appendingPathComponent("/v1/venues/\(id)"))
+    public func fetchVenue(id: String) async throws -> Venue {
+        try await get(
+            VenueDetailResponse.self,
+            from: baseURL.appendingPathComponent("/v1/venues/\(id)")
+        ).venue
     }
 
     public func fetchNeighborhoods() async throws -> [NeighborhoodsResponse.Hood] {

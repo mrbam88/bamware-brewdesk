@@ -1,108 +1,121 @@
-# bamware-brewdesk
+# BrewDesk
 
-Native SwiftUI app for finding work-friendly NYC cafes, built as BrewDesk on
-the Bamware platform with a
-`BrewDeskKit` local package, consuming the shared `bamware-ios` monorepo
-(BamwareCore/BamwareUI) and the `bamware-venue-engine` backend (2,180 real
-NYC cafes, wifi/outlets/laptop-policy claims with provenance).
+Native SwiftUI guide to work-friendly New York City cafés. BrewDesk ranks
+venues by Work Fit and shows the source, confidence, and observation date
+behind Wi-Fi, outlet, laptop-policy, and noise claims.
 
-Canonical release identity: app, target, module, and scheme `BrewDesk`; bundle
+Canonical identity: app, target, module, and scheme `BrewDesk`; bundle
 identifier `io.bamware.brewdesk`; repository `mrbam88/bamware-brewdesk`.
 
-## Package structure
+## Status
 
-You already built the hard part. There are two layers:
+- Version `1.0 (1)` is processed and working through internal TestFlight.
+- The app has not been submitted for App Review.
+- The primary review risk is Guidelines 4.2/4.3. Evidence and provenance must
+  remain central in the binary, screenshots, and review notes.
+- Durable release state lives in
+  [`bamware-ai/docs/brewdesk-go-live.md`](https://github.com/mrbam88/bamware-ai/blob/main/docs/brewdesk-go-live.md).
 
-1. **`bamware-ios`** is a multi-product Swift package repo with Core, UI, and
-   Messaging libraries. `BrewDeskKit` resolves it from GitHub and the app's
-   committed `Package.resolved` pins the exact revision.
-2. This repo keeps app-private modules in the in-repo `Packages/` folder.
+## V1 product
 
-```
-bamware-brewdesk/                        ← this repo
-├─ BrewDesk.xcodeproj             ← thin app target (file-system-synced folder)
-├─ BrewDesk/                      ← app shell ONLY: @main, RootView, DI root
-│  └─ Dependency/Container.swift     ← Factory composition root
-├─ Packages/
-│  └─ BrewDeskKit/                ← in-repo local package (the real code)
-│     ├─ Sources/VenueKit/           ← models + API client (pure, no UI)
-│     └─ Sources/BrewDeskKit/     ← screens, VenuesModel, BrewDeskTheme
-│              │ depends on ↓
-└──────────────┼─── bamware-ios      ← remote shared package (Core, UI)
-               └─── Factory          ← remote DI package
-```
+Included:
 
-Dependency chain: **app → BrewDeskKit → VenueKit + bamware-ios**. The app
-shell never imports bamware-ios directly; `BrewDeskTheme` conforms to
-`BamwareUI.Theme`, so shared components (`SmartText`) render the cafe brand
-with zero changes to the shared package — that's the white-label proof.
+- Free, accountless discovery
+- Optional location with a Union Square fallback
+- Map, list, search, and work-specific filters
+- Local saved cafés
+- Work Fit details with claim-level provenance
+- Apple Maps directions and native sharing
+- English and Spanish localization
 
-## Prerequisites
+Explicitly out of scope:
 
-- Xcode 26+ with Swift 6.2+ and an iOS 17+ simulator
-- The backend running: `cd bamware-venue-engine && npm install && npm run dev` (localhost:3000)
+- Accounts and cloud saves
+- StoreKit and subscriptions
+- Public reviews, reports, or conversations
+- User-triggered speed submissions
+- Analytics, advertising, or tracking
 
-## Run
+## Quick start
 
-1. Start the backend (above).
-2. `open BrewDesk.xcodeproj`
-3. If packages don't resolve on first open: File → Packages → Resolve Package Versions.
-4. Run on an iPhone simulator — the simulator reaches `http://localhost:3000` directly.
+Requirements:
 
-The free v1 flow is onboarding → location → map-first discovery. Accounts and
-StoreKit subscriptions are deferred until they provide cloud-synced user value.
+- Xcode 26.x with Swift 6.2+
+- iOS 17+ simulator
+- Sibling checkouts under `~/code` for local shared-package development
 
-## Concurrency boundaries
-
-- The app and `BrewDeskKit` use main-actor default isolation because they own
-  SwiftUI and observable UI state.
-- `VenueKit` stays nonisolated. Its immutable models and API client are
-  `Sendable`, and async `URLSession` calls do not block the main thread.
-- `DiscoveryRootView` owns venue loading with `.task(id:)`. A changed location,
-  filter, or submitted search cancels the superseded task automatically.
-- Core Location uses the iOS 17 `CLLocationUpdate` async sequence. Its task is
-  cancelled with the service lifetime, with Union Square as the error fallback.
-- Actors are reserved for shared mutable state. The app does not use detached
-  tasks or unchecked sendability.
-
-## Develop shared modules
-
-For normal app work and CI, `BrewDesk.xcodeproj` resolves the remote,
-revision-locked `bamware-ios` package. To change the shared modules and the app
-together, clone both repositories as siblings and open the development
-workspace instead:
-
-```text
-~/code/
-├── bamware-brewdesk/
-└── bamware-ios/
-```
+Debug uses the Venue Engine at `http://localhost:3000`. Start it first:
 
 ```bash
-open BrewDeskDevelopment.xcworkspace
+cd ../bamware-venue-engine
+npm install
+npm run dev
 ```
 
-Xcode substitutes the sibling checkout for the remote package with the same
-identity. Changes under `../bamware-ios/Sources` then build immediately in the
-cafe app, while each repository keeps its own history and release lifecycle.
-Do not replace the manifest dependency with a machine-specific `.package(path:)`.
+Then open and run the app:
 
-Command-line build:
+```bash
+open BrewDesk.xcodeproj
+```
+
+Select the `BrewDesk` scheme and an iPhone simulator. Release builds use the
+deployed HTTPS Venue Engine automatically.
+
+## Repository map
+
+```text
+bamware-brewdesk/
+├── BrewDesk/                         thin app target
+│   ├── BrewDeskApp.swift             lifecycle
+│   ├── RootView.swift                composition + app flow
+│   ├── Flow/                         onboarding, location, tabs
+│   └── Location/                     Core Location adapter
+├── Packages/BrewDeskKit/
+│   ├── Sources/BrewDeskKit/          feature UI + observable state
+│   ├── Sources/VenueKit/             Sendable models + async API client
+│   └── Tests/                        package tests
+├── BrewDeskTests/                    app-shell tests
+├── BrewDeskUITests/                  UI, localization, a11y, screenshots
+├── fastlane/                         listing assets + release lane
+└── docs/                             architecture, learning, tests, release
+```
+
+Dependency direction:
+
+```text
+BrewDesk app
+  -> BrewDeskKit
+       -> VenueKit
+       -> BamwareCore + BamwareUI (pinned bamware-ios revision)
+  -> VenueKit protocols at the composition root
+```
+
+The app target owns routing and platform permissions. `BrewDeskKit` owns
+feature UI and state. `VenueKit` has no UI dependency.
+
+## How data moves
+
+1. `RootView` creates the concrete `VenueAPI` capabilities.
+2. `DiscoveryRootView` owns one `VenuesModel` and one `SavedVenuesStore`.
+3. Location, filters, submitted search, or retry create a typed `VenueQuery`.
+4. `.task(id:)` cancels work owned by the previous query.
+5. `VenuesModel` awaits `VenueListing.fetchVenues` and publishes its phase.
+6. Swift Observation invalidates only views that read the changed state.
+7. A generation check prevents stale responses from winning even if an API
+   implementation ignores cancellation.
+
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the complete walkthrough.
+
+## Build and test
+
+App tests:
 
 ```bash
 xcodebuild -project BrewDesk.xcodeproj -scheme BrewDesk \
-  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' test
 ```
 
-Local shared-module build:
-
-```bash
-xcodebuild -workspace BrewDeskDevelopment.xcworkspace -scheme BrewDesk \
-  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
-```
-
-Package tests must use the generated package scheme because plain `swift test`
-targets macOS by default while this package graph is iOS-only:
+Feature/domain package tests:
 
 ```bash
 cd Packages/BrewDeskKit
@@ -110,56 +123,41 @@ xcodebuild -scheme BrewDeskKit-Package \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
 ```
 
-Test the shared engine independently after changing it:
+Compile against the local sibling `bamware-ios` checkout:
 
 ```bash
-cd ../bamware-ios
-swift test
+xcodebuild -workspace BrewDeskDevelopment.xcworkspace -scheme BrewDesk \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
 
-What you'll see: a map-first view of 100 real cafes near your location (Union
-Square fallback), readable Work Fit markers, search, laptop/Wi-Fi/outlet
-filters, synchronized venue cards, and details with claim provenance. Speed
-observations are disabled against the localhost engine so loopback measurements
-cannot contaminate trusted data.
+See [docs/TESTING.md](docs/TESTING.md) for what each gate proves.
 
-## Make it a git repo + push to GitHub
+## Developing shared modules
 
-```bash
-cd ~/code/bamware-brewdesk
-git init -b main
-git add -A
-git commit -m "bamware-brewdesk: SwiftUI app + BrewDeskKit on bamware-ios + venue-engine"
-gh repo create mrbam88/bamware-brewdesk --private --source=. --remote=origin --push
-```
+`BrewDesk.xcodeproj` resolves the revision-pinned remote `bamware-ios` package.
+`BrewDeskDevelopment.xcworkspace` includes the sibling checkout and lets Xcode
+substitute it immediately.
+
+Never replace the package manifest with a machine-specific `.package(path:)`.
+The committed remote revision is what makes standalone and CI builds
+reproducible.
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md): boundaries, state, concurrency, API flow
+- [iOS engineering notes](docs/IOS-ENGINEERING-NOTES.md): SwiftUI, Observation,
+  Combine, concurrency, DI, and testing as a study guide
+- [Testing](docs/TESTING.md): commands and proof matrix
+- [Releasing](docs/RELEASING.md): signing, TestFlight, and CI
+- [4.3 preflight](fastlane/metadata/4.3-preflight.md): App Review positioning
 
 ## Troubleshooting
 
-- **"Missing package product BrewDeskKit"** → File → Packages → Resolve. If
-  it persists, remove and re-add the local package (Project → Package
-  Dependencies → + → Add Local… → `Packages/BrewDeskKit`).
-- **bamware-ios fails to resolve** → reset package caches, then resolve package
-  versions again. The app does not require a sibling checkout.
-- **HTTP requests fail in Release** → localhost HTTP is intentionally allowed
-  only in Debug. Configure a real HTTPS backend before distributing the app.
-
-## Before Release
-
-1. Configure a real HTTPS venue-engine endpoint for Release builds.
-2. Decide whether venue observations are global or tenant-scoped and enforce
-   that boundary in the backend and API client.
-3. Replace the provisional speed measurement with an uncacheable, known-size
-   backend payload plus server-side validation and idempotency.
-4. Initialize this directory as a repository and add app/package CI.
-- **This .xcodeproj was hand-authored** (adapted from BamwareDemoApp's, no Xcode
-  involved). If Xcode complains about anything structural, say the word and
-  I'll fix the pbxproj.
-
-## Interview talking points baked in
-
-Modular monorepo (app shell vs. feature package vs. pure networking kit) ·
-DI at the composition root only, packages stay framework-agnostic ·
-`@MainActor @Observable` view model, Swift 6-clean `Sendable` models ·
-cross-package BrewDesk theming via protocol conformance ·
-trust UI: every attribute renders source + confidence + freshness ·
-latest-request-wins filtering prevents stale results from replacing current data.
+- **Missing package product:** File -> Packages -> Resolve Package Versions.
+- **Debug API fails:** confirm Venue Engine is running on port 3000.
+- **Release API fails:** verify `VenueAPI.defaultBaseURL` and the deployed health
+  endpoint; Release intentionally cannot use localhost HTTP.
+- **Location is empty in Simulator:** Simulator -> Features -> Location, or use
+  the Union Square fallback.
+- **A UI test skips onboarding:** launch arguments override persisted
+  UserDefaults; see `AppStoreScreenshotTests.swift`.

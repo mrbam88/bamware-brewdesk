@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct OnboardingView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let configuration: AppConfiguration
     let onComplete: () -> Void
     @State private var page = 0
@@ -57,13 +59,18 @@ struct OnboardingView: View {
                             .frame(width: index == page ? 30 : 8, height: 8)
                     }
                 }
-                .animation(.snappy, value: page)
+                .animation(reduceMotion ? nil : .snappy, value: page)
+                .accessibilityHidden(true)
 
                 Button(page == pages.count - 1 ? "Find my work cafe" : "Continue") {
                     if page == pages.count - 1 {
                         onComplete()
                     } else {
-                        withAnimation { page += 1 }
+                        if reduceMotion {
+                            page += 1
+                        } else {
+                            withAnimation { page += 1 }
+                        }
                     }
                 }
                 .buttonStyle(PrimaryActionStyle())
@@ -73,39 +80,42 @@ struct OnboardingView: View {
     }
 
     private func onboardingPage(_ item: OnboardingPage) -> some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Spacer()
-            ZStack {
-                RoundedRectangle(cornerRadius: 42)
-                    .fill(AppBrand.roast)
-                    .frame(height: 230)
-                    .rotationEffect(.degrees(-3))
-                Image(systemName: item.symbol)
-                    .font(.system(size: 92, weight: .light))
-                    .foregroundStyle(AppBrand.oat)
+        ScrollView {
+            VStack(alignment: .leading, spacing: dynamicTypeSize.isAccessibilitySize ? 16 : 24) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 42)
+                        .fill(AppBrand.roast)
+                        .frame(height: dynamicTypeSize.isAccessibilitySize ? 150 : 230)
+                        .rotationEffect(.degrees(reduceMotion ? 0 : -3))
+                    Image(systemName: item.symbol)
+                        .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 62 : 92, weight: .light))
+                        .foregroundStyle(AppBrand.oat)
+                        .accessibilityHidden(true)
+                }
+                Text(item.eyebrow)
+                    .font(.footnote.weight(.black))
+                    .foregroundStyle(AppBrand.clay)
+                    .lineLimit(nil)
+                Text(item.title)
+                    .font(.largeTitle.bold())
+                    .fontDesign(.serif)
+                    .foregroundStyle(AppBrand.espresso)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(item.body)
+                    .font(.body)
+                    .foregroundStyle(AppBrand.muted)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Text(item.eyebrow)
-                .font(.caption.bold())
-                .tracking(1.8)
-                .foregroundStyle(AppBrand.clay)
-            Text(item.title)
-                .font(.system(size: 40, weight: .bold, design: .serif))
-                .foregroundStyle(AppBrand.espresso)
-                .fixedSize(horizontal: false, vertical: true)
-            Text(item.body)
-                .font(.body)
-                .foregroundStyle(AppBrand.muted)
-                .lineSpacing(4)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer()
+            .padding(.vertical, 24)
         }
         .padding(.horizontal, 24)
     }
 }
 
 private struct OnboardingPage {
-    let eyebrow: String
-    let title: String
-    let body: String
+    let eyebrow: LocalizedStringKey
+    let title: LocalizedStringKey
+    let body: LocalizedStringKey
     let symbol: String
 }

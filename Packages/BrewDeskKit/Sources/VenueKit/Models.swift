@@ -54,6 +54,13 @@ public struct VenueAttributes: Codable, Hashable, Sendable {
     public let outlets: Claim
     public let laptopPolicy: Claim
     public let noise: Claim
+
+    public init(wifi: Claim, outlets: Claim, laptopPolicy: Claim, noise: Claim) {
+        self.wifi = wifi
+        self.outlets = outlets
+        self.laptopPolicy = laptopPolicy
+        self.noise = noise
+    }
 }
 
 public struct Venue: Codable, Identifiable, Hashable, Sendable {
@@ -71,6 +78,38 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
     public let workScore: Int
     public let lastVerified: String?
     public let distanceM: Int?
+
+    public init(
+        id: String,
+        name: String,
+        lat: Double,
+        lng: Double,
+        address: String?,
+        neighborhood: String,
+        borough: String,
+        hoursRaw: String?,
+        vertical: String,
+        attributes: VenueAttributes,
+        vibeTags: [String],
+        workScore: Int,
+        lastVerified: String?,
+        distanceM: Int?
+    ) {
+        self.id = id
+        self.name = name
+        self.lat = lat
+        self.lng = lng
+        self.address = address
+        self.neighborhood = neighborhood
+        self.borough = borough
+        self.hoursRaw = hoursRaw
+        self.vertical = vertical
+        self.attributes = attributes
+        self.vibeTags = vibeTags
+        self.workScore = workScore
+        self.lastVerified = lastVerified
+        self.distanceM = distanceM
+    }
 
     enum CodingKeys: String, CodingKey {
         case id, name, lat, lng, address, neighborhood, borough, hoursRaw,

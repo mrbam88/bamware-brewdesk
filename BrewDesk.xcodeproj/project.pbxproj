@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		955E90002D90597600B0AD15 /* Factory in Frameworks */ = {isa = PBXBuildFile; productRef = 955E8FFF2D90597600B0AD15 /* Factory */; };
 		955E90832D90B28F00B0AD15 /* BrewDeskKit in Frameworks */ = {isa = PBXBuildFile; productRef = 955E90822D90B28F00B0AD15 /* BrewDeskKit */; };
 		95VENUEKITBF000000000001 /* VenueKit in Frameworks */ = {isa = PBXBuildFile; productRef = 95VENUEKITPD000000000001 /* VenueKit */; };
 /* End PBXBuildFile section */
@@ -59,7 +58,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				955E90002D90597600B0AD15 /* Factory in Frameworks */,
 				955E90832D90B28F00B0AD15 /* BrewDeskKit in Frameworks */,
 				95VENUEKITBF000000000001 /* VenueKit in Frameworks */,
 			);
@@ -131,7 +129,6 @@
 			);
 			name = BrewDesk;
 			packageProductDependencies = (
-				955E8FFF2D90597600B0AD15 /* Factory */,
 				955E90822D90B28F00B0AD15 /* BrewDeskKit */,
 				95VENUEKITPD000000000001 /* VenueKit */,
 			);
@@ -213,12 +210,12 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				es,
 				Base,
 			);
 			mainGroup = 955E8FC62D90576200B0AD15;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				955E8FFE2D90597600B0AD15 /* XCRemoteSwiftPackageReference "Factory" */,
 				95LOCAL01BAMWAREIOS000001 /* XCLocalSwiftPackageReference "Packages/BrewDeskKit" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -619,23 +616,7 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		955E8FFE2D90597600B0AD15 /* XCRemoteSwiftPackageReference "Factory" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/hmlongco/Factory";
-			requirement = {
-				kind = exactVersion;
-				version = 2.4.3;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
 /* Begin XCSwiftPackageProductDependency section */
-		955E8FFF2D90597600B0AD15 /* Factory */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 955E8FFE2D90597600B0AD15 /* XCRemoteSwiftPackageReference "Factory" */;
-			productName = Factory;
-		};
 		955E90822D90B28F00B0AD15 /* BrewDeskKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 95LOCAL01BAMWAREIOS000001 /* XCLocalSwiftPackageReference "Packages/BrewDeskKit" */;

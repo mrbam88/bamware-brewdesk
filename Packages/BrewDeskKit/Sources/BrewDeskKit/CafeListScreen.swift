@@ -3,9 +3,11 @@ import VenueKit
 
 public struct CafeListScreen: View {
     @Bindable private var model: VenuesModel
+    @Bindable private var savedVenues: SavedVenuesStore
 
-    public init(model: VenuesModel) {
+    public init(model: VenuesModel, savedVenues: SavedVenuesStore) {
         self.model = model
+        self.savedVenues = savedVenues
     }
 
     public var body: some View {
@@ -36,6 +38,19 @@ public struct CafeListScreen: View {
                             NavigationLink(value: venue) {
                                 VenueRow(venue: venue)
                             }
+                            .swipeActions(edge: .trailing) {
+                                Button {
+                                    savedVenues.toggle(venue.id)
+                                } label: {
+                                    Label(
+                                        savedVenues.contains(venue.id) ? "Unsave" : "Save",
+                                        systemImage: savedVenues.contains(venue.id)
+                                            ? "bookmark.slash"
+                                            : "bookmark"
+                                    )
+                                }
+                                .tint(BrewDeskPalette.moss)
+                            }
                         }
                         .listStyle(.plain)
                         .refreshable { model.retry() }
@@ -44,8 +59,10 @@ public struct CafeListScreen: View {
             }
             .navigationTitle("Nearby")
             .navigationDestination(for: Venue.self) { venue in
-                VenueDetailScreen(venue: venue)
+                VenueDetailScreen(venue: venue, savedVenues: savedVenues)
             }
+            .searchable(text: $model.searchQuery, prompt: "Search cafés")
+            .onSubmit(of: .search) { model.submitSearch() }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     filterMenu
@@ -58,14 +75,14 @@ public struct CafeListScreen: View {
         Menu {
             Toggle("Laptop-friendly only", isOn: $model.laptopFriendlyOnly)
             Picker("Wifi", selection: $model.minWifi) {
-                Text("Any wifi").tag(String?.none)
-                Text("OK or better").tag(String?.some("ok"))
-                Text("Fast only").tag(String?.some("fast"))
+                Text("Any Wi-Fi").tag(WifiMinimum?.none)
+                Text("OK or better").tag(WifiMinimum?.some(.ok))
+                Text("Fast only").tag(WifiMinimum?.some(.fast))
             }
             Picker("Outlets", selection: $model.minOutlets) {
-                Text("Any outlets").tag(String?.none)
-                Text("Some or better").tag(String?.some("some"))
-                Text("Plenty").tag(String?.some("plenty"))
+                Text("Any outlets").tag(OutletMinimum?.none)
+                Text("Some or better").tag(OutletMinimum?.some(.some))
+                Text("Plenty").tag(OutletMinimum?.some(.plenty))
             }
         } label: {
             Label("Filters", systemImage: filtersActive
@@ -80,6 +97,7 @@ public struct CafeListScreen: View {
 }
 
 struct VenueRow: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let venue: Venue
 
     var body: some View {
@@ -88,15 +106,15 @@ struct VenueRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(venue.name)
                     .font(.headline)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
                 HStack(spacing: 10) {
                     Text(venue.neighborhood)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let d = venue.distanceM {
-                        Text(d < 1000 ? "\(d) m" : String(format: "%.1f km", Double(d) / 1000))
+                        Text(distance(d))
                             .font(.caption)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 HStack(spacing: 12) {
@@ -123,6 +141,17 @@ struct VenueRow: View {
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(venue.name), Work Fit \(venue.workScore), \(venue.neighborhood), " +
+            "Wi-Fi \(localizedAttributeValue(venue.attributes.wifi.value)), " +
+            "outlets \(localizedAttributeValue(venue.attributes.outlets.value))"
+        )
+    }
+
+    private func distance(_ meters: Int) -> String {
+        Measurement(value: Double(meters), unit: UnitLength.meters)
+            .formatted(.measurement(width: .abbreviated, usage: .road))
     }
 }

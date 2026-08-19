@@ -1,25 +1,44 @@
 import BrewDeskKit
-import Factory
 import SwiftUI
 import VenueKit
 
 struct DiscoveryRootView: View {
     let configuration: AppConfiguration
     let locationService: LocationService
-    @State private var model = VenuesModel(api: Container.shared.venueAPI())
+    private let venueDetails: any VenueDetailServing
+    @State private var model: VenuesModel
+    @State private var savedVenues = SavedVenuesStore()
+
+    init(
+        configuration: AppConfiguration,
+        locationService: LocationService,
+        venueListing: any VenueListing,
+        venueDetails: any VenueDetailServing
+    ) {
+        self.configuration = configuration
+        self.locationService = locationService
+        self.venueDetails = venueDetails
+        _model = State(initialValue: VenuesModel(api: venueListing))
+    }
 
     var body: some View {
         let request = model.request
 
         TabView {
-            CafeMapScreen(model: model)
+            CafeMapScreen(model: model, savedVenues: savedVenues)
                 .tabItem { Label("Explore", systemImage: "map.fill") }
 
-            CafeListScreen(model: model)
+            CafeListScreen(model: model, savedVenues: savedVenues)
                 .tabItem { Label("Nearby", systemImage: "cup.and.saucer.fill") }
 
-            about
-                .tabItem { Label("About", systemImage: "info.circle") }
+            savedTab
+                .tabItem {
+                    Label {
+                        Text("saved_tab_title")
+                    } icon: {
+                        Image(systemName: "bookmark.fill")
+                    }
+                }
         }
         .task(id: request) {
             if let coordinate = locationService.location?.coordinate,
@@ -34,30 +53,43 @@ struct DiscoveryRootView: View {
         }
     }
 
-    private var about: some View {
+    private var savedTab: some View {
         NavigationStack {
-            List {
-                Section {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text(configuration.appName)
-                            .font(.title2.bold())
-                        Text(configuration.tagline)
-                            .foregroundStyle(.secondary)
+            SavedCafesScreen(savedVenues: savedVenues, venueDetails: venueDetails)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        NavigationLink {
+                            about
+                        } label: {
+                            Label("About", systemImage: "info.circle")
+                        }
                     }
-                    .padding(.vertical, 4)
                 }
-
-                Section("Help & legal") {
-                    Link("Support", destination: configuration.supportURL)
-                    Link("Privacy Policy", destination: configuration.privacyURL)
-                    Link("Terms of Use", destination: configuration.termsURL)
-                }
-
-                Section("Data sources") {
-                    Link("OpenStreetMap contributors", destination: URL(string: "https://www.openstreetmap.org/copyright")!)
-                }
-            }
-            .navigationTitle("About")
         }
+    }
+
+    private var about: some View {
+        List {
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(configuration.appName)
+                        .font(.title2.bold())
+                    Text(LocalizedStringKey(configuration.tagline))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section("Help & legal") {
+                Link("Support", destination: configuration.supportURL)
+                Link("Privacy Policy", destination: configuration.privacyURL)
+                Link("Terms of Use", destination: configuration.termsURL)
+            }
+
+            Section("Data sources") {
+                Link("OpenStreetMap contributors", destination: URL(string: "https://www.openstreetmap.org/copyright")!)
+            }
+        }
+        .navigationTitle("About")
     }
 }

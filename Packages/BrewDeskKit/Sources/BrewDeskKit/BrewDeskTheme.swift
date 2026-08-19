@@ -18,13 +18,13 @@ public struct BrewDeskTheme: Theme {
         self.isDarkMode = isDarkMode
         self.primaryColor = isDarkMode
             ? Color(red: 0.87, green: 0.77, blue: 0.64)   // steamed-milk cream
-            : Color(red: 0.35, green: 0.23, blue: 0.17)   // espresso
+            : BrewDeskPalette.roast
         self.secondaryColor = isDarkMode
             ? Color(red: 0.62, green: 0.56, blue: 0.50)
-            : Color(red: 0.55, green: 0.45, blue: 0.38)
+            : BrewDeskPalette.muted
         self.backgroundColor = isDarkMode
             ? Color(red: 0.11, green: 0.09, blue: 0.08)
-            : Color(red: 0.98, green: 0.96, blue: 0.93)   // oat foam
+            : BrewDeskPalette.oat
         self.font = .system(.body, design: .serif)
     }
 }

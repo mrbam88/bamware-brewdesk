@@ -7,6 +7,8 @@ final class AppStoreScreenshotTests: XCTestCase {
         app.launchArguments += [
             "-brewdesk.onboarding.complete", "NO",
             "-brewdesk.location-intro.complete", "NO",
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
         ]
         app.launch()
 
@@ -21,7 +23,7 @@ final class AppStoreScreenshotTests: XCTestCase {
         capture("05-location-is-optional")
 
         app.buttons["Use Union Square instead"].tap()
-        XCTAssertTrue(app.staticTexts["100 work cafes"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["100 work cafés"].waitForExistence(timeout: 15))
         XCTAssertTrue(app.staticTexts["Gregorys Coffee"].waitForExistence(timeout: 5))
         capture("03-work-fit-map")
 
@@ -39,7 +41,7 @@ final class AppStoreScreenshotTests: XCTestCase {
         search.tap()
         search.typeText("Housing Works")
         app.keyboards.buttons["Search"].tap()
-        XCTAssertTrue(app.staticTexts["1 work cafes"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["1 work café"].waitForExistence(timeout: 15))
 
         app.tabBars.buttons["Nearby"].tap()
         XCTAssertTrue(app.staticTexts["Housing Works Bookstore Cafe"].waitForExistence(timeout: 5))

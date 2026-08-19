@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import VenueKit
+@testable import VenueKit
 
 @Suite struct ModelsTests {
     private func loadFixture() throws -> VenueListResponse {
@@ -41,5 +41,30 @@ import VenueKit
         )
         #expect(claim.sourceLabel == "measured in-app")
         #expect(claim.isMeasured)
+    }
+
+    @Test func typedQuerySerializesToBackendContract() {
+        let query = VenueQuery(
+            lat: 40.73,
+            lng: -73.99,
+            radiusM: 2_500,
+            wifiMinimum: .fast,
+            outletMinimum: .some,
+            laptopFriendlyOnly: true,
+            neighborhood: "NoHo",
+            search: "coffee",
+            sort: .distance,
+            limit: 100
+        )
+        let values = Dictionary(uniqueKeysWithValues: query.urlQueryItems.compactMap { item in
+            item.value.map { (item.name, $0) }
+        })
+
+        #expect(values["wifi_min"] == "fast")
+        #expect(values["outlets_min"] == "some")
+        #expect(values["laptops"] == "friendly")
+        #expect(values["sort"] == "distance")
+        #expect(values["limit"] == "100")
+        #expect(values["q"] == "coffee")
     }
 }

@@ -2,14 +2,8 @@ import Foundation
 import Observation
 import VenueKit
 
-public struct VenueRequest: Equatable, Sendable {
-    let centerLat: Double
-    let centerLng: Double
-    let radiusM: Int
-    let wifiMin: String?
-    let outletsMin: String?
-    let laptopFriendlyOnly: Bool
-    let query: String?
+public struct VenueLoadRequest: Equatable, Sendable {
+    let query: VenueQuery
     let revision: Int
 }
 
@@ -29,37 +23,39 @@ public final class VenuesModel {
 
     // Filters — mutating them and calling load() re-queries the engine.
     public var laptopFriendlyOnly = false
-    public var minWifi: String? = nil // "ok" | "fast"
-    public var minOutlets: String? = nil // "some" | "plenty"
+    public var minWifi: WifiMinimum?
+    public var minOutlets: OutletMinimum?
     public var searchQuery = ""
     private var submittedSearchQuery: String?
     private var requestRevision = 0
 
-    /// Demo anchor: Union Square. Swap for CoreLocation later.
+    /// Deterministic fallback until Core Location supplies a coordinate.
     public private(set) var centerLat = 40.7359
     public private(set) var centerLng = -73.9911
     public let radiusM = 2500
 
     @ObservationIgnored
-    private let api: any VenueServing
+    private let api: any VenueListing
     @ObservationIgnored
     private var loadGeneration = 0
 
-    public init(api: any VenueServing) {
+    public init(api: any VenueListing) {
         self.api = api
     }
 
-    public var supportsSpeedTest: Bool { api.supportsSpeedTest }
-
-    public var request: VenueRequest {
-        VenueRequest(
-            centerLat: centerLat,
-            centerLng: centerLng,
-            radiusM: radiusM,
-            wifiMin: minWifi,
-            outletsMin: minOutlets,
-            laptopFriendlyOnly: laptopFriendlyOnly,
-            query: submittedSearchQuery,
+    public var request: VenueLoadRequest {
+        VenueLoadRequest(
+            query: VenueQuery(
+                lat: centerLat,
+                lng: centerLng,
+                radiusM: radiusM,
+                wifiMinimum: minWifi,
+                outletMinimum: minOutlets,
+                laptopFriendlyOnly: laptopFriendlyOnly,
+                search: submittedSearchQuery,
+                sort: .workScore,
+                limit: 100
+            ),
             revision: requestRevision
         )
     }
@@ -86,23 +82,28 @@ public final class VenuesModel {
         requestRevision &+= 1
     }
 
-    public func load(_ request: VenueRequest) async {
+    public func cycleWifiMinimum() {
+        switch minWifi {
+        case nil: minWifi = .ok
+        case .some(.ok): minWifi = .fast
+        default: minWifi = nil
+        }
+    }
+
+    public func cycleOutletMinimum() {
+        switch minOutlets {
+        case nil: minOutlets = .some
+        case .some(.some): minOutlets = .plenty
+        default: minOutlets = nil
+        }
+    }
+
+    public func load(_ request: VenueLoadRequest) async {
         loadGeneration += 1
         let generation = loadGeneration
         phase = .loading
         do {
-            let loadedVenues = try await api.fetchVenues(
-                lat: request.centerLat,
-                lng: request.centerLng,
-                radiusM: request.radiusM,
-                wifiMin: request.wifiMin,
-                outletsMin: request.outletsMin,
-                laptopFriendly: request.laptopFriendlyOnly,
-                neighborhood: nil,
-                query: request.query,
-                sort: "work_score",
-                limit: 100
-            )
+            let loadedVenues = try await api.fetchVenues(request.query)
             try Task.checkCancellation()
             guard generation == loadGeneration else { return }
             venues = loadedVenues
@@ -117,14 +118,4 @@ public final class VenuesModel {
         }
     }
 
-    /// Measure → submit → the engine rescores → swap the venue in place.
-    public func runSpeedTest(for venue: Venue) async throws -> Venue {
-        let mbps = try await api.measureDownloadMbps(samples: 3)
-        try Task.checkCancellation()
-        let updated = try await api.submitSpeedTest(venueId: venue.id, mbpsDown: mbps)
-        if let idx = venues.firstIndex(where: { $0.id == updated.id }) {
-            venues[idx] = updated
-        }
-        return updated
-    }
 }

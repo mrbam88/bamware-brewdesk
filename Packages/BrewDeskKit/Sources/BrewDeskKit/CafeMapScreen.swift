@@ -3,12 +3,16 @@ import SwiftUI
 import VenueKit
 
 public struct CafeMapScreen: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Bindable private var model: VenuesModel
+    @Bindable private var savedVenues: SavedVenuesStore
     @State private var selected: Venue?
     @State private var position: MapCameraPosition
 
-    public init(model: VenuesModel) {
+    public init(model: VenuesModel, savedVenues: SavedVenuesStore) {
         self.model = model
+        self.savedVenues = savedVenues
         self._position = State(initialValue: .region(Self.region(lat: model.centerLat, lng: model.centerLng)))
     }
 
@@ -27,8 +31,8 @@ public struct CafeMapScreen: View {
                                 .font(.caption.monospacedDigit().bold())
                         }
                         .foregroundStyle(selected?.id == venue.id ? .white : .primary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 6)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .padding(.horizontal, 4)
                         .background(
                             selected?.id == venue.id ? AnyShapeStyle(venue.scoreTier.color) : AnyShapeStyle(.regularMaterial),
                             in: Capsule()
@@ -37,7 +41,9 @@ public struct CafeMapScreen: View {
                         .shadow(color: .black.opacity(0.16), radius: 4, y: 2)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("\(venue.name), Work Fit \(venue.workScore)")
+                    .accessibilityLabel("\(venue.name), Work Fit \(venue.workScore), \(venue.neighborhood)")
+                    .accessibilityValue(selected?.id == venue.id ? "Selected" : "Not selected")
+                    .accessibilityAddTraits(selected?.id == venue.id ? .isSelected : [])
                 }
             }
         }
@@ -50,7 +56,7 @@ public struct CafeMapScreen: View {
         .overlay { loadStatus }
         .sheet(item: $selected) { venue in
             NavigationStack {
-                VenueDetailScreen(venue: venue)
+                VenueDetailScreen(venue: venue, savedVenues: savedVenues)
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
@@ -102,11 +108,11 @@ public struct CafeMapScreen: View {
             }
             .padding(.horizontal, 14)
             .frame(height: 48)
-            .background(.regularMaterial, in: Capsule())
+            .brewDeskGlass(in: Capsule())
             .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
 
             HStack {
-                Text("\(model.venues.count) work cafes")
+                Text(localizedWorkCafeCount(model.venues.count))
                     .font(.caption.bold())
                 Spacer()
                 Text("Scores show Work Fit")
@@ -136,18 +142,18 @@ public struct CafeMapScreen: View {
                         model.laptopFriendlyOnly.toggle()
                     }
                     filterChip(
-                        title: model.minWifi == "fast" ? "Fast Wi-Fi" : "Wi-Fi",
+                        title: model.minWifi == .fast ? "Fast Wi-Fi" : "Wi-Fi",
                         symbol: "wifi",
                         selected: model.minWifi != nil
                     ) {
-                        model.minWifi = model.minWifi == nil ? "ok" : model.minWifi == "ok" ? "fast" : nil
+                        model.cycleWifiMinimum()
                     }
                     filterChip(
-                        title: model.minOutlets == "plenty" ? "Plenty of outlets" : "Outlets",
+                        title: model.minOutlets == .plenty ? "Plenty of outlets" : "Outlets",
                         symbol: "powerplug.fill",
                         selected: model.minOutlets != nil
                     ) {
-                        model.minOutlets = model.minOutlets == nil ? "some" : model.minOutlets == "some" ? "plenty" : nil
+                        model.cycleOutletMinimum()
                     }
                 }
                 .padding(.horizontal, 16)
@@ -176,21 +182,23 @@ public struct CafeMapScreen: View {
                                 venueCard(venue)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel(
+                                "\(venue.name), Work Fit \(venue.workScore), \(venue.neighborhood)"
+                            )
                         }
                     }
                     .padding(.horizontal, 16)
                 }
-                .frame(height: 126)
+                .frame(height: dynamicTypeSize.isAccessibilitySize ? 190 : 126)
             }
         }
         .padding(.vertical, 10)
-        .background(.ultraThickMaterial)
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26))
+        .brewDeskGlass(in: UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26))
         .shadow(color: .black.opacity(0.15), radius: 14, y: -3)
     }
 
     private func filterChip(
-        title: String,
+        title: LocalizedStringKey,
         symbol: String,
         selected: Bool,
         action: @escaping () -> Void
@@ -200,10 +208,12 @@ public struct CafeMapScreen: View {
                 .font(.caption.bold())
                 .foregroundStyle(selected ? .white : .primary)
                 .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(selected ? Color.brown : Color.secondary.opacity(0.10), in: Capsule())
+                .frame(minHeight: 44)
+                .background(selected ? BrewDeskPalette.roast : Color.secondary.opacity(0.10), in: Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityValue(selected ? "On" : "Off")
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func venueCard(_ venue: Venue) -> some View {
@@ -225,21 +235,22 @@ public struct CafeMapScreen: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(venue.name)
                     .font(.headline)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                 Text(venue.neighborhood)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack(spacing: 10) {
-                    Label(venue.attributes.wifi.value, systemImage: "wifi")
-                    Label(venue.attributes.outlets.value, systemImage: "powerplug")
+                    Label(localizedAttributeValue(venue.attributes.wifi.value), systemImage: "wifi")
+                    Label(localizedAttributeValue(venue.attributes.outlets.value), systemImage: "powerplug")
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             }
         }
         .padding(10)
-        .frame(width: 285, alignment: .leading)
+        .frame(width: dynamicTypeSize.isAccessibilitySize ? 330 : 285, alignment: .leading)
         .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
+        .animation(reduceMotion ? nil : .snappy, value: selected?.id)
     }
 
     private static func region(lat: Double, lng: Double) -> MKCoordinateRegion {

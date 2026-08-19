@@ -16,6 +16,23 @@ GitHub workflow delegated signing and submission to credentials stored by EAS;
 BrewDesk stores the equivalent capabilities as encrypted GitHub Actions
 secrets and runs fastlane on a hosted Mac.
 
+The first TestFlight build used a second, proven path: Xcode authenticated with
+a Team App Store Connect API key, created a cloud-managed distribution
+signature during export, uploaded directly, and waited for processing. This
+path does not produce an exportable local private key for GitHub CI.
+
+## Credential vocabulary
+
+- `.p8`: App Store Connect API private key
+- Key ID: short identifier for the API key
+- Issuer ID: team UUID used with the key
+- `.cer`: public signing certificate only
+- `.p12`: certificate plus exportable private key
+- `.mobileprovision`: profile tied to a specific bundle identifier
+
+A Baat provisioning profile cannot sign BrewDesk. A `.cer` without its matching
+private key cannot sign any archive. Never commit or print credential values.
+
 ## One-time secret setup
 
 Add these encrypted Actions secrets to the repository's protected
