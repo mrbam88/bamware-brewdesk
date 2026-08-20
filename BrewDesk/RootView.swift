@@ -33,13 +33,27 @@ struct RootView: View {
         }
     }
 
+    @ViewBuilder
     private var discovery: some View {
+        #if DEBUG
+        // Env switch tears the whole stack down via .id — models rebuild
+        // against the new base URL; no mixed-environment data survives.
+        let env = DebugEnvironmentStore.shared.current
+        DiscoveryRootView(
+            configuration: configuration,
+            locationService: locationService,
+            venueListing: VenueAPI(baseURL: env.baseURL),
+            venueDetails: VenueAPI(baseURL: env.baseURL)
+        )
+        .id(env)
+        #else
         DiscoveryRootView(
             configuration: configuration,
             locationService: locationService,
             venueListing: venueListing,
             venueDetails: venueDetails
         )
+        #endif
     }
 }
 

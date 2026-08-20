@@ -9,6 +9,10 @@ struct DiscoveryRootView: View {
     private let venueDetails: any VenueDetailServing
     @State private var model: VenuesModel
     @State private var savedVenues = SavedVenuesStore()
+    #if DEBUG
+    @State private var envTapCount = 0
+    @State private var showEnvPicker = false
+    #endif
 
     init(
         configuration: AppConfiguration,
@@ -53,6 +57,19 @@ struct DiscoveryRootView: View {
             guard let coordinate = location?.coordinate else { return }
             model.updateCenterIfNeeded(lat: coordinate.latitude, lng: coordinate.longitude)
         }
+        #if DEBUG
+        .overlay(alignment: .top) {
+            if DebugEnvironmentStore.shared.current != .production {
+                Text(verbatim: "ENV: \(DebugEnvironmentStore.shared.current.label)")
+                    .font(.caption2.bold())
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 3)
+                    .background(.orange, in: Capsule())
+                    .foregroundStyle(.white)
+                    .allowsHitTesting(false)
+            }
+        }
+        #endif
     }
 
     private var savedTab: some View {
@@ -91,7 +108,64 @@ struct DiscoveryRootView: View {
             Section("Data sources") {
                 Link("OpenStreetMap contributors", destination: URL(string: "https://www.openstreetmap.org/copyright")!)
             }
+
+            Section {
+                HStack {
+                    Text("Version")
+                    Spacer()
+                    Text(Self.marketingVersion)
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+                #if DEBUG
+                .onTapGesture {
+                    envTapCount += 1
+                    if envTapCount >= 5 {
+                        envTapCount = 0
+                        showEnvPicker = true
+                    }
+                }
+                #endif
+            }
         }
         .navigationTitle("About")
+        #if DEBUG
+        .sheet(isPresented: $showEnvPicker) { environmentPicker }
+        #endif
     }
+
+    private static var marketingVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
+        return "\(version) (\(build))"
+    }
+
+    #if DEBUG
+    private var environmentPicker: some View {
+        NavigationStack {
+            List(DebugEnvironment.allCases) { env in
+                Button {
+                    DebugEnvironmentStore.shared.current = env
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(env.label)
+                            Text(env.baseURL.absoluteString)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if DebugEnvironmentStore.shared.current == env {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+                .foregroundStyle(.primary)
+            }
+            .navigationTitle("Environment")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .presentationDetents([.medium])
+    }
+    #endif
 }
