@@ -30,9 +30,19 @@ public final class VenuesModel {
     private var requestRevision = 0
 
     /// Deterministic fallback until Core Location supplies a coordinate.
-    public private(set) var centerLat = 40.7359
-    public private(set) var centerLng = -73.9911
+    public private(set) var centerLat = VenuesModel.coverageCenterLat
+    public private(set) var centerLng = VenuesModel.coverageCenterLng
     public let radiusM = 2500
+
+    /// True when the user's real location was rejected for being outside the
+    /// NYC coverage area — the UI shows coverage instead of an empty map.
+    public private(set) var isOutsideCoverage = false
+
+    // NYC coverage anchor (Union Square) and how far a coordinate may sit
+    // from it before we keep showing coverage instead of following the user.
+    nonisolated static let coverageCenterLat = 40.7359
+    nonisolated static let coverageCenterLng = -73.9911
+    nonisolated static let coverageRadiusM = 50_000.0
 
     @ObservationIgnored
     private let api: any VenueListing
@@ -62,10 +72,33 @@ public final class VenuesModel {
 
     @discardableResult
     public func updateCenterIfNeeded(lat: Double, lng: Double) -> Bool {
+        guard Self.metersFromCoverageCenter(lat: lat, lng: lng) <= Self.coverageRadiusM else {
+            isOutsideCoverage = true
+            return false
+        }
+        isOutsideCoverage = false
         guard centerLat != lat || centerLng != lng else { return false }
         centerLat = lat
         centerLng = lng
         return true
+    }
+
+    /// "Browse NYC": snap back to the coverage anchor and re-query.
+    public func browseCoverageCenter() {
+        centerLat = Self.coverageCenterLat
+        centerLng = Self.coverageCenterLng
+        requestRevision &+= 1
+    }
+
+    /// Haversine distance from the coverage anchor, in meters.
+    nonisolated static func metersFromCoverageCenter(lat: Double, lng: Double) -> Double {
+        let earthRadiusM = 6_371_000.0
+        let dLat = (lat - coverageCenterLat) * .pi / 180
+        let dLng = (lng - coverageCenterLng) * .pi / 180
+        let a = sin(dLat / 2) * sin(dLat / 2)
+            + cos(coverageCenterLat * .pi / 180) * cos(lat * .pi / 180)
+            * sin(dLng / 2) * sin(dLng / 2)
+        return earthRadiusM * 2 * atan2(sqrt(a), sqrt(1 - a))
     }
 
     public func submitSearch() {

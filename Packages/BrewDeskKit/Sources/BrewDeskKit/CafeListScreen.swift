@@ -28,11 +28,14 @@ public struct CafeListScreen: View {
                     }
                 case .loaded:
                     if model.venues.isEmpty {
-                        ContentUnavailableView(
-                            "No cafes found",
-                            systemImage: "cup.and.saucer",
-                            description: Text("Try widening your filters or search area.")
-                        )
+                        ContentUnavailableView {
+                            Label("No cafes found", systemImage: "cup.and.saucer")
+                        } description: {
+                            Text("Try widening your filters or search area.")
+                        } actions: {
+                            Button("Browse NYC") { model.browseCoverageCenter() }
+                                .buttonStyle(.borderedProminent)
+                        }
                     } else {
                         List(model.venues) { venue in
                             NavigationLink(value: venue) {

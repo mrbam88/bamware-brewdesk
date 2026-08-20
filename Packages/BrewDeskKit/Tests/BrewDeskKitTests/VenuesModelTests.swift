@@ -120,3 +120,45 @@ private actor ControlledVenueService: VenueListing {
         outcomes[key] = .failure
     }
 }
+
+@Suite @MainActor struct CoverageFallbackTests {
+    private let cupertino = (lat: 37.3230, lng: -122.0322)
+
+    @Test func rejectsCoordinatesOutsideCoverage() {
+        let model = VenuesModel(api: ControlledVenueService())
+
+        #expect(!model.updateCenterIfNeeded(lat: cupertino.lat, lng: cupertino.lng))
+        #expect(model.isOutsideCoverage)
+        // Query still targets the NYC coverage anchor, never the far coordinate.
+        #expect(model.request.query.lat == VenuesModel.coverageCenterLat)
+        #expect(model.request.query.lng == VenuesModel.coverageCenterLng)
+    }
+
+    @Test func acceptsCoordinatesInsideCoverage() {
+        let model = VenuesModel(api: ControlledVenueService())
+
+        #expect(model.updateCenterIfNeeded(lat: 40.6782, lng: -73.9442)) // Brooklyn
+        #expect(!model.isOutsideCoverage)
+        #expect(model.request.query.lat == 40.6782)
+    }
+
+    @Test func coverageFlagClearsWhenLocationReturnsInside() {
+        let model = VenuesModel(api: ControlledVenueService())
+
+        #expect(!model.updateCenterIfNeeded(lat: cupertino.lat, lng: cupertino.lng))
+        #expect(model.isOutsideCoverage)
+        #expect(model.updateCenterIfNeeded(lat: 40.71, lng: -74.0))
+        #expect(!model.isOutsideCoverage)
+    }
+
+    @Test func browseCoverageCenterSnapsBackAndReQueries() {
+        let model = VenuesModel(api: ControlledVenueService())
+
+        #expect(model.updateCenterIfNeeded(lat: 40.6782, lng: -73.9442))
+        let before = model.request.revision
+        model.browseCoverageCenter()
+        #expect(model.request.query.lat == VenuesModel.coverageCenterLat)
+        #expect(model.request.query.lng == VenuesModel.coverageCenterLng)
+        #expect(model.request.revision != before)
+    }
+}
