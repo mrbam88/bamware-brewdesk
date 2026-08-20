@@ -37,23 +37,10 @@ public struct CafeListScreen: View {
                                 .buttonStyle(.borderedProminent)
                         }
                     } else {
-                        List(model.venues) { venue in
-                            NavigationLink(value: venue) {
-                                VenueRow(venue: venue)
-                            }
-                            .swipeActions(edge: .trailing) {
-                                Button {
-                                    savedVenues.toggle(venue.id)
-                                } label: {
-                                    Label(
-                                        savedVenues.contains(venue.id) ? "Unsave" : "Save",
-                                        systemImage: savedVenues.contains(venue.id)
-                                            ? "bookmark.slash"
-                                            : "bookmark"
-                                    )
-                                }
-                                .tint(BrewDeskPalette.moss)
-                            }
+                        List {
+                            DatasetStatStrip(model: model)
+                                .listRowSeparator(.hidden)
+                            venueRows
                         }
                         .listStyle(.plain)
                         .refreshable { model.retry() }
@@ -70,6 +57,34 @@ public struct CafeListScreen: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     filterMenu
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        MethodologyScreen()
+                    } label: {
+                        Label("How scoring works", systemImage: "info.circle")
+                    }
+                }
+            }
+        }
+    }
+
+    private var venueRows: some View {
+        ForEach(model.venues) { venue in
+            NavigationLink(value: venue) {
+                VenueRow(venue: venue)
+            }
+            .swipeActions(edge: .trailing) {
+                Button {
+                    savedVenues.toggle(venue.id)
+                } label: {
+                    Label(
+                        savedVenues.contains(venue.id) ? "Unsave" : "Save",
+                        systemImage: savedVenues.contains(venue.id)
+                            ? "bookmark.slash"
+                            : "bookmark"
+                    )
+                }
+                .tint(BrewDeskPalette.moss)
             }
         }
     }
@@ -87,6 +102,19 @@ public struct CafeListScreen: View {
                 Text("Some or better").tag(OutletMinimum?.some(.some))
                 Text("Plenty").tag(OutletMinimum?.some(.plenty))
             }
+            Picker("Seating", selection: $model.minSeating) {
+                Text("Any seating").tag(SeatingMinimum?.none)
+                Text("Some or better").tag(SeatingMinimum?.some(.some))
+                Text("Plenty").tag(SeatingMinimum?.some(.plenty))
+            }
+            if model.venueTypesAvailable {
+                Picker("Spot type", selection: $model.venueType) {
+                    Text("All spots").tag(VenueTypeFilter?.none)
+                    ForEach(VenueTypeFilter.allCases, id: \.rawValue) { type in
+                        Text(LocalizedStringKey(type.rawValue)).tag(VenueTypeFilter?.some(type))
+                    }
+                }
+            }
         } label: {
             Label("Filters", systemImage: filtersActive
                 ? "line.3.horizontal.decrease.circle.fill"
@@ -96,6 +124,7 @@ public struct CafeListScreen: View {
 
     private var filtersActive: Bool {
         model.laptopFriendlyOnly || model.minWifi != nil || model.minOutlets != nil
+            || model.minSeating != nil || model.venueType != nil
     }
 }
 
@@ -136,12 +165,9 @@ struct VenueRow: View {
                             .font(.caption2)
                             .foregroundStyle(.orange)
                     }
-                    if venue.attributes.wifi.isMeasured {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.green)
-                    }
+                    laptopPolicyMarker
                 }
+                ProvenanceStamp(attributes: venue.attributes)
             }
         }
         .padding(.vertical, 6)
@@ -151,6 +177,29 @@ struct VenueRow: View {
             "Wi-Fi \(localizedAttributeValue(venue.attributes.wifi.value)), " +
             "outlets \(localizedAttributeValue(venue.attributes.outlets.value))"
         )
+    }
+
+    /// Laptop hostility is shown openly, never hidden: red "No laptops" for
+    /// discouraged venues, orange time markers for conditional policies.
+    @ViewBuilder
+    private var laptopPolicyMarker: some View {
+        switch venue.attributes.laptopPolicy.value {
+        case "discouraged":
+            Label("No laptops", systemImage: "laptopcomputer.slash")
+                .font(.caption2.bold())
+                .foregroundStyle(BrewDeskPalette.berry)
+                .accessibilityIdentifier("laptop-banned-marker")
+        case "time_limited":
+            Label("Time-limited", systemImage: "clock")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+        case "weekends_banned":
+            Label("No weekend laptops", systemImage: "clock.badge.exclamationmark")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+        default:
+            EmptyView()
+        }
     }
 
     private func distance(_ meters: Int) -> String {

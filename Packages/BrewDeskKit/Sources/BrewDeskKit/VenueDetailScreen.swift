@@ -59,6 +59,14 @@ public struct VenueDetailScreen: View {
             if !venue.vibeTags.isEmpty {
                 VibeChips(tags: venue.vibeTags)
             }
+
+            NavigationLink {
+                MethodologyScreen()
+            } label: {
+                Label("How scoring works", systemImage: "info.circle")
+                    .font(.caption.bold())
+            }
+            .accessibilityIdentifier("methodology-link")
         }
         .padding(20)
         .background(BrewDeskPalette.foam.opacity(colorScheme == .dark ? 0.08 : 0.92))

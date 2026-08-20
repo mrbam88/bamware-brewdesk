@@ -5,6 +5,7 @@ import VenueKit
 struct DiscoveryRootView: View {
     let configuration: AppConfiguration
     let locationService: LocationService
+    private let venueListing: any VenueListing
     private let venueDetails: any VenueDetailServing
     @State private var model: VenuesModel
     @State private var savedVenues = SavedVenuesStore()
@@ -17,6 +18,7 @@ struct DiscoveryRootView: View {
     ) {
         self.configuration = configuration
         self.locationService = locationService
+        self.venueListing = venueListing
         self.venueDetails = venueDetails
         _model = State(initialValue: VenuesModel(api: venueListing))
     }
@@ -55,7 +57,7 @@ struct DiscoveryRootView: View {
 
     private var savedTab: some View {
         NavigationStack {
-            SavedCafesScreen(savedVenues: savedVenues, venueDetails: venueDetails)
+            SavedCafesScreen(savedVenues: savedVenues, venueDetails: venueDetails, listing: venueListing)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         NavigationLink {

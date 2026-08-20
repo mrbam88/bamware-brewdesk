@@ -28,6 +28,13 @@ public enum VenueAPIError: Error, LocalizedError, Sendable {
 
 public protocol VenueListing: Sendable {
     func fetchVenues(_ query: VenueQuery) async throws -> [Venue]
+    /// Dataset-level stats for the stat strip. Optional capability: the
+    /// default returns nil and the UI renders nothing.
+    func fetchHealth() async throws -> HealthResponse?
+}
+
+extension VenueListing {
+    public func fetchHealth() async throws -> HealthResponse? { nil }
 }
 
 public protocol VenueDetailServing: Sendable {
@@ -72,6 +79,10 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, Sendab
         comps.queryItems = query.urlQueryItems
         guard let url = comps.url else { throw VenueAPIError.badURL }
         return try await get(VenueListResponse.self, from: url).venues
+    }
+
+    public func fetchHealth() async throws -> HealthResponse? {
+        try await get(HealthResponse.self, from: baseURL.appendingPathComponent("/v1/health"))
     }
 
     public func fetchVenue(id: String) async throws -> Venue {

@@ -1,1 +1,6 @@
-Initial release.
+• Every café card now shows when its data was last updated, and from what source
+• "How Work Fit is scored" — the full methodology, inside the app
+• Laptop-policy warnings shown openly (time limits, weekend rules, discouraged)
+• New seating filter
+• Import your saved places from Google Maps (on-device, nothing uploaded)
+• Outside NYC? The full dataset now shows instead of an empty map

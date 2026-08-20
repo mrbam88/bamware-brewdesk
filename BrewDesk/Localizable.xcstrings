@@ -11,6 +11,26 @@
         }
       }
     },
+    "%1$lld cafés · %2$lld observations · updated %3$@": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld cafés · %2$lld observaciones · actualizado %3$@"
+          }
+        }
+      }
+    },
+    "%1$lld cafés · updated %2$@": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld cafés · actualizado %2$@"
+          }
+        }
+      }
+    },
     "%@ work cafés": {
       "localizations": {
         "es": {
@@ -21,12 +41,32 @@
         }
       }
     },
+    "%lld cafés": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld cafés"
+          }
+        }
+      }
+    },
     "About": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "Acerca de"
+          }
+        }
+      }
+    },
+    "All spots": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todos los lugares"
           }
         }
       }
@@ -47,6 +87,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cualquier cantidad de enchufes"
+          }
+        }
+      }
+    },
+    "Any seating": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cualquier asiento"
+          }
+        }
+      }
+    },
+    "Apple Maps has no export — search and save those spots manually.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple Maps no tiene exportación: busca y guarda esos lugares manualmente."
           }
         }
       }
@@ -87,6 +147,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Comprueba tu conexión e inténtalo de nuevo."
+          }
+        }
+      }
+    },
+    "Choose file": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elegir archivo"
           }
         }
       }
@@ -171,6 +241,16 @@
         }
       }
     },
+    "Download the export and unzip it": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Descarga la exportación y descomprímela"
+          }
+        }
+      }
+    },
     "Every score shows its work.": {
       "localizations": {
         "es": {
@@ -187,6 +267,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Explorar"
+          }
+        }
+      }
+    },
+    "Export your Saved Places from Google Takeout and pick the CSV or GeoJSON file.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exporta tus lugares guardados desde Google Takeout y elige el archivo CSV o GeoJSON."
           }
         }
       }
@@ -281,6 +371,16 @@
         }
       }
     },
+    "Fresh beats stale": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo reciente vale más"
+          }
+        }
+      }
+    },
     "HONEST BY DESIGN": {
       "localizations": {
         "es": {
@@ -301,12 +401,82 @@
         }
       }
     },
+    "Honest unknowns": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incógnitas honestas"
+          }
+        }
+      }
+    },
     "Hours": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "Horario"
+          }
+        }
+      }
+    },
+    "How Work Fit works": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cómo funciona Work Fit"
+          }
+        }
+      }
+    },
+    "How scoring works": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cómo funciona la puntuación"
+          }
+        }
+      }
+    },
+    "How the score is weighted": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cómo se pondera la puntuación"
+          }
+        }
+      }
+    },
+    "How to export from Google Maps": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cómo exportar desde Google Maps"
+          }
+        }
+      }
+    },
+    "Import": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Importar"
+          }
+        }
+      }
+    },
+    "Import saved places": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Importar lugares guardados"
           }
         }
       }
@@ -421,6 +591,16 @@
         }
       }
     },
+    "No laptops": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin portátiles"
+          }
+        }
+      }
+    },
     "No laptops on weekends": {
       "localizations": {
         "es": {
@@ -431,12 +611,32 @@
         }
       }
     },
+    "No weekend laptops": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin portátiles los fines de semana"
+          }
+        }
+      }
+    },
     "Noise": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "Ruido"
+          }
+        }
+      }
+    },
+    "Not in BrewDesk yet": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no está en BrewDesk"
           }
         }
       }
@@ -481,6 +681,16 @@
         }
       }
     },
+    "Open takeout.google.com and select only \"Saved\" (Maps)": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre takeout.google.com y selecciona solo \"Guardado\" (Maps)"
+          }
+        }
+      }
+    },
     "OpenStreetMap contributors": {
       "localizations": {
         "es": {
@@ -497,6 +707,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Enchufes"
+          }
+        }
+      }
+    },
+    "Pick the Saved Places file here — it never leaves this device": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elige aquí el archivo de lugares guardados: nunca sale de este dispositivo"
           }
         }
       }
@@ -591,6 +811,16 @@
         }
       }
     },
+    "Saved to BrewDesk": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guardado en BrewDesk"
+          }
+        }
+      }
+    },
     "Scarce": {
       "localizations": {
         "es": {
@@ -627,6 +857,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Buscar cafés"
+          }
+        }
+      }
+    },
+    "Seating": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Asientos"
           }
         }
       }
@@ -681,6 +921,16 @@
         }
       }
     },
+    "Spot type": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tipo de lugar"
+          }
+        }
+      }
+    },
     "Start where you are.": {
       "localizations": {
         "es": {
@@ -721,7 +971,27 @@
         }
       }
     },
+    "That file couldn't be read": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo leer ese archivo"
+          }
+        }
+      }
+    },
     "Time limited": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tiempo limitado"
+          }
+        }
+      }
+    },
+    "Time-limited": {
       "localizations": {
         "es": {
           "stringUnit": {
@@ -781,6 +1051,26 @@
         }
       }
     },
+    "Updated %@ · %@": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizado %1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "Updated %@, %@": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizado %1$@, %2$@"
+          }
+        }
+      }
+    },
     "Use Union Square instead": {
       "localizations": {
         "es": {
@@ -827,6 +1117,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "TRABAJA SIN ADIVINAR"
+          }
+        }
+      }
+    },
+    "What we measure": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qué medimos"
+          }
+        }
+      }
+    },
+    "Why every claim shows its source": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Por qué cada dato muestra su fuente"
           }
         }
       }
@@ -891,6 +1201,156 @@
         }
       }
     },
+    "cafe": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "café"
+          }
+        }
+      }
+    },
+    "community": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "comunidad"
+          }
+        }
+      }
+    },
+    "curated": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "curado"
+          }
+        }
+      }
+    },
+    "estimate": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "estimación"
+          }
+        }
+      }
+    },
+    "library": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "biblioteca"
+          }
+        }
+      }
+    },
+    "mall": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "centro comercial"
+          }
+        }
+      }
+    },
+    "measured": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "medido"
+          }
+        }
+      }
+    },
+    "methodology_decay_body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confidence halves every 90 days. A six-month-old observation is a quarter as persuasive as a fresh one — that is what keeps the dataset from quietly rotting into confident fiction."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La confianza se reduce a la mitad cada 90 días. Una observación de hace seis meses persuade cuatro veces menos que una fresca — así el conjunto de datos no se pudre en ficción confiada."
+          }
+        }
+      }
+    },
+    "methodology_provenance_body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A claim moves the score in proportion to how much we believe it; the rest is anchored to a neutral prior. An unverified guess barely moves a ranking. That is why every claim shows its source, confidence, and date — and the seal appears only when a human stands behind it."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un dato mueve la puntuación en proporción a cuánto lo creemos; el resto se ancla a un valor neutro. Una estimación sin verificar apenas mueve el ranking. Por eso cada dato muestra fuente, confianza y fecha — el sello solo aparece cuando una persona respalda el dato."
+          }
+        }
+      }
+    },
+    "methodology_unknowns_body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“Unknown” is a first-class value: we never guess. Multiple observations of one attribute combine by their median, and corroboration raises confidence — capped at 95%. We never claim certainty."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\"Desconocido\" es un valor de primera clase: nunca adivinamos. Varias observaciones del mismo atributo se combinan por su mediana y la corroboración aumenta la confianza — con tope en 95%. Nunca afirmamos certeza."
+          }
+        }
+      }
+    },
+    "methodology_weights_body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laptop policy dominates (35%), then seating (25%), Wi-Fi (15%), outlets (15%), noise (10%); outdoor seating adds up to +5. The fastest Wi-Fi in the world is worthless where laptops are banned. Above ~25 Mbps extra speed stops mattering — only genuinely slow Wi-Fi punishes hard."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La política de portátiles domina (35%), luego asientos (25%), Wi-Fi (15%), enchufes (15%) y ruido (10%); los asientos al aire libre suman hasta +5. El Wi-Fi más rápido del mundo no vale nada donde prohíben portátiles. Por encima de ~25 Mbps, más velocidad ya no importa: solo el Wi-Fi realmente lento penaliza fuerte."
+          }
+        }
+      }
+    },
+    "methodology_what_body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Five attributes per spot: laptop policy, seating, Wi-Fi, outlets, and noise — plus outdoor seating as a bonus. Every claim comes from AI web research, curated data, or a site visit."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cinco atributos por lugar: política de portátiles, asientos, Wi-Fi, enchufes y ruido — más asientos al aire libre como extra. Cada dato proviene de investigación web con IA, datos curados o una visita al local."
+          }
+        }
+      }
+    },
     "one_work_cafe_count": {
       "localizations": {
         "en": {
@@ -903,6 +1363,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "1 café para trabajar"
+          }
+        }
+      }
+    },
+    "other": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "otro"
+          }
+        }
+      }
+    },
+    "owner": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "propietario"
+          }
+        }
+      }
+    },
+    "park": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "parque"
           }
         }
       }
@@ -951,6 +1441,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Guardados"
+          }
+        }
+      }
+    },
+    "site visit": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "visita al local"
+          }
+        }
+      }
+    },
+    "web research": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "investigación web"
           }
         }
       }

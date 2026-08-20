@@ -4,16 +4,35 @@ import VenueKit
 public struct SavedCafesScreen: View {
     @Bindable private var savedVenues: SavedVenuesStore
     @State private var model: SavedVenuesModel
+    private let listing: (any VenueListing)?
 
     public init(
         savedVenues: SavedVenuesStore,
-        venueDetails: any VenueDetailServing
+        venueDetails: any VenueDetailServing,
+        listing: (any VenueListing)? = nil
     ) {
         self.savedVenues = savedVenues
+        self.listing = listing
         _model = State(initialValue: SavedVenuesModel(service: venueDetails))
     }
 
     public var body: some View {
+        content
+            .toolbar {
+                if let listing {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        NavigationLink {
+                            ImportSavedScreen(savedVenues: savedVenues, listing: listing)
+                        } label: {
+                            Label("Import", systemImage: "square.and.arrow.down")
+                        }
+                        .accessibilityIdentifier("import-saved-entry")
+                    }
+                }
+            }
+    }
+
+    private var content: some View {
         Group {
             switch model.phase {
             case .idle, .loading:

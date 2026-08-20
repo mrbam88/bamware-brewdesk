@@ -1,1 +1,1 @@
-nyc,cafe,wifi,laptop,outlets,remote work,coffee shop,workplace,noise,work friendly
+nyc,wfh,cafe,wifi,laptop,outlets,seating,remote work,coffee shop,work friendly

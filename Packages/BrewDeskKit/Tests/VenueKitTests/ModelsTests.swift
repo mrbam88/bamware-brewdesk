@@ -68,3 +68,47 @@ import Testing
         #expect(values["q"] == "coffee")
     }
 }
+
+@Suite struct SchemaV2WireTests {
+    @Test func v2WireNamesAreCamelCase() {
+        let query = VenueQuery(seatingMinimum: .some, venueType: .park)
+        let items = query.urlQueryItems
+        #expect(items.contains(URLQueryItem(name: "minSeating", value: "some")))
+        #expect(items.contains(URLQueryItem(name: "venueType", value: "park")))
+    }
+
+    @Test func venueDecodesWithAndWithoutV2Fields() throws {
+        let base = """
+        {"id":"v1","name":"Spot","lat":40.7,"lng":-74.0,"address":null,
+         "neighborhood":"SoHo","borough":"Manhattan","hoursRaw":null,"vertical":"cafe",
+         "attributes":{
+           "wifi":{"value":"fast","source":"agent","confidence":0.8,"observedAt":"2026-08-15T00:00:00Z"},
+           "outlets":{"value":"some","source":"agent","confidence":0.7,"observedAt":"2026-08-15T00:00:00Z"},
+           "laptopPolicy":{"value":"unrestricted","source":"agent","confidence":0.7,"observedAt":"2026-08-15T00:00:00Z"},
+           "noise":{"value":"moderate","source":"agent","confidence":0.6,"observedAt":"2026-08-15T00:00:00Z"}
+         },
+         "vibeTags":[],"workScore":80,"lastVerified":null}
+        """
+        let v1 = try JSONDecoder().decode(Venue.self, from: Data(base.utf8))
+        #expect(v1.venueType == nil)
+        #expect(v1.attributes.seating == nil)
+
+        let v2Json = base.replacingOccurrences(
+            of: "\"vibeTags\":[],",
+            with: """
+            "vibeTags":[],"venueType":"library",
+            """
+        ).replacingOccurrences(
+            of: "\"noise\":",
+            with: """
+            "seating":{"value":"plenty","source":"site_visit","confidence":0.9,"observedAt":"2026-08-16T00:00:00Z"},
+            "outdoorSeating":{"value":"yes","source":"agent","confidence":0.6,"observedAt":"2026-08-16T00:00:00Z"},
+            "noise":
+            """
+        )
+        let v2 = try JSONDecoder().decode(Venue.self, from: Data(v2Json.utf8))
+        #expect(v2.venueType == "library")
+        #expect(v2.attributes.seating?.value == "plenty")
+        #expect(v2.attributes.outdoorSeating?.value == "yes")
+    }
+}
