@@ -136,12 +136,8 @@ struct VenueRow: View {
                             .font(.caption2)
                             .foregroundStyle(.orange)
                     }
-                    if venue.attributes.wifi.isMeasured {
-                        Image(systemName: "checkmark.seal.fill")
-                            .font(.caption2)
-                            .foregroundStyle(.green)
-                    }
                 }
+                ProvenanceStamp(attributes: venue.attributes)
             }
         }
         .padding(.vertical, 6)

@@ -39,6 +39,66 @@ struct AttributeGlyph: View {
 }
 
 /// One attribute row with full provenance — the trust UI.
+/// "Updated Aug 15 · curated" — the newest observation date across a venue's
+/// claims plus its source kind. Says "updated", never "verified": data is
+/// AI-researched unless a human source stands behind the claim (seal icon).
+struct ProvenanceStamp: View {
+    let attributes: VenueAttributes
+
+    var body: some View {
+        if let newest = Self.newestClaim(in: attributes),
+           let date = Self.observationDate(of: newest) {
+            Label {
+                Text("Updated \(date, format: .dateTime.month(.abbreviated).day()) · \(Self.sourceKind(of: newest))")
+            } icon: {
+                Image(systemName: Self.humanSources.contains(newest.source)
+                    ? "checkmark.seal.fill"
+                    : "clock.badge.checkmark")
+            }
+            .font(.caption2)
+            .foregroundStyle(Self.humanSources.contains(newest.source) ? BrewDeskPalette.moss : .secondary)
+            .accessibilityLabel(Text("Updated \(date, format: .dateTime.month(.wide).day()), \(Self.sourceKind(of: newest))"))
+        }
+    }
+
+    static func newestClaim(in attributes: VenueAttributes) -> Claim? {
+        [attributes.wifi, attributes.outlets, attributes.laptopPolicy, attributes.noise]
+            .compactMap { claim in observationDate(of: claim).map { (claim, $0) } }
+            .max { $0.1 < $1.1 }?
+            .0
+    }
+
+    static func observationDate(of claim: Claim) -> Date? {
+        guard claim.observedAt.count >= 10 else { return nil }
+        return Self.dayFormatter.date(from: String(claim.observedAt.prefix(10)))
+    }
+
+    static func sourceKind(of claim: Claim) -> String {
+        switch claim.source {
+        case "curated": String(localized: "curated")
+        case "osm": "OSM"
+        case "estimate": String(localized: "estimate")
+        case "speed_test": String(localized: "measured")
+        case "user_report": String(localized: "community")
+        case "field_visit", "site_visit": String(localized: "site visit")
+        case "owner": String(localized: "owner")
+        case "agent": String(localized: "web research")
+        default: claim.source
+        }
+    }
+
+    /// Sources where a human stands behind the claim — these earn the seal.
+    static let humanSources: Set<String> = ["curated", "field_visit", "site_visit", "speed_test", "owner"]
+
+    nonisolated static let dayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter
+    }()
+}
+
 struct ClaimRow: View {
     let title: String
     let systemImage: String

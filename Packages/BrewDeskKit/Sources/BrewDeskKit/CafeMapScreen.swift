@@ -257,6 +257,7 @@ public struct CafeMapScreen: View {
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                ProvenanceStamp(attributes: venue.attributes)
             }
         }
         .padding(10)

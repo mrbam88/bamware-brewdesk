@@ -781,6 +781,26 @@
         }
       }
     },
+    "Updated %@ · %@": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizado %1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "Updated %@, %@": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizado %1$@, %2$@"
+          }
+        }
+      }
+    },
     "Use Union Square instead": {
       "localizations": {
         "es": {
@@ -891,6 +911,46 @@
         }
       }
     },
+    "community": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "comunidad"
+          }
+        }
+      }
+    },
+    "curated": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "curado"
+          }
+        }
+      }
+    },
+    "estimate": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "estimación"
+          }
+        }
+      }
+    },
+    "measured": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "medido"
+          }
+        }
+      }
+    },
     "one_work_cafe_count": {
       "localizations": {
         "en": {
@@ -903,6 +963,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "1 café para trabajar"
+          }
+        }
+      }
+    },
+    "owner": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "propietario"
           }
         }
       }
@@ -951,6 +1021,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Guardados"
+          }
+        }
+      }
+    },
+    "site visit": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "visita al local"
+          }
+        }
+      }
+    },
+    "web research": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "investigación web"
           }
         }
       }

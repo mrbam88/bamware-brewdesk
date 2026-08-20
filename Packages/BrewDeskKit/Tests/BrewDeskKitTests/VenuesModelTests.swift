@@ -162,3 +162,37 @@ private actor ControlledVenueService: VenueListing {
         #expect(model.request.revision != before)
     }
 }
+
+@Suite @MainActor struct ProvenanceStampTests {
+    private func claim(_ source: String, _ observedAt: String) -> Claim {
+        Claim(value: "ok", source: source, confidence: 0.8, observedAt: observedAt)
+    }
+
+    @Test func newestClaimWinsAcrossAttributes() {
+        let attributes = VenueAttributes(
+            wifi: claim("agent", "2026-08-01T00:00:00Z"),
+            outlets: claim("curated", "2026-08-15T00:00:00Z"),
+            laptopPolicy: claim("estimate", "2026-07-01T00:00:00Z"),
+            noise: claim("agent", "2026-06-01T00:00:00Z")
+        )
+        let newest = ProvenanceStamp.newestClaim(in: attributes)
+        #expect(newest?.source == "curated")
+    }
+
+    @Test func malformedDatesRenderNothing() {
+        let attributes = VenueAttributes(
+            wifi: claim("agent", "soon"),
+            outlets: claim("agent", ""),
+            laptopPolicy: claim("agent", "n/a"),
+            noise: claim("agent", "??")
+        )
+        #expect(ProvenanceStamp.newestClaim(in: attributes) == nil)
+    }
+
+    @Test func humanSourcesEarnTheSealAgentDoesNot() {
+        #expect(ProvenanceStamp.humanSources.contains("site_visit"))
+        #expect(ProvenanceStamp.humanSources.contains("curated"))
+        #expect(!ProvenanceStamp.humanSources.contains("agent"))
+        #expect(!ProvenanceStamp.humanSources.contains("estimate"))
+    }
+}
