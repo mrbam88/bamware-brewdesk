@@ -124,6 +124,8 @@ public struct CafeMapScreen: View {
             }
             .padding(.horizontal, 8)
 
+            DatasetStatStrip(model: model)
+
             if model.isOutsideCoverage {
                 Label("You're outside NYC — showing our NYC coverage.", systemImage: "mappin.slash")
                     .font(.caption.bold())

@@ -37,23 +37,10 @@ public struct CafeListScreen: View {
                                 .buttonStyle(.borderedProminent)
                         }
                     } else {
-                        List(model.venues) { venue in
-                            NavigationLink(value: venue) {
-                                VenueRow(venue: venue)
-                            }
-                            .swipeActions(edge: .trailing) {
-                                Button {
-                                    savedVenues.toggle(venue.id)
-                                } label: {
-                                    Label(
-                                        savedVenues.contains(venue.id) ? "Unsave" : "Save",
-                                        systemImage: savedVenues.contains(venue.id)
-                                            ? "bookmark.slash"
-                                            : "bookmark"
-                                    )
-                                }
-                                .tint(BrewDeskPalette.moss)
-                            }
+                        List {
+                            DatasetStatStrip(model: model)
+                                .listRowSeparator(.hidden)
+                            venueRows
                         }
                         .listStyle(.plain)
                         .refreshable { model.retry() }
@@ -70,6 +57,27 @@ public struct CafeListScreen: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     filterMenu
                 }
+            }
+        }
+    }
+
+    private var venueRows: some View {
+        ForEach(model.venues) { venue in
+            NavigationLink(value: venue) {
+                VenueRow(venue: venue)
+            }
+            .swipeActions(edge: .trailing) {
+                Button {
+                    savedVenues.toggle(venue.id)
+                } label: {
+                    Label(
+                        savedVenues.contains(venue.id) ? "Unsave" : "Save",
+                        systemImage: savedVenues.contains(venue.id)
+                            ? "bookmark.slash"
+                            : "bookmark"
+                    )
+                }
+                .tint(BrewDeskPalette.moss)
             }
         }
     }

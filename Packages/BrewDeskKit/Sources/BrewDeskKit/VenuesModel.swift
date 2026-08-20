@@ -101,6 +101,13 @@ public final class VenuesModel {
         return earthRadiusM * 2 * atan2(sqrt(a), sqrt(1 - a))
     }
 
+    /// Dataset-level stats for the stat strip; nil (strip hidden) on failure.
+    public private(set) var health: HealthResponse?
+
+    public func loadHealth() async {
+        health = (try? await api.fetchHealth()).flatMap { $0 }
+    }
+
     public func submitSearch() {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         submittedSearchQuery = query.isEmpty ? nil : query

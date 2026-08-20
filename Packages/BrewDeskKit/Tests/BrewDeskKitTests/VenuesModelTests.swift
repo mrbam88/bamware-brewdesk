@@ -196,3 +196,36 @@ private actor ControlledVenueService: VenueListing {
         #expect(!ProvenanceStamp.humanSources.contains("estimate"))
     }
 }
+
+@Suite @MainActor struct HealthLoadTests {
+    struct HealthyService: VenueListing {
+        func fetchVenues(_ query: VenueQuery) async throws -> [Venue] { [] }
+        func fetchHealth() async throws -> HealthResponse? {
+            HealthResponse(ok: true, venueCount: 127, seededAt: "2026-08-15T00:00:00Z", observationCount: 480)
+        }
+    }
+    struct FailingHealthService: VenueListing {
+        func fetchVenues(_ query: VenueQuery) async throws -> [Venue] { [] }
+        func fetchHealth() async throws -> HealthResponse? { throw VenueAPIError.invalidResponse }
+    }
+
+    @Test func loadHealthPopulatesStats() async {
+        let model = VenuesModel(api: HealthyService())
+        await model.loadHealth()
+        #expect(model.health?.venueCount == 127)
+        #expect(model.health?.observationCount == 480)
+    }
+
+    @Test func healthFailureStaysNilWithoutError() async {
+        let model = VenuesModel(api: FailingHealthService())
+        await model.loadHealth()
+        #expect(model.health == nil)
+        #expect(model.phase == .idle)
+    }
+
+    @Test func defaultProtocolHealthIsNil() async {
+        let model = VenuesModel(api: ControlledVenueService())
+        await model.loadHealth()
+        #expect(model.health == nil)
+    }
+}

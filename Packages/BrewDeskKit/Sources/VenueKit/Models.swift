@@ -162,6 +162,20 @@ public struct ObservationResponse: Codable, Sendable {
     public let venue: Venue
 }
 
+public struct HealthResponse: Codable, Hashable, Sendable {
+    public let ok: Bool
+    public let venueCount: Int
+    public let seededAt: String
+    public let observationCount: Int?
+
+    public init(ok: Bool, venueCount: Int, seededAt: String, observationCount: Int? = nil) {
+        self.ok = ok
+        self.venueCount = venueCount
+        self.seededAt = seededAt
+        self.observationCount = observationCount
+    }
+}
+
 public struct NeighborhoodsResponse: Codable, Sendable {
     public struct Hood: Codable, Identifiable, Hashable, Sendable {
         public let name: String

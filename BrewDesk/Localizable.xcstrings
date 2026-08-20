@@ -11,12 +11,42 @@
         }
       }
     },
+    "%1$lld cafés · %2$lld observations · updated %3$@": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld cafés · %2$lld observaciones · actualizado %3$@"
+          }
+        }
+      }
+    },
+    "%1$lld cafés · updated %2$@": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld cafés · actualizado %2$@"
+          }
+        }
+      }
+    },
     "%@ work cafés": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "%@ cafés para trabajar"
+          }
+        }
+      }
+    },
+    "%lld cafés": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld cafés"
           }
         }
       }
