@@ -57,6 +57,13 @@ public struct CafeListScreen: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     filterMenu
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        MethodologyScreen()
+                    } label: {
+                        Label("How scoring works", systemImage: "info.circle")
+                    }
+                }
             }
         }
     }

@@ -331,6 +331,16 @@
         }
       }
     },
+    "Fresh beats stale": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lo reciente vale más"
+          }
+        }
+      }
+    },
     "HONEST BY DESIGN": {
       "localizations": {
         "es": {
@@ -351,12 +361,52 @@
         }
       }
     },
+    "Honest unknowns": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incógnitas honestas"
+          }
+        }
+      }
+    },
     "Hours": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "Horario"
+          }
+        }
+      }
+    },
+    "How Work Fit works": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cómo funciona Work Fit"
+          }
+        }
+      }
+    },
+    "How scoring works": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cómo funciona la puntuación"
+          }
+        }
+      }
+    },
+    "How the score is weighted": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cómo se pondera la puntuación"
           }
         }
       }
@@ -951,6 +1001,26 @@
         }
       }
     },
+    "What we measure": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qué medimos"
+          }
+        }
+      }
+    },
+    "Why every claim shows its source": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Por qué cada dato muestra su fuente"
+          }
+        }
+      }
+    },
     "Wi-Fi": {
       "localizations": {
         "es": {
@@ -1077,6 +1147,86 @@
           "stringUnit": {
             "state": "translated",
             "value": "medido"
+          }
+        }
+      }
+    },
+    "methodology_decay_body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confidence halves every 90 days. A six-month-old observation is a quarter as persuasive as a fresh one — that is what keeps the dataset from quietly rotting into confident fiction."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La confianza se reduce a la mitad cada 90 días. Una observación de hace seis meses persuade cuatro veces menos que una fresca — así el conjunto de datos no se pudre en ficción confiada."
+          }
+        }
+      }
+    },
+    "methodology_provenance_body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A claim moves the score in proportion to how much we believe it; the rest is anchored to a neutral prior. An unverified guess barely moves a ranking. That is why every claim shows its source, confidence, and date — and the seal appears only when a human stands behind it."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un dato mueve la puntuación en proporción a cuánto lo creemos; el resto se ancla a un valor neutro. Una estimación sin verificar apenas mueve el ranking. Por eso cada dato muestra fuente, confianza y fecha — el sello solo aparece cuando una persona respalda el dato."
+          }
+        }
+      }
+    },
+    "methodology_unknowns_body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "“Unknown” is a first-class value: we never guess. Multiple observations of one attribute combine by their median, and corroboration raises confidence — capped at 95%. We never claim certainty."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\"Desconocido\" es un valor de primera clase: nunca adivinamos. Varias observaciones del mismo atributo se combinan por su mediana y la corroboración aumenta la confianza — con tope en 95%. Nunca afirmamos certeza."
+          }
+        }
+      }
+    },
+    "methodology_weights_body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laptop policy dominates (35%), then seating (25%), Wi-Fi (15%), outlets (15%), noise (10%); outdoor seating adds up to +5. The fastest Wi-Fi in the world is worthless where laptops are banned. Above ~25 Mbps extra speed stops mattering — only genuinely slow Wi-Fi punishes hard."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La política de portátiles domina (35%), luego asientos (25%), Wi-Fi (15%), enchufes (15%) y ruido (10%); los asientos al aire libre suman hasta +5. El Wi-Fi más rápido del mundo no vale nada donde prohíben portátiles. Por encima de ~25 Mbps, más velocidad ya no importa: solo el Wi-Fi realmente lento penaliza fuerte."
+          }
+        }
+      }
+    },
+    "methodology_what_body": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Five attributes per spot: laptop policy, seating, Wi-Fi, outlets, and noise — plus outdoor seating as a bonus. Every claim comes from AI web research, curated data, or a site visit."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cinco atributos por lugar: política de portátiles, asientos, Wi-Fi, enchufes y ruido — más asientos al aire libre como extra. Cada dato proviene de investigación web con IA, datos curados o una visita al local."
           }
         }
       }
