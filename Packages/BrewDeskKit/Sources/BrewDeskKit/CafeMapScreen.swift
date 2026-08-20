@@ -61,8 +61,11 @@ public struct CafeMapScreen: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
-        .onChange(of: model.centerLat) { _, latitude in
-            position = .region(Self.region(lat: latitude, lng: model.centerLng))
+        .onChange(of: model.centerLat) {
+            position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
+        }
+        .onChange(of: model.centerLng) {
+            position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
         }
     }
 
@@ -120,6 +123,15 @@ public struct CafeMapScreen: View {
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 8)
+
+            if model.isOutsideCoverage {
+                Label("You're outside NYC — showing our NYC coverage.", systemImage: "mappin.slash")
+                    .font(.caption.bold())
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 32)
+                    .brewDeskGlass(in: Capsule())
+                    .accessibilityIdentifier("coverage-banner")
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
