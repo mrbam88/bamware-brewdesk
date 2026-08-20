@@ -772,6 +772,16 @@
         }
       }
     },
+    "Photo of %@": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foto de %@"
+          }
+        }
+      }
+    },
     "Pick the Saved Places file here — it never leaves this device": {
       "extractionState": "stale",
       "localizations": {

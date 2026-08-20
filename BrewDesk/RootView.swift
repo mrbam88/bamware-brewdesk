@@ -45,6 +45,7 @@ struct RootView: View {
             venueListing: VenueAPI(baseURL: env.baseURL),
             venueDetails: VenueAPI(baseURL: env.baseURL)
         )
+        .environment(\.venuePhotoService, VenueAPI(baseURL: env.baseURL))
         .id(env)
         #else
         DiscoveryRootView(
@@ -53,6 +54,7 @@ struct RootView: View {
             venueListing: venueListing,
             venueDetails: venueDetails
         )
+        .environment(\.venuePhotoService, venueListing as? any VenuePhotoServing)
         #endif
     }
 }

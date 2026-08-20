@@ -112,3 +112,21 @@ import Testing
         #expect(v2.attributes.outdoorSeating?.value == "yes")
     }
 }
+
+@Suite struct VenuePhotoTests {
+    @Test func decodesPhotosResponseAndResolvesRelativeURLs() throws {
+        let json = """
+        {"photos":[{"url":"/v1/venues/v1/photos/0/media","attribution":"Ada","widthPx":800,"heightPx":600},
+                   {"url":"https://elsewhere.example/x.jpg"}]}
+        """
+        let response = try JSONDecoder().decode(VenuePhotosResponse.self, from: Data(json.utf8))
+        #expect(response.photos.count == 2)
+
+        let base = URL(string: "https://venuekit-ashen.vercel.app")!
+        #expect(VenueAPI.absolutePhotoURL(response.photos[0].url, base: base)
+            == "https://venuekit-ashen.vercel.app/v1/venues/v1/photos/0/media")
+        // Absolute URLs pass through untouched.
+        #expect(VenueAPI.absolutePhotoURL(response.photos[1].url, base: base)
+            == "https://elsewhere.example/x.jpg")
+    }
+}

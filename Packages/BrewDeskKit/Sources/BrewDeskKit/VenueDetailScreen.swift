@@ -6,8 +6,10 @@ import VenueKit
 public struct VenueDetailScreen: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.venuePhotoService) private var photoService
     private let venue: Venue
     @Bindable private var savedVenues: SavedVenuesStore
+    @State private var photos: [VenuePhoto] = []
 
     public init(venue: Venue, savedVenues: SavedVenuesStore) {
         self.venue = venue
@@ -20,6 +22,9 @@ public struct VenueDetailScreen: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 20) {
                 hero
+                if !photos.isEmpty {
+                    photoStrip
+                }
                 workability
                 if let hours = venue.hoursRaw {
                     informationCard(title: "Hours", systemImage: "clock") {
@@ -37,6 +42,42 @@ public struct VenueDetailScreen: View {
         .safeAreaInset(edge: .bottom) { actionDock }
         .navigationTitle("Details")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            guard let photoService else { return }
+            photos = (try? await photoService.fetchPhotos(venueId: venue.id)) ?? []
+        }
+    }
+
+    /// Google Places photos, display-only. Attribution overlays are a
+    /// licensing requirement, not decoration.
+    private var photoStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 10) {
+                ForEach(photos) { photo in
+                    AsyncImage(url: URL(string: photo.url)) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        Rectangle().fill(.quaternary)
+                    }
+                    .frame(width: 210, height: 140)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .overlay(alignment: .bottomLeading) {
+                        if let attribution = photo.attribution {
+                            Text(verbatim: attribution)
+                                .font(.caption2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(.black.opacity(0.55), in: Capsule())
+                                .foregroundStyle(.white)
+                                .padding(6)
+                        }
+                    }
+                    .accessibilityLabel(Text("Photo of \(venue.name)"))
+                }
+            }
+        }
+        .frame(height: 140)
+        .accessibilityIdentifier("venue-photo-strip")
     }
 
     private var hero: some View {
