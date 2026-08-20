@@ -10,6 +10,7 @@ public struct VenueDetailScreen: View {
     private let venue: Venue
     @Bindable private var savedVenues: SavedVenuesStore
     @State private var photos: [VenuePhoto] = []
+    @State private var expandedPhoto: VenuePhoto?
 
     public init(venue: Venue, savedVenues: SavedVenuesStore) {
         self.venue = venue
@@ -48,36 +49,35 @@ public struct VenueDetailScreen: View {
         }
     }
 
-    /// Google Places photos, display-only. Attribution overlays are a
-    /// licensing requirement, not decoration.
+    /// Google Places photos, display-only. Thumbnails omit author attribution
+    /// (Places policy allows this for space-limited galleries) BECAUSE the
+    /// tap-to-expand viewer shows the full attribution — keep both in sync.
     private var photoStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 10) {
                 ForEach(photos) { photo in
-                    AsyncImage(url: URL(string: photo.url)) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        Rectangle().fill(.quaternary)
-                    }
-                    .frame(width: 210, height: 140)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .overlay(alignment: .bottomLeading) {
-                        if let attribution = photo.attribution {
-                            Text(verbatim: attribution)
-                                .font(.caption2)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(.black.opacity(0.55), in: Capsule())
-                                .foregroundStyle(.white)
-                                .padding(6)
+                    Button {
+                        expandedPhoto = photo
+                    } label: {
+                        AsyncImage(url: URL(string: photo.url)) { image in
+                            image.resizable().scaledToFill()
+                        } placeholder: {
+                            Rectangle().fill(.quaternary)
                         }
+                        .frame(width: 210, height: 140)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
+                    .buttonStyle(.plain)
                     .accessibilityLabel(Text("Photo of \(venue.name)"))
+                    .accessibilityHint(Text("Opens the full-size photo"))
                 }
             }
         }
         .frame(height: 140)
         .accessibilityIdentifier("venue-photo-strip")
+        .sheet(item: $expandedPhoto) { photo in
+            PhotoViewer(photo: photo, venueName: venue.name)
+        }
     }
 
     private var hero: some View {

@@ -116,11 +116,13 @@ import Testing
 @Suite struct VenuePhotoTests {
     @Test func decodesPhotosResponseAndResolvesRelativeURLs() throws {
         let json = """
-        {"photos":[{"url":"/v1/venues/v1/photos/0/media","attribution":"Ada","widthPx":800,"heightPx":600},
+        {"photos":[{"url":"/v1/venues/v1/photos/0/media","attribution":"Ada","attributionUri":"https://maps.google.com/ada","widthPx":800,"heightPx":600},
                    {"url":"https://elsewhere.example/x.jpg"}]}
         """
         let response = try JSONDecoder().decode(VenuePhotosResponse.self, from: Data(json.utf8))
         #expect(response.photos.count == 2)
+        #expect(response.photos[0].attributionUri == "https://maps.google.com/ada")
+        #expect(response.photos[1].attributionUri == nil)
 
         let base = URL(string: "https://venuekit-ashen.vercel.app")!
         #expect(VenueAPI.absolutePhotoURL(response.photos[0].url, base: base)

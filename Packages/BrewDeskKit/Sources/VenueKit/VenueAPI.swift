@@ -106,6 +106,7 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
             VenuePhoto(
                 url: Self.absolutePhotoURL(photo.url, base: baseURL),
                 attribution: photo.attribution,
+                attributionUri: photo.attributionUri,
                 widthPx: photo.widthPx,
                 heightPx: photo.heightPx
             )
