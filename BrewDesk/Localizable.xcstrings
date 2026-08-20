@@ -191,6 +191,16 @@
         }
       }
     },
+    "Close": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrar"
+          }
+        }
+      }
+    },
     "Compare noise, Wi-Fi, outlets, and laptop policy instead of digging through hundreds of reviews.": {
       "localizations": {
         "es": {
@@ -761,6 +771,16 @@
         }
       }
     },
+    "Opens the full-size photo": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre la foto a tamaño completo"
+          }
+        }
+      }
+    },
     "Outlets": {
       "extractionState": "stale",
       "localizations": {
@@ -772,7 +792,18 @@
         }
       }
     },
+    "Photo by %@": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foto de %@"
+          }
+        }
+      }
+    },
     "Photo of %@": {
+      "extractionState": "stale",
       "localizations": {
         "es": {
           "stringUnit": {
@@ -1212,6 +1243,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Versión"
+          }
+        }
+      }
+    },
+    "View on Google Maps": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver en Google Maps"
           }
         }
       }

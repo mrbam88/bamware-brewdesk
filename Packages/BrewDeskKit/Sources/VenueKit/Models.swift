@@ -184,14 +184,22 @@ public struct ObservationResponse: Codable, Sendable {
 public struct VenuePhoto: Codable, Hashable, Identifiable, Sendable {
     public let url: String
     public let attribution: String?
+    public let attributionUri: String?
     public let widthPx: Int?
     public let heightPx: Int?
 
     public var id: String { url }
 
-    public init(url: String, attribution: String? = nil, widthPx: Int? = nil, heightPx: Int? = nil) {
+    public init(
+        url: String,
+        attribution: String? = nil,
+        attributionUri: String? = nil,
+        widthPx: Int? = nil,
+        heightPx: Int? = nil
+    ) {
         self.url = url
         self.attribution = attribution
+        self.attributionUri = attributionUri
         self.widthPx = widthPx
         self.heightPx = heightPx
     }
