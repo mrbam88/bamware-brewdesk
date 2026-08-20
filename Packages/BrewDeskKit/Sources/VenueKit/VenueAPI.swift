@@ -41,6 +41,11 @@ public protocol VenueDetailServing: Sendable {
     func fetchVenue(id: String) async throws -> Venue
 }
 
+public protocol VenuePhotoServing: Sendable {
+    /// Display-only photos for a venue; [] whenever the engine has none.
+    func fetchPhotos(venueId: String) async throws -> [VenuePhoto]
+}
+
 public protocol VenueMeasuring: Sendable {
     var supportsSpeedTest: Bool { get }
     func submitSpeedTest(venueId: String, mbpsDown: Double) async throws -> Venue
@@ -50,7 +55,7 @@ public protocol VenueMeasuring: Sendable {
 /// Async client for the bamware-venue-engine master API.
 /// The iOS Simulator reaches `http://localhost:3000` on the host Mac directly.
 /// The app target permits local HTTP networking in its Debug configuration.
-public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, Sendable {
+public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenuePhotoServing, Sendable {
     public static var defaultBaseURL: URL {
         #if DEBUG
         URL(string: "http://localhost:3000")!
@@ -90,6 +95,28 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, Sendab
             VenueDetailResponse.self,
             from: baseURL.appendingPathComponent("/v1/venues/\(id)")
         ).venue
+    }
+
+    public func fetchPhotos(venueId: String) async throws -> [VenuePhoto] {
+        let response = try await get(
+            VenuePhotosResponse.self,
+            from: baseURL.appendingPathComponent("/v1/venues/\(venueId)/photos")
+        )
+        return response.photos.map { photo in
+            VenuePhoto(
+                url: Self.absolutePhotoURL(photo.url, base: baseURL),
+                attribution: photo.attribution,
+                widthPx: photo.widthPx,
+                heightPx: photo.heightPx
+            )
+        }
+    }
+
+    /// The proxy returns same-origin paths ("/v1/venues/…/media"); resolve
+    /// them against the active base URL so env switching keeps working.
+    static func absolutePhotoURL(_ url: String, base: URL) -> String {
+        guard url.hasPrefix("/") else { return url }
+        return base.appendingPathComponent(url).absoluteString
     }
 
     public func fetchNeighborhoods() async throws -> [NeighborhoodsResponse.Hood] {

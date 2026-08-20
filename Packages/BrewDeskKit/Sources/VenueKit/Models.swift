@@ -178,6 +178,33 @@ public struct ObservationResponse: Codable, Sendable {
     public let venue: Venue
 }
 
+/// One display-only venue photo served through the engine's Places proxy.
+/// `url` is absolute by the time it leaves VenueAPI; attribution must be
+/// shown when present (Google Places licensing).
+public struct VenuePhoto: Codable, Hashable, Identifiable, Sendable {
+    public let url: String
+    public let attribution: String?
+    public let widthPx: Int?
+    public let heightPx: Int?
+
+    public var id: String { url }
+
+    public init(url: String, attribution: String? = nil, widthPx: Int? = nil, heightPx: Int? = nil) {
+        self.url = url
+        self.attribution = attribution
+        self.widthPx = widthPx
+        self.heightPx = heightPx
+    }
+}
+
+public struct VenuePhotosResponse: Codable, Sendable {
+    public let photos: [VenuePhoto]
+
+    public init(photos: [VenuePhoto]) {
+        self.photos = photos
+    }
+}
+
 public struct HealthResponse: Codable, Hashable, Sendable {
     public let ok: Bool
     public let venueCount: Int
