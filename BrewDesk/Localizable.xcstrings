@@ -1,1470 +1,1590 @@
 {
-  "sourceLanguage": "en",
-  "strings": {
-    "%1$@ · %2$lld%% confidence · %3$@": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$@ · %2$lld%% de confianza · %3$@"
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%@ work cafés" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ cafés para trabajar"
           }
         }
       }
     },
-    "%1$lld cafés · %2$lld observations · updated %3$@": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld cafés · %2$lld observaciones · actualizado %3$@"
+    "%1$@ · %2$lld%% confidence · %3$@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$lld%% de confianza · %3$@"
           }
         }
       }
     },
-    "%1$lld cafés · updated %2$@": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld cafés · actualizado %2$@"
+    "%1$lld cafés · %2$lld observations · updated %3$@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld cafés · %2$lld observaciones · actualizado %3$@"
           }
         }
       }
     },
-    "%@ work cafés": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ cafés para trabajar"
+    "%1$lld cafés · updated %2$@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld cafés · actualizado %2$@"
           }
         }
       }
     },
-    "%lld cafés": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld cafés"
+    "%lld cafés" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld cafés"
           }
         }
       }
     },
-    "About": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Acerca de"
-          }
-        }
-      }
-    },
-    "All spots": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Todos los lugares"
-          }
-        }
-      }
-    },
-    "Any Wi-Fi": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cualquier Wi-Fi"
-          }
-        }
-      }
-    },
-    "Any outlets": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cualquier cantidad de enchufes"
-          }
-        }
-      }
-    },
-    "Any seating": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cualquier asiento"
-          }
-        }
-      }
-    },
-    "Apple Maps has no export — search and save those spots manually.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Apple Maps no tiene exportación: busca y guarda esos lugares manualmente."
-          }
-        }
-      }
-    },
-    "Bookmark a café from Explore or Nearby to keep it here.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Guarda un café desde Explorar o Cercanos para tenerlo aquí."
-          }
-        }
-      }
-    },
-    "Browse NYC": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Explorar NYC"
-          }
-        }
-      }
-    },
-    "Cafe service unavailable": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Servicio de cafés no disponible"
-          }
-        }
-      }
-    },
-    "Check your connection and try again.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Comprueba tu conexión e inténtalo de nuevo."
-          }
-        }
-      }
-    },
-    "Choose file": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Elegir archivo"
-          }
-        }
-      }
-    },
-    "Clear a filter or try another search.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Quita un filtro o prueba otra búsqueda."
-          }
-        }
-      }
-    },
-    "Compare noise, Wi-Fi, outlets, and laptop policy instead of digging through hundreds of reviews.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Compara ruido, Wi-Fi, enchufes y política de portátiles sin revisar cientos de opiniones."
-          }
-        }
-      }
-    },
-    "Continue": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Continuar"
-          }
-        }
-      }
-    },
-    "Curated": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Selección editorial"
-          }
-        }
-      }
-    },
-    "Data sources": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fuentes de datos"
-          }
-        }
-      }
-    },
-    "Details": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Detalles"
-          }
-        }
-      }
-    },
-    "Directions": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cómo llegar"
-          }
-        }
-      }
-    },
-    "Discouraged": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No recomendado"
-          }
-        }
-      }
-    },
-    "Download the export and unzip it": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Descarga la exportación y descomprímela"
-          }
-        }
-      }
-    },
-    "Every score shows its work.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cada puntuación muestra su evidencia."
-          }
-        }
-      }
-    },
-    "Explore": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Explorar"
-          }
-        }
-      }
-    },
-    "Export your Saved Places from Google Takeout and pick the CSV or GeoJSON file.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Exporta tus lugares guardados desde Google Takeout y elige el archivo CSV o GeoJSON."
-          }
-        }
-      }
-    },
-    "Fast": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rápido"
-          }
-        }
-      }
-    },
-    "Fast Wi-Fi": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wi-Fi rápido"
-          }
-        }
-      }
-    },
-    "Fast only": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Solo rápido"
-          }
-        }
-      }
-    },
-    "Field verified": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Verificado en persona"
-          }
-        }
-      }
-    },
-    "Filters": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Filtros"
-          }
-        }
-      }
-    },
-    "Find a cafe where the Wi-Fi works and laptops are welcome.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Encuentra un café con buen Wi-Fi donde acepten portátiles."
-          }
-        }
-      }
-    },
-    "Find my work cafe": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Encontrar mi café para trabajar"
-          }
-        }
-      }
-    },
-    "Find nearby cafes where the Wi-Fi works, outlets exist, and opening a laptop is actually welcome.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Encuentra cafés cercanos con buen Wi-Fi, enchufes y espacio para abrir el portátil."
-          }
-        }
-      }
-    },
-    "Finding work-friendly cafes…": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Buscando cafés para trabajar…"
-          }
-        }
-      }
-    },
-    "Fresh beats stale": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Lo reciente vale más"
-          }
-        }
-      }
-    },
-    "HONEST BY DESIGN": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "HONESTO POR DISEÑO"
-          }
-        }
-      }
-    },
-    "Help & legal": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ayuda y aspectos legales"
-          }
-        }
-      }
-    },
-    "Honest unknowns": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Incógnitas honestas"
-          }
-        }
-      }
-    },
-    "Hours": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Horario"
-          }
-        }
-      }
-    },
-    "How Work Fit works": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cómo funciona Work Fit"
-          }
-        }
-      }
-    },
-    "How scoring works": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cómo funciona la puntuación"
-          }
-        }
-      }
-    },
-    "How the score is weighted": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cómo se pondera la puntuación"
-          }
-        }
-      }
-    },
-    "How to export from Google Maps": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cómo exportar desde Google Maps"
-          }
-        }
-      }
-    },
-    "Import": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Importar"
-          }
-        }
-      }
-    },
-    "Import saved places": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Importar lugares guardados"
-          }
-        }
-      }
-    },
-    "Know before you order.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Decide antes de pedir."
-          }
-        }
-      }
-    },
-    "Laptop friendly": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Apto para portátiles"
-          }
-        }
-      }
-    },
-    "Laptop policy": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Política de portátiles"
-          }
-        }
-      }
-    },
-    "Lively": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Animado"
-          }
-        }
-      }
-    },
-    "Loading saved cafés…": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cargando cafés guardados…"
-          }
-        }
-      }
-    },
-    "Measured facts lead. Estimates stay labeled. Sources and verification dates show how much to trust.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Los datos medidos van primero. Las estimaciones se identifican. Las fuentes y fechas muestran cuánto confiar."
-          }
-        }
-      }
-    },
-    "Measured in app": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Medido en la app"
-          }
-        }
-      }
-    },
-    "Moderate": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Moderado"
-          }
-        }
-      }
-    },
-    "Nearby": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cercanos"
-          }
-        }
-      }
-    },
-    "No cafes found": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No se encontraron cafés"
-          }
-        }
-      }
-    },
-    "No cafes in this view": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No hay cafés en esta vista"
-          }
-        }
-      }
-    },
-    "No laptops": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sin portátiles"
-          }
-        }
-      }
-    },
-    "No laptops on weekends": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No se permiten portátiles los fines de semana"
-          }
-        }
-      }
-    },
-    "No weekend laptops": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sin portátiles los fines de semana"
-          }
-        }
-      }
-    },
-    "Noise": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ruido"
-          }
-        }
-      }
-    },
-    "Not in BrewDesk yet": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aún no está en BrewDesk"
-          }
-        }
-      }
-    },
-    "Not saved": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No guardado"
-          }
-        }
-      }
-    },
-    "OK": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aceptable"
-          }
-        }
-      }
-    },
-    "OK or better": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aceptable o mejor"
-          }
-        }
-      }
-    },
-    "On": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Activado"
-          }
-        }
-      }
-    },
-    "Open takeout.google.com and select only \"Saved\" (Maps)": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Abre takeout.google.com y selecciona solo \"Guardado\" (Maps)"
-          }
-        }
-      }
+    "0%lld / 03" : {
+      "comment" : "A page indicator that shows the current page number and the total number of pages.",
+      "isCommentAutoGenerated" : true
     },
-    "OpenStreetMap contributors": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Colaboradores de OpenStreetMap"
+    "About" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acerca de"
           }
         }
       }
     },
-    "Outlets": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enchufes"
+    "All spots" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todos los lugares"
           }
         }
       }
     },
-    "Pick the Saved Places file here — it never leaves this device": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Elige aquí el archivo de lugares guardados: nunca sale de este dispositivo"
+    "Any outlets" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cualquier cantidad de enchufes"
           }
         }
       }
     },
-    "Plenty": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Muchos"
+    "Any seating" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cualquier asiento"
           }
         }
       }
     },
-    "Plenty of outlets": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Muchos enchufes"
+    "Any Wi-Fi" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cualquier Wi-Fi"
           }
         }
       }
     },
-    "Privacy Policy": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Política de privacidad"
+    "Apple Maps has no export — search and save those spots manually." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Maps no tiene exportación: busca y guarda esos lugares manualmente."
           }
         }
       }
     },
-    "Quiet": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tranquilo"
+    "applies: %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "aplica: %@"
           }
         }
       }
     },
-    "Retry": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reintentar"
+    "Bookmark a café from Explore or Nearby to keep it here." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guarda un café desde Explorar o Cercanos para tenerlo aquí."
           }
         }
       }
     },
-    "Save": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Guardar"
+    "Browse NYC" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Explorar NYC"
           }
         }
       }
     },
-    "Save your next work spot": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Guarda tu próximo lugar de trabajo"
+    "cafe" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "café"
           }
         }
       }
     },
-    "Saved": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Guardados"
+    "Cafe service unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Servicio de cafés no disponible"
           }
         }
       }
     },
-    "Saved cafés unavailable": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cafés guardados no disponibles"
+    "Check your connection and try again." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comprueba tu conexión e inténtalo de nuevo."
           }
         }
       }
     },
-    "Saved to BrewDesk": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Guardado en BrewDesk"
+    "Choose file" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elegir archivo"
           }
         }
       }
     },
-    "Scarce": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pocos"
+    "Clear a filter or try another search." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quita un filtro o prueba otra búsqueda."
           }
         }
       }
     },
-    "Scores show Work Fit": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Las puntuaciones muestran Work Fit"
+    "community" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "comunidad"
           }
         }
       }
     },
-    "Search cafes": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Buscar cafés"
+    "Compare noise, Wi-Fi, outlets, and laptop policy instead of digging through hundreds of reviews." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compara ruido, Wi-Fi, enchufes y política de portátiles sin revisar cientos de opiniones."
           }
         }
       }
     },
-    "Search cafés": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Buscar cafés"
+    "Continue" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continuar"
           }
         }
       }
     },
-    "Seating": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Asientos"
+    "curated" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "curado"
           }
         }
       }
     },
-    "Selected": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Seleccionado"
+    "Curated" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selección editorial"
           }
         }
       }
     },
-    "Share": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Compartir"
+    "Data sources" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fuentes de datos"
           }
         }
       }
     },
-    "Slow": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Lento"
+    "Details" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detalles"
           }
         }
       }
     },
-    "Some": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Algunos"
+    "Directions" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cómo llegar"
           }
         }
       }
     },
-    "Some or better": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Algunos o más"
+    "Discouraged" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No recomendado"
           }
         }
       }
     },
-    "Spot type": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tipo de lugar"
+    "Download the export and unzip it" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descarga la exportación y descomprímela"
           }
         }
       }
     },
-    "Start where you are.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Empieza donde estás."
+    "estimate" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "estimación"
           }
         }
       }
     },
-    "Support": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Soporte"
+    "Every score shows its work." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada puntuación muestra su evidencia."
           }
         }
       }
     },
-    "THE SIGNALS THAT MATTER": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "LAS SEÑALES QUE IMPORTAN"
+    "Explore" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Explorar"
           }
         }
       }
     },
-    "Terms of Use": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Términos de uso"
+    "Export your Saved Places from Google Takeout and pick the CSV or GeoJSON file." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Exporta tus lugares guardados desde Google Takeout y elige el archivo CSV o GeoJSON."
           }
         }
       }
     },
-    "That file couldn't be read": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No se pudo leer ese archivo"
+    "Fast" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rápido"
           }
         }
       }
     },
-    "Time limited": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tiempo limitado"
+    "Fast only" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo rápido"
           }
         }
       }
     },
-    "Time-limited": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tiempo limitado"
+    "Fast Wi-Fi" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wi-Fi rápido"
           }
         }
       }
     },
-    "Try widening your filters or search area.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Amplía los filtros o el área de búsqueda."
+    "Field verified" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verificado en persona"
           }
         }
       }
     },
-    "Unknown": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Desconocido"
+    "Filters" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filtros"
           }
         }
       }
     },
-    "Unrestricted": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sin restricciones"
+    "Find a cafe where the Wi-Fi works and laptops are welcome." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encuentra un café con buen Wi-Fi donde acepten portátiles."
           }
         }
       }
     },
-    "Unsave": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Quitar de guardados"
+    "Find my work cafe" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encontrar mi café para trabajar"
           }
         }
       }
     },
-    "Unverified estimate": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Estimación sin verificar"
+    "Find nearby cafes where the Wi-Fi works, outlets exist, and opening a laptop is actually welcome." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encuentra cafés cercanos con buen Wi-Fi, enchufes y espacio para abrir el portátil."
           }
         }
       }
     },
-    "Updated %@ · %@": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Actualizado %1$@ · %2$@"
+    "Finding work-friendly cafes…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscando cafés para trabajar…"
           }
         }
       }
     },
-    "Updated %@, %@": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Actualizado %1$@, %2$@"
+    "Fresh beats stale" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo reciente vale más"
           }
         }
       }
     },
-    "Use Union Square instead": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Usar Union Square"
+    "Help & legal" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ayuda y aspectos legales"
           }
         }
       }
     },
-    "Use my location": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Usar mi ubicación"
+    "HONEST BY DESIGN" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HONESTO POR DISEÑO"
           }
         }
       }
     },
-    "User report": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Informe de usuario"
+    "Honest unknowns" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Incógnitas honestas"
           }
         }
       }
     },
-    "WORK FIT": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "WORK FIT"
+    "Hours" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Horario"
           }
         }
       }
     },
-    "WORK, WITHOUT THE GUESSWORK": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "TRABAJA SIN ADIVINAR"
+    "How scoring works" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cómo funciona la puntuación"
           }
         }
       }
     },
-    "What we measure": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Qué medimos"
+    "How the score is weighted" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cómo se pondera la puntuación"
           }
         }
       }
     },
-    "Why every claim shows its source": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Por qué cada dato muestra su fuente"
+    "How to export from Google Maps" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cómo exportar desde Google Maps"
           }
         }
       }
     },
-    "Wi-Fi": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wi-Fi"
+    "How Work Fit works" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cómo funciona Work Fit"
           }
         }
       }
     },
-    "Workability": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aptitud para trabajar"
+    "Import" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importar"
           }
         }
       }
     },
-    "You're outside NYC — showing our NYC coverage.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Estás fuera de NYC: mostramos nuestra cobertura de NYC."
+    "Import saved places" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Importar lugares guardados"
           }
         }
       }
     },
-    "Your location finds cafés nearby. It is never included in a public report.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tu ubicación encuentra cafés cercanos. Nunca se incluye en un informe público."
+    "Know before you order." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Decide antes de pedir."
           }
         }
       }
     },
-    "Your next desk might serve espresso.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tu próximo escritorio podría servir espresso."
+    "Laptop friendly" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apto para portátiles"
           }
         }
       }
     },
-    "applies: %@": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "aplica: %@"
+    "Laptop policy" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Política de portátiles"
           }
         }
       }
     },
-    "cafe": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "café"
+    "library" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "biblioteca"
           }
         }
       }
     },
-    "community": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "comunidad"
+    "Lively" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Animado"
           }
         }
       }
     },
-    "curated": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "curado"
+    "Loading saved cafés…" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cargando cafés guardados…"
           }
         }
       }
     },
-    "estimate": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "estimación"
+    "mall" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "centro comercial"
           }
         }
       }
     },
-    "library": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "biblioteca"
+    "measured" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "medido"
           }
         }
       }
     },
-    "mall": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "centro comercial"
+    "Measured facts lead. Estimates stay labeled. Sources and verification dates show how much to trust." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los datos medidos van primero. Las estimaciones se identifican. Las fuentes y fechas muestran cuánto confiar."
           }
         }
       }
     },
-    "measured": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "medido"
+    "Measured in app" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Medido en la app"
           }
         }
       }
     },
-    "methodology_decay_body": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Confidence halves every 90 days. A six-month-old observation is a quarter as persuasive as a fresh one — that is what keeps the dataset from quietly rotting into confident fiction."
+    "methodology_decay_body" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confidence halves every 90 days. A six-month-old observation is a quarter as persuasive as a fresh one — that is what keeps the dataset from quietly rotting into confident fiction."
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "La confianza se reduce a la mitad cada 90 días. Una observación de hace seis meses persuade cuatro veces menos que una fresca — así el conjunto de datos no se pudre en ficción confiada."
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La confianza se reduce a la mitad cada 90 días. Una observación de hace seis meses persuade cuatro veces menos que una fresca — así el conjunto de datos no se pudre en ficción confiada."
           }
         }
       }
     },
-    "methodology_provenance_body": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A claim moves the score in proportion to how much we believe it; the rest is anchored to a neutral prior. An unverified guess barely moves a ranking. That is why every claim shows its source, confidence, and date — and the seal appears only when a human stands behind it."
+    "methodology_provenance_body" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A claim moves the score in proportion to how much we believe it; the rest is anchored to a neutral prior. An unverified guess barely moves a ranking. That is why every claim shows its source, confidence, and date — and the seal appears only when a human stands behind it."
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un dato mueve la puntuación en proporción a cuánto lo creemos; el resto se ancla a un valor neutro. Una estimación sin verificar apenas mueve el ranking. Por eso cada dato muestra fuente, confianza y fecha — el sello solo aparece cuando una persona respalda el dato."
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un dato mueve la puntuación en proporción a cuánto lo creemos; el resto se ancla a un valor neutro. Una estimación sin verificar apenas mueve el ranking. Por eso cada dato muestra fuente, confianza y fecha — el sello solo aparece cuando una persona respalda el dato."
           }
         }
       }
     },
-    "methodology_unknowns_body": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "“Unknown” is a first-class value: we never guess. Multiple observations of one attribute combine by their median, and corroboration raises confidence — capped at 95%. We never claim certainty."
+    "methodology_unknowns_body" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“Unknown” is a first-class value: we never guess. Multiple observations of one attribute combine by their median, and corroboration raises confidence — capped at 95%. We never claim certainty."
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "\"Desconocido\" es un valor de primera clase: nunca adivinamos. Varias observaciones del mismo atributo se combinan por su mediana y la corroboración aumenta la confianza — con tope en 95%. Nunca afirmamos certeza."
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "\"Desconocido\" es un valor de primera clase: nunca adivinamos. Varias observaciones del mismo atributo se combinan por su mediana y la corroboración aumenta la confianza — con tope en 95%. Nunca afirmamos certeza."
           }
         }
       }
     },
-    "methodology_weights_body": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Laptop policy dominates (35%), then seating (25%), Wi-Fi (15%), outlets (15%), noise (10%); outdoor seating adds up to +5. The fastest Wi-Fi in the world is worthless where laptops are banned. Above ~25 Mbps extra speed stops mattering — only genuinely slow Wi-Fi punishes hard."
+    "methodology_weights_body" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laptop policy dominates (35%), then seating (25%), Wi-Fi (15%), outlets (15%), noise (10%); outdoor seating adds up to +5. The fastest Wi-Fi in the world is worthless where laptops are banned. Above ~25 Mbps extra speed stops mattering — only genuinely slow Wi-Fi punishes hard."
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "La política de portátiles domina (35%), luego asientos (25%), Wi-Fi (15%), enchufes (15%) y ruido (10%); los asientos al aire libre suman hasta +5. El Wi-Fi más rápido del mundo no vale nada donde prohíben portátiles. Por encima de ~25 Mbps, más velocidad ya no importa: solo el Wi-Fi realmente lento penaliza fuerte."
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La política de portátiles domina (35%), luego asientos (25%), Wi-Fi (15%), enchufes (15%) y ruido (10%); los asientos al aire libre suman hasta +5. El Wi-Fi más rápido del mundo no vale nada donde prohíben portátiles. Por encima de ~25 Mbps, más velocidad ya no importa: solo el Wi-Fi realmente lento penaliza fuerte."
           }
         }
       }
     },
-    "methodology_what_body": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Five attributes per spot: laptop policy, seating, Wi-Fi, outlets, and noise — plus outdoor seating as a bonus. Every claim comes from AI web research, curated data, or a site visit."
+    "methodology_what_body" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Five attributes per spot: laptop policy, seating, Wi-Fi, outlets, and noise — plus outdoor seating as a bonus. Every claim comes from AI web research, curated data, or a site visit."
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cinco atributos por lugar: política de portátiles, asientos, Wi-Fi, enchufes y ruido — más asientos al aire libre como extra. Cada dato proviene de investigación web con IA, datos curados o una visita al local."
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cinco atributos por lugar: política de portátiles, asientos, Wi-Fi, enchufes y ruido — más asientos al aire libre como extra. Cada dato proviene de investigación web con IA, datos curados o una visita al local."
           }
         }
       }
     },
-    "one_work_cafe_count": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1 work café"
+    "Moderate" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moderado"
+          }
+        }
+      }
+    },
+    "Nearby" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cercanos"
+          }
+        }
+      }
+    },
+    "No cafes found" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se encontraron cafés"
+          }
+        }
+      }
+    },
+    "No cafes in this view" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay cafés en esta vista"
+          }
+        }
+      }
+    },
+    "No laptops" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin portátiles"
+          }
+        }
+      }
+    },
+    "No laptops on weekends" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se permiten portátiles los fines de semana"
+          }
+        }
+      }
+    },
+    "No weekend laptops" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin portátiles los fines de semana"
+          }
+        }
+      }
+    },
+    "Noise" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ruido"
+          }
+        }
+      }
+    },
+    "Not in BrewDesk yet" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún no está en BrewDesk"
+          }
+        }
+      }
+    },
+    "Not saved" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No guardado"
+          }
+        }
+      }
+    },
+    "OK" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aceptable"
+          }
+        }
+      }
+    },
+    "OK or better" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aceptable o mejor"
+          }
+        }
+      }
+    },
+    "On" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activado"
+          }
+        }
+      }
+    },
+    "one_work_cafe_count" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 work café"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "1 café para trabajar"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1 café para trabajar"
           }
         }
       }
     },
-    "other": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "otro"
+    "Open takeout.google.com and select only \"Saved\" (Maps)" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre takeout.google.com y selecciona solo \"Guardado\" (Maps)"
           }
         }
       }
     },
-    "owner": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "propietario"
+    "OpenStreetMap contributors" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Colaboradores de OpenStreetMap"
           }
         }
       }
     },
-    "park": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "parque"
+    "other" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "otro"
           }
         }
       }
     },
-    "save_action_title": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Save"
+    "Outlets" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enchufes"
+          }
+        }
+      }
+    },
+    "owner" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "propietario"
+          }
+        }
+      }
+    },
+    "park" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "parque"
+          }
+        }
+      }
+    },
+    "Pick the Saved Places file here — it never leaves this device" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige aquí el archivo de lugares guardados: nunca sale de este dispositivo"
+          }
+        }
+      }
+    },
+    "Plenty" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muchos"
+          }
+        }
+      }
+    },
+    "Plenty of outlets" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muchos enchufes"
+          }
+        }
+      }
+    },
+    "Privacy Policy" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Política de privacidad"
+          }
+        }
+      }
+    },
+    "Quiet" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tranquilo"
+          }
+        }
+      }
+    },
+    "Retry" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reintentar"
+          }
+        }
+      }
+    },
+    "Save" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardar"
+          }
+        }
+      }
+    },
+    "Save your next work spot" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guarda tu próximo lugar de trabajo"
+          }
+        }
+      }
+    },
+    "save_action_title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Guardar"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardar"
           }
         }
       }
     },
-    "saved_action_title": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Saved"
+    "Saved" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardados"
+          }
+        }
+      }
+    },
+    "Saved cafés unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cafés guardados no disponibles"
+          }
+        }
+      }
+    },
+    "Saved to BrewDesk" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardado en BrewDesk"
+          }
+        }
+      }
+    },
+    "saved_action_title" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Guardado"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardado"
           }
         }
       }
     },
-    "saved_tab_title": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Saved"
+    "saved_tab_title" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved"
           }
         },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Guardados"
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardados"
           }
         }
       }
     },
-    "site visit": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "visita al local"
+    "Scarce" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pocos"
           }
         }
       }
     },
-    "web research": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "investigación web"
+    "Scores show Work Fit" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las puntuaciones muestran Work Fit"
+          }
+        }
+      }
+    },
+    "Search cafes" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar cafés"
+          }
+        }
+      }
+    },
+    "Search cafés" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar cafés"
+          }
+        }
+      }
+    },
+    "Seating" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asientos"
+          }
+        }
+      }
+    },
+    "Selected" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seleccionado"
+          }
+        }
+      }
+    },
+    "Share" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compartir"
+          }
+        }
+      }
+    },
+    "site visit" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "visita al local"
+          }
+        }
+      }
+    },
+    "Slow" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lento"
+          }
+        }
+      }
+    },
+    "Some" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Algunos"
+          }
+        }
+      }
+    },
+    "Some or better" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Algunos o más"
+          }
+        }
+      }
+    },
+    "Spot type" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tipo de lugar"
+          }
+        }
+      }
+    },
+    "Start where you are." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empieza donde estás."
+          }
+        }
+      }
+    },
+    "Support" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Soporte"
+          }
+        }
+      }
+    },
+    "Terms of Use" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Términos de uso"
+          }
+        }
+      }
+    },
+    "That file couldn't be read" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo leer ese archivo"
+          }
+        }
+      }
+    },
+    "THE SIGNALS THAT MATTER" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "LAS SEÑALES QUE IMPORTAN"
+          }
+        }
+      }
+    },
+    "Time limited" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tiempo limitado"
+          }
+        }
+      }
+    },
+    "Time-limited" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tiempo limitado"
+          }
+        }
+      }
+    },
+    "Try widening your filters or search area." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amplía los filtros o el área de búsqueda."
+          }
+        }
+      }
+    },
+    "Unknown" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desconocido"
+          }
+        }
+      }
+    },
+    "Unrestricted" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin restricciones"
+          }
+        }
+      }
+    },
+    "Unsave" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar de guardados"
+          }
+        }
+      }
+    },
+    "Unverified estimate" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estimación sin verificar"
+          }
+        }
+      }
+    },
+    "Updated %@ · %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actualizado %1$@ · %2$@"
+          }
+        }
+      }
+    },
+    "Updated %@, %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actualizado %1$@, %2$@"
+          }
+        }
+      }
+    },
+    "Use my location" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar mi ubicación"
+          }
+        }
+      }
+    },
+    "Use Union Square instead" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usar Union Square"
+          }
+        }
+      }
+    },
+    "User report" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Informe de usuario"
+          }
+        }
+      }
+    },
+    "web research" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "investigación web"
+          }
+        }
+      }
+    },
+    "What we measure" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qué medimos"
+          }
+        }
+      }
+    },
+    "Why every claim shows its source" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por qué cada dato muestra su fuente"
+          }
+        }
+      }
+    },
+    "Wi-Fi" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wi-Fi"
+          }
+        }
+      }
+    },
+    "WORK FIT" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "WORK FIT"
+          }
+        }
+      }
+    },
+    "WORK, WITHOUT THE GUESSWORK" : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TRABAJA SIN ADIVINAR"
+          }
+        }
+      }
+    },
+    "Workability" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aptitud para trabajar"
+          }
+        }
+      }
+    },
+    "You're outside NYC — showing our NYC coverage." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estás fuera de NYC: mostramos nuestra cobertura de NYC."
+          }
+        }
+      }
+    },
+    "Your location finds cafés nearby. It is never included in a public report." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu ubicación encuentra cafés cercanos. Nunca se incluye en un informe público."
+          }
+        }
+      }
+    },
+    "Your next desk might serve espresso." : {
+      "localizations" : {
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu próximo escritorio podría servir espresso."
           }
         }
       }
     }
   },
-  "version": "1.0"
+  "version" : "1.1"
 }
