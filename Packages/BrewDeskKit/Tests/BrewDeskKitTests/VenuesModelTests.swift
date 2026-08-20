@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import BrewDeskKit
 import VenueKit
@@ -248,4 +249,84 @@ private actor ControlledVenueService: VenueListing {
         model.cycleSeatingMinimum()
         #expect(model.minSeating == nil)
     }
+}
+
+@Suite @MainActor struct TakeoutImportTests {
+    private func venue(_ id: String, _ name: String, lat: Double, lng: Double) -> Venue {
+        Venue(
+            id: id, name: name, lat: lat, lng: lng, address: nil,
+            neighborhood: "SoHo", borough: "Manhattan", hoursRaw: nil, vertical: "cafe",
+            attributes: VenueAttributes(
+                wifi: Claim(value: "ok", source: "agent", confidence: 0.5, observedAt: "2026-08-01T00:00:00Z"),
+                outlets: Claim(value: "some", source: "agent", confidence: 0.5, observedAt: "2026-08-01T00:00:00Z"),
+                laptopPolicy: Claim(value: "unrestricted", source: "agent", confidence: 0.5, observedAt: "2026-08-01T00:00:00Z"),
+                noise: Claim(value: "moderate", source: "agent", confidence: 0.5, observedAt: "2026-08-01T00:00:00Z")
+            ),
+            vibeTags: [], workScore: 75, lastVerified: nil, distanceM: nil
+        )
+    }
+
+    @Test func parsesTakeoutCSVWithQuotedTitlesAndURLCoords() throws {
+        let csv = """
+        Title,Note,URL
+        "Qahwah House, W Village",,https://www.google.com/maps/place/Qahwah/@40.7301,-74.0032,17z/data=!3d40.7301!4d-74.0032
+        787 Coffee,,https://maps.google.com/?cid=123
+        """
+        let places = try TakeoutParser.parse(Data(csv.utf8))
+        #expect(places.count == 2)
+        #expect(places[0].name == "Qahwah House, W Village")
+        #expect(places[0].lat == 40.7301)
+        #expect(places[1].lat == nil)
+    }
+
+    @Test func parsesTakeoutGeoJSON() throws {
+        let geojson = """
+        {"type":"FeatureCollection","features":[
+          {"geometry":{"type":"Point","coordinates":[-74.0032,40.7301]},
+           "properties":{"location":{"name":"Qahwah House"},"google_maps_url":"http://maps.google.com/?cid=1"}}
+        ]}
+        """
+        let places = try TakeoutParser.parse(Data(geojson.utf8))
+        #expect(places == [TakeoutPlace(name: "Qahwah House", lat: 40.7301, lng: -74.0032)])
+    }
+
+    @Test func malformedFileThrowsNotCrashes() {
+        #expect(throws: TakeoutImportError.unrecognizedFormat) {
+            _ = try TakeoutParser.parse(Data("not a takeout file".utf8))
+        }
+    }
+
+    @Test func matchesByNameAndByProximityButNotStrangers() {
+        let venues = [
+            venue("v1", "Qahwah House Coffee", lat: 40.7301, lng: -74.0032),
+            venue("v2", "787 Coffee", lat: 40.7280, lng: -73.9990)
+        ]
+        let places = [
+            TakeoutPlace(name: "qahwah house"),                          // name containment
+            TakeoutPlace(name: "Mystery Spot", lat: 40.72801, lng: -73.99901), // ~2m away
+            TakeoutPlace(name: "Blue Bottle Chelsea", lat: 40.7465, lng: -74.0014) // stranger
+        ]
+        let result = TakeoutMatcher.match(places: places, venues: venues)
+        #expect(result.matched.map(\.id) == ["v1", "v2"])
+        #expect(result.unmatched.map(\.name) == ["Blue Bottle Chelsea"])
+    }
+
+    @Test func reImportAddsNoDuplicates() {
+        let store = SavedVenuesStore(persistence: InMemoryPersistence())
+        let venues = [venue("v1", "Qahwah House", lat: 40.73, lng: -74.0)]
+        for _ in 0..<2 {
+            let result = TakeoutMatcher.match(places: [TakeoutPlace(name: "Qahwah House")], venues: venues)
+            for matched in result.matched where !store.contains(matched.id) {
+                store.toggle(matched.id)
+            }
+        }
+        #expect(store.venueIDs == ["v1"])
+    }
+}
+
+@MainActor
+final class InMemoryPersistence: SavedVenuePersisting {
+    private var ids: [String] = []
+    func loadVenueIDs() -> [String] { ids }
+    func saveVenueIDs(_ venueIDs: [String]) { ids = venueIDs }
 }
