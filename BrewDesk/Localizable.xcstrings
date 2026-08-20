@@ -61,6 +61,16 @@
         }
       }
     },
+    "All spots": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todos los lugares"
+          }
+        }
+      }
+    },
     "Any Wi-Fi": {
       "localizations": {
         "es": {
@@ -77,6 +87,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cualquier cantidad de enchufes"
+          }
+        }
+      }
+    },
+    "Any seating": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cualquier asiento"
           }
         }
       }
@@ -451,12 +471,32 @@
         }
       }
     },
+    "No laptops": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin portátiles"
+          }
+        }
+      }
+    },
     "No laptops on weekends": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "No se permiten portátiles los fines de semana"
+          }
+        }
+      }
+    },
+    "No weekend laptops": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin portátiles los fines de semana"
           }
         }
       }
@@ -661,6 +701,16 @@
         }
       }
     },
+    "Seating": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Asientos"
+          }
+        }
+      }
+    },
     "Selected": {
       "localizations": {
         "es": {
@@ -711,6 +761,16 @@
         }
       }
     },
+    "Spot type": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tipo de lugar"
+          }
+        }
+      }
+    },
     "Start where you are.": {
       "localizations": {
         "es": {
@@ -752,6 +812,16 @@
       }
     },
     "Time limited": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tiempo limitado"
+          }
+        }
+      }
+    },
+    "Time-limited": {
       "localizations": {
         "es": {
           "stringUnit": {
@@ -941,6 +1011,16 @@
         }
       }
     },
+    "cafe": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "café"
+          }
+        }
+      }
+    },
     "community": {
       "localizations": {
         "es": {
@@ -971,6 +1051,26 @@
         }
       }
     },
+    "library": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "biblioteca"
+          }
+        }
+      }
+    },
+    "mall": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "centro comercial"
+          }
+        }
+      }
+    },
     "measured": {
       "localizations": {
         "es": {
@@ -997,12 +1097,32 @@
         }
       }
     },
+    "other": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "otro"
+          }
+        }
+      }
+    },
     "owner": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
             "value": "propietario"
+          }
+        }
+      }
+    },
+    "park": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "parque"
           }
         }
       }

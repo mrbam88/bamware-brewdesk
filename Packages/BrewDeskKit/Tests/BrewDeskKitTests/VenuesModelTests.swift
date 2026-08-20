@@ -229,3 +229,23 @@ private actor ControlledVenueService: VenueListing {
         #expect(model.health == nil)
     }
 }
+
+@Suite @MainActor struct SchemaV2FilterTests {
+    @Test func seatingAndVenueTypeReachTheQuery() {
+        let model = VenuesModel(api: ControlledVenueService())
+        model.minSeating = .plenty
+        model.venueType = .library
+        #expect(model.request.query.seatingMinimum == .plenty)
+        #expect(model.request.query.venueType == .library)
+    }
+
+    @Test func seatingCycleMirrorsOutletCycle() {
+        let model = VenuesModel(api: ControlledVenueService())
+        model.cycleSeatingMinimum()
+        #expect(model.minSeating == .some)
+        model.cycleSeatingMinimum()
+        #expect(model.minSeating == .plenty)
+        model.cycleSeatingMinimum()
+        #expect(model.minSeating == nil)
+    }
+}

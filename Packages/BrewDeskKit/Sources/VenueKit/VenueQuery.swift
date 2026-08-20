@@ -12,6 +12,20 @@ public enum OutletMinimum: String, CaseIterable, Codable, Sendable {
     case plenty
 }
 
+public enum SeatingMinimum: String, CaseIterable, Codable, Sendable {
+    case scarce
+    case some
+    case plenty
+}
+
+public enum VenueTypeFilter: String, CaseIterable, Codable, Sendable {
+    case cafe
+    case park
+    case library
+    case mall
+    case other
+}
+
 public enum VenueSort: String, Codable, Sendable {
     case workScore = "work_score"
     case distance
@@ -23,6 +37,8 @@ public struct VenueQuery: Equatable, Sendable {
     public var radiusM: Int
     public var wifiMinimum: WifiMinimum?
     public var outletMinimum: OutletMinimum?
+    public var seatingMinimum: SeatingMinimum?
+    public var venueType: VenueTypeFilter?
     public var laptopFriendlyOnly: Bool
     public var neighborhood: String?
     public var search: String?
@@ -35,6 +51,8 @@ public struct VenueQuery: Equatable, Sendable {
         radiusM: Int = 2_000,
         wifiMinimum: WifiMinimum? = nil,
         outletMinimum: OutletMinimum? = nil,
+        seatingMinimum: SeatingMinimum? = nil,
+        venueType: VenueTypeFilter? = nil,
         laptopFriendlyOnly: Bool = false,
         neighborhood: String? = nil,
         search: String? = nil,
@@ -46,6 +64,8 @@ public struct VenueQuery: Equatable, Sendable {
         self.radiusM = radiusM
         self.wifiMinimum = wifiMinimum
         self.outletMinimum = outletMinimum
+        self.seatingMinimum = seatingMinimum
+        self.venueType = venueType
         self.laptopFriendlyOnly = laptopFriendlyOnly
         self.neighborhood = neighborhood
         self.search = search
@@ -63,6 +83,9 @@ public struct VenueQuery: Equatable, Sendable {
         if let lng { items.append(.init(name: "lng", value: String(lng))) }
         if let wifiMinimum { items.append(.init(name: "wifi_min", value: wifiMinimum.rawValue)) }
         if let outletMinimum { items.append(.init(name: "outlets_min", value: outletMinimum.rawValue)) }
+        // v2 wire names are camelCase on the engine (schema.ts VenueQuery).
+        if let seatingMinimum { items.append(.init(name: "minSeating", value: seatingMinimum.rawValue)) }
+        if let venueType { items.append(.init(name: "venueType", value: venueType.rawValue)) }
         if laptopFriendlyOnly { items.append(.init(name: "laptops", value: "friendly")) }
         if let neighborhood { items.append(.init(name: "neighborhood", value: neighborhood)) }
         if let search { items.append(.init(name: "q", value: search)) }

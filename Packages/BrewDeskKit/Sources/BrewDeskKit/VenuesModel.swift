@@ -25,6 +25,14 @@ public final class VenuesModel {
     public var laptopFriendlyOnly = false
     public var minWifi: WifiMinimum?
     public var minOutlets: OutletMinimum?
+    public var minSeating: SeatingMinimum?
+    public var venueType: VenueTypeFilter?
+
+    /// Show venueType chips only when the dataset actually has more than one
+    /// type (or a type filter is active) — all-cafe data keeps the UI as-is.
+    public var venueTypesAvailable: Bool {
+        venueType != nil || Set(venues.compactMap(\.venueType)).count > 1
+    }
     public var searchQuery = ""
     private var submittedSearchQuery: String?
     private var requestRevision = 0
@@ -61,6 +69,8 @@ public final class VenuesModel {
                 radiusM: radiusM,
                 wifiMinimum: minWifi,
                 outletMinimum: minOutlets,
+                seatingMinimum: minSeating,
+                venueType: venueType,
                 laptopFriendlyOnly: laptopFriendlyOnly,
                 search: submittedSearchQuery,
                 sort: .workScore,
@@ -135,6 +145,14 @@ public final class VenuesModel {
         case nil: minOutlets = .some
         case .some(.some): minOutlets = .plenty
         default: minOutlets = nil
+        }
+    }
+
+    public func cycleSeatingMinimum() {
+        switch minSeating {
+        case nil: minSeating = .some
+        case .some(.some): minSeating = .plenty
+        default: minSeating = nil
         }
     }
 

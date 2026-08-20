@@ -95,6 +95,19 @@ public struct CafeListScreen: View {
                 Text("Some or better").tag(OutletMinimum?.some(.some))
                 Text("Plenty").tag(OutletMinimum?.some(.plenty))
             }
+            Picker("Seating", selection: $model.minSeating) {
+                Text("Any seating").tag(SeatingMinimum?.none)
+                Text("Some or better").tag(SeatingMinimum?.some(.some))
+                Text("Plenty").tag(SeatingMinimum?.some(.plenty))
+            }
+            if model.venueTypesAvailable {
+                Picker("Spot type", selection: $model.venueType) {
+                    Text("All spots").tag(VenueTypeFilter?.none)
+                    ForEach(VenueTypeFilter.allCases, id: \.rawValue) { type in
+                        Text(LocalizedStringKey(type.rawValue)).tag(VenueTypeFilter?.some(type))
+                    }
+                }
+            }
         } label: {
             Label("Filters", systemImage: filtersActive
                 ? "line.3.horizontal.decrease.circle.fill"
@@ -104,6 +117,7 @@ public struct CafeListScreen: View {
 
     private var filtersActive: Bool {
         model.laptopFriendlyOnly || model.minWifi != nil || model.minOutlets != nil
+            || model.minSeating != nil || model.venueType != nil
     }
 }
 
@@ -144,6 +158,7 @@ struct VenueRow: View {
                             .font(.caption2)
                             .foregroundStyle(.orange)
                     }
+                    laptopPolicyMarker
                 }
                 ProvenanceStamp(attributes: venue.attributes)
             }
@@ -155,6 +170,29 @@ struct VenueRow: View {
             "Wi-Fi \(localizedAttributeValue(venue.attributes.wifi.value)), " +
             "outlets \(localizedAttributeValue(venue.attributes.outlets.value))"
         )
+    }
+
+    /// Laptop hostility is shown openly, never hidden: red "No laptops" for
+    /// discouraged venues, orange time markers for conditional policies.
+    @ViewBuilder
+    private var laptopPolicyMarker: some View {
+        switch venue.attributes.laptopPolicy.value {
+        case "discouraged":
+            Label("No laptops", systemImage: "laptopcomputer.slash")
+                .font(.caption2.bold())
+                .foregroundStyle(BrewDeskPalette.berry)
+                .accessibilityIdentifier("laptop-banned-marker")
+        case "time_limited":
+            Label("Time-limited", systemImage: "clock")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+        case "weekends_banned":
+            Label("No weekend laptops", systemImage: "clock.badge.exclamationmark")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+        default:
+            EmptyView()
+        }
     }
 
     private func distance(_ meters: Int) -> String {

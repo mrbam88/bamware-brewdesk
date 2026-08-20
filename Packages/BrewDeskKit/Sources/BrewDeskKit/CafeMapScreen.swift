@@ -169,6 +169,24 @@ public struct CafeMapScreen: View {
                     ) {
                         model.cycleOutletMinimum()
                     }
+                    filterChip(
+                        title: "Seating",
+                        symbol: "chair.lounge",
+                        selected: model.minSeating != nil
+                    ) {
+                        model.cycleSeatingMinimum()
+                    }
+                    if model.venueTypesAvailable {
+                        ForEach(VenueTypeFilter.allCases, id: \.rawValue) { type in
+                            filterChip(
+                                title: LocalizedStringKey(type.rawValue),
+                                symbol: Self.venueTypeSymbol(type),
+                                selected: model.venueType == type
+                            ) {
+                                model.venueType = model.venueType == type ? nil : type
+                            }
+                        }
+                    }
                 }
                 .padding(.horizontal, 16)
             }
@@ -209,6 +227,16 @@ public struct CafeMapScreen: View {
         .padding(.vertical, 10)
         .brewDeskGlass(in: UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26))
         .shadow(color: .black.opacity(0.15), radius: 14, y: -3)
+    }
+
+    private static func venueTypeSymbol(_ type: VenueTypeFilter) -> String {
+        switch type {
+        case .cafe: "cup.and.saucer.fill"
+        case .park: "tree.fill"
+        case .library: "books.vertical.fill"
+        case .mall: "building.2.fill"
+        case .other: "mappin"
+        }
     }
 
     private func filterChip(

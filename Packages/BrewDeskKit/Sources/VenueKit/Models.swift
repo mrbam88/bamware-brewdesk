@@ -54,12 +54,24 @@ public struct VenueAttributes: Codable, Hashable, Sendable {
     public let outlets: Claim
     public let laptopPolicy: Claim
     public let noise: Claim
+    // v2 — optional-first: absent on pre-v2 payloads, UI renders nothing.
+    public let seating: Claim?
+    public let outdoorSeating: Claim?
 
-    public init(wifi: Claim, outlets: Claim, laptopPolicy: Claim, noise: Claim) {
+    public init(
+        wifi: Claim,
+        outlets: Claim,
+        laptopPolicy: Claim,
+        noise: Claim,
+        seating: Claim? = nil,
+        outdoorSeating: Claim? = nil
+    ) {
         self.wifi = wifi
         self.outlets = outlets
         self.laptopPolicy = laptopPolicy
         self.noise = noise
+        self.seating = seating
+        self.outdoorSeating = outdoorSeating
     }
 }
 
@@ -78,6 +90,8 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
     public let workScore: Int
     public let lastVerified: String?
     public let distanceM: Int?
+    /// v2 — "cafe" | "park" | "library" | "mall" | "other"; optional-first.
+    public let venueType: String?
 
     public init(
         id: String,
@@ -93,7 +107,8 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         vibeTags: [String],
         workScore: Int,
         lastVerified: String?,
-        distanceM: Int?
+        distanceM: Int?,
+        venueType: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -109,11 +124,12 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         self.workScore = workScore
         self.lastVerified = lastVerified
         self.distanceM = distanceM
+        self.venueType = venueType
     }
 
     enum CodingKeys: String, CodingKey {
         case id, name, lat, lng, address, neighborhood, borough, hoursRaw,
-             vertical, attributes, vibeTags, workScore, lastVerified
+             vertical, attributes, vibeTags, workScore, lastVerified, venueType
         case distanceM = "distance_m"
     }
 
