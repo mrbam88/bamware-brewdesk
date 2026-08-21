@@ -52,7 +52,9 @@ Launch arguments (UI tests only; inert in normal launches):
 - `-UITestScenario <name>` — swaps the venue/photo service for
   `ScenarioVenueService`. Scenarios: `fixtureOK`, `engineDown`, `offline`,
   `emptyVenues`, `photosEmpty`, `photosFail`, `slow`, `offlineThenRecovers`
-  (first venue fetch fails offline, later calls succeed — the retry path).
+  (first venue fetch fails offline, later calls succeed — the retry path),
+  `manyVenues` (2,180 deterministic venues — the brewdesk#54 map-performance
+  harness; pair with `-UITestFrameStats` for the on-map frame-timing HUD).
 - `-UITestLocationDenied` — pins Core Location authorization to `.denied`.
 - `-UITestSeedSnapshot` — scenario launches only: also load the bundled
   first-paint snapshot (`BrewDesk/Resources/VenueSnapshot.json`, brewdesk#28).
