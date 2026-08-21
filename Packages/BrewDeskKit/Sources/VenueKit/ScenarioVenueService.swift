@@ -42,9 +42,15 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
     /// observation submit even after the venue fetch consumed its own first
     /// failure (brewdesk#47 — the form's retry path).
     private let observationAttempts = AttemptCounter()
+    /// Photo fetches filter through the blocked-contributors list
+    /// (brewdesk#48) so "block hides their photos" is testable end-to-end.
+    /// Injectable for package tests; the shared store is in-memory under
+    /// `-UITestScenario`, so scenario launches stay deterministic.
+    private let blockStore: ContributorBlockStore
 
-    public init(scenario: Scenario) {
+    public init(scenario: Scenario, blockStore: ContributorBlockStore = .shared) {
         self.scenario = scenario
+        self.blockStore = blockStore
     }
 
     // MARK: - Fixtures
@@ -211,8 +217,10 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         case .engineDown, .photosFail: throw Self.serverError
         case .offline: throw Self.offlineError
         case .emptyVenues, .photosEmpty, .manyVenues: return []
-        case .fixtureOK, .slow, .offlineThenRecovers: return Self.fixturePhotos
-        case .communityPhotos: return Self.fixtureCommunityPhotos
+        case .fixtureOK, .slow, .offlineThenRecovers:
+            return blockStore.filteringBlocked(Self.fixturePhotos)
+        case .communityPhotos:
+            return blockStore.filteringBlocked(Self.fixtureCommunityPhotos)
         }
     }
 
