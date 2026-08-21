@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import VenueKit
 
 extension ScoreTier {
@@ -58,6 +59,7 @@ struct ProvenanceStamp: View {
             .font(.caption2)
             .foregroundStyle(Self.humanSources.contains(newest.source) ? BrewDeskPalette.moss : .secondary)
             .accessibilityLabel(Text("Updated \(date, format: .dateTime.month(.wide).day()), \(Self.sourceKind(of: newest))"))
+            .accessibilityIdentifier("provenance-stamp")
         }
     }
 
@@ -216,6 +218,33 @@ func localizedWorkCafeCount(_ count: Int) -> String {
         locale: .current,
         count.formatted()
     )
+}
+
+/// Shown when location permission is denied or restricted. The app is already
+/// serving NYC coverage at that point; the banner only says why "near me"
+/// isn't, and offers the one fix. Never blocks content.
+struct LocationDeniedBanner: View {
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Label("Location is off — showing NYC.", systemImage: "location.slash")
+                .font(.caption.bold())
+            Spacer(minLength: 0)
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    openURL(url)
+                }
+            }
+            .font(.caption.bold())
+            .accessibilityIdentifier("location-open-settings")
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 32)
+        .brewDeskGlass(in: Capsule())
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("location-denied-banner")
+    }
 }
 
 struct VibeChips: View {

@@ -3,7 +3,7 @@ import Foundation
 import FoundationNetworking
 #endif
 
-public enum VenueAPIError: Error, LocalizedError, Sendable {
+public enum VenueAPIError: Error, LocalizedError, Sendable, Equatable {
     case badURL
     case invalidResponse
     case http(statusCode: Int)
@@ -67,7 +67,16 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
     public let baseURL: URL
     private let session: URLSession
 
-    public init(baseURL: URL = VenueAPI.defaultBaseURL, session: URLSession = .shared) {
+    /// Fail fast: a stalled engine becomes a Retry state in 15 s, not the
+    /// 60 s `URLSession.shared` default. No `waitsForConnectivity` — offline
+    /// should surface as an explicit error state with a Retry, not a hang.
+    public static let defaultSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 15
+        return URLSession(configuration: configuration)
+    }()
+
+    public init(baseURL: URL = VenueAPI.defaultBaseURL, session: URLSession = VenueAPI.defaultSession) {
         self.baseURL = baseURL
         self.session = session
     }

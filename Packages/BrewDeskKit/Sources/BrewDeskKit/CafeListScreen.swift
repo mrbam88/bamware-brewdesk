@@ -2,6 +2,7 @@ import SwiftUI
 import VenueKit
 
 public struct CafeListScreen: View {
+    @Environment(\.locationDenied) private var locationDenied
     @Bindable private var model: VenuesModel
     @Bindable private var savedVenues: SavedVenuesStore
 
@@ -17,6 +18,7 @@ public struct CafeListScreen: View {
                 case .idle, .loading:
                     ProgressView("Finding work-friendly cafes…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .accessibilityIdentifier("list-state-loading")
                 case .failed:
                     ContentUnavailableView {
                         Label("Cafe service unavailable", systemImage: "wifi.exclamationmark")
@@ -25,7 +27,10 @@ public struct CafeListScreen: View {
                     } actions: {
                         Button("Retry") { model.retry() }
                             .buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier("list-retry")
                     }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("list-state-error")
                 case .loaded:
                     if model.venues.isEmpty {
                         ContentUnavailableView {
@@ -35,7 +40,10 @@ public struct CafeListScreen: View {
                         } actions: {
                             Button("Browse NYC") { model.browseCoverageCenter() }
                                 .buttonStyle(.borderedProminent)
+                                .accessibilityIdentifier("list-browse-nyc")
                         }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("list-state-empty")
                     } else {
                         List {
                             DatasetStatStrip(model: model)
@@ -45,6 +53,13 @@ public struct CafeListScreen: View {
                         .listStyle(.plain)
                         .refreshable { model.retry() }
                     }
+                }
+            }
+            .safeAreaInset(edge: .top) {
+                if locationDenied {
+                    LocationDeniedBanner()
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
                 }
             }
             .navigationTitle("Nearby")

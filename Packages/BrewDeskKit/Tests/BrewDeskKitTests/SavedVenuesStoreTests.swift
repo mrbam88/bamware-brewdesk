@@ -27,6 +27,44 @@ import VenueKit
 
         #expect(model.phase == .loaded)
         #expect(model.venues.map(\.id) == ["second", "first"])
+        #expect(model.failedCount == 0)
+    }
+
+    @Test func partialFailureKeepsWhatLoadedAndCountsTheRest() async {
+        let first = venue(id: "first", name: "First Cafe")
+        let third = venue(id: "third", name: "Third Cafe")
+        let model = SavedVenuesModel(service: StubVenueDetails(venues: [first, third]))
+
+        // "missing" fails in the middle — order of the survivors must hold.
+        await model.load(venueIDs: ["first", "missing", "third"])
+
+        #expect(model.phase == .loaded)
+        #expect(model.venues.map(\.id) == ["first", "third"])
+        #expect(model.failedCount == 1)
+    }
+
+    @Test func totalFailureIsAFailedPhase() async {
+        let model = SavedVenuesModel(service: StubVenueDetails(venues: []))
+
+        await model.load(venueIDs: ["a", "b"])
+
+        guard case .failed = model.phase else {
+            Issue.record("expected .failed, got \(model.phase)")
+            return
+        }
+        #expect(model.venues.isEmpty)
+        #expect(model.failedCount == 2)
+    }
+
+    @Test func emptyIDsResetFailureCount() async {
+        let model = SavedVenuesModel(service: StubVenueDetails(venues: []))
+        await model.load(venueIDs: ["a"])
+        #expect(model.failedCount == 1)
+
+        await model.load(venueIDs: [])
+
+        #expect(model.phase == .loaded)
+        #expect(model.failedCount == 0)
     }
 
     private func venue(id: String, name: String) -> Venue {

@@ -5,6 +5,7 @@ import VenueKit
 public struct CafeMapScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.locationDenied) private var locationDenied
     @Bindable private var model: VenuesModel
     @Bindable private var savedVenues: SavedVenuesStore
     @State private var selected: Venue?
@@ -72,10 +73,13 @@ public struct CafeMapScreen: View {
     @ViewBuilder
     private var loadStatus: some View {
         switch model.phase {
-        case .loading where model.venues.isEmpty:
+        // `.idle` with nothing loaded (first paint, or a cancelled load) is
+        // shown as loading — never a bare map with no explanation.
+        case .idle where model.venues.isEmpty, .loading where model.venues.isEmpty:
             ProgressView("Finding work-friendly cafes…")
                 .padding()
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .accessibilityIdentifier("map-state-loading")
         case .failed:
             ContentUnavailableView {
                 Label("Cafe service unavailable", systemImage: "wifi.exclamationmark")
@@ -84,9 +88,12 @@ public struct CafeMapScreen: View {
             } actions: {
                 Button("Retry") { model.retry() }
                     .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("map-retry")
             }
             .padding()
             .background(.regularMaterial)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("map-state-error")
         default:
             EmptyView()
         }
@@ -133,6 +140,10 @@ public struct CafeMapScreen: View {
                     .frame(minHeight: 32)
                     .brewDeskGlass(in: Capsule())
                     .accessibilityIdentifier("coverage-banner")
+            }
+
+            if locationDenied {
+                LocationDeniedBanner()
             }
         }
         .padding(.horizontal, 16)
@@ -192,12 +203,22 @@ public struct CafeMapScreen: View {
             }
 
             if model.venues.isEmpty {
-                ContentUnavailableView(
-                    "No cafes in this view",
-                    systemImage: "cup.and.saucer",
-                    description: Text("Clear a filter or try another search.")
-                )
-                .frame(height: 130)
+                // Only a *loaded* empty result is an empty state; while loading
+                // or failed the overlay owns the message and the shelf stays quiet.
+                if model.phase == .loaded {
+                    ContentUnavailableView {
+                        Label("No cafes in this view", systemImage: "cup.and.saucer")
+                    } description: {
+                        Text("Clear a filter or try another search.")
+                    } actions: {
+                        Button("Browse NYC") { model.browseCoverageCenter() }
+                            .buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier("map-browse-nyc")
+                    }
+                    .frame(height: 170)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("map-state-empty")
+                }
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 12) {
