@@ -80,7 +80,8 @@ public struct CafeMapScreen: View {
                 .padding()
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
                 .accessibilityIdentifier("map-state-loading")
-        case .failed:
+        // With snapshot rows on the map, failure is a banner in the header.
+        case .failed where model.venues.isEmpty:
             ContentUnavailableView {
                 Label("Cafe service unavailable", systemImage: "wifi.exclamationmark")
             } description: {
@@ -132,6 +133,10 @@ public struct CafeMapScreen: View {
             .padding(.horizontal, 8)
 
             DatasetStatStrip(model: model)
+
+            if let state = model.snapshotBanner {
+                SnapshotBanner(state: state) { model.retry() }
+            }
 
             if model.isOutsideCoverage {
                 Label("You're outside NYC — showing our NYC coverage.", systemImage: "mappin.slash")

@@ -70,6 +70,50 @@ final class DegradedStateTests: XCTestCase {
                       "Dataset stat strip missing from Nearby")
     }
 
+    // MARK: - Cold start (brewdesk#28)
+    // `-UITestSeedSnapshot` loads the bundled snapshot into a scenario launch.
+
+    /// Airplane-mode fresh install: real rows within 2 s, an honest banner,
+    /// and a retry — never a spinner-forever first paint.
+    @MainActor
+    func testColdStartOfflineShowsSnapshotRowsWithRetryWithinTwoSeconds() {
+        let app = launch("offline", extra: ["-UITestSeedSnapshot"])
+        XCTAssertTrue(element(app, "snapshot-banner-offline").waitForExistence(timeout: 2),
+                      "no offline snapshot banner within 2 s of launch")
+        XCTAssertTrue(app.buttons["snapshot-retry"].exists)
+        XCTAssertFalse(element(app, "map-state-error").exists, "full-screen error shown over snapshot rows")
+        XCTAssertFalse(element(app, "map-state-loading").exists)
+        openNearby(app)
+        XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: wait), "Nearby shows no snapshot rows")
+        XCTAssertTrue(element(app, "snapshot-banner-offline").exists)
+        XCTAssertFalse(element(app, "list-state-error").exists)
+    }
+
+    /// Slow network: snapshot rows first, a quiet "updating" banner, then the
+    /// engine's answer replaces them and the banner goes away.
+    @MainActor
+    func testColdStartSlowNetworkShowsSnapshotThenLiveData() {
+        let app = launch("slow", extra: ["-UITestSeedSnapshot"])
+        XCTAssertTrue(element(app, "snapshot-banner-loading").waitForExistence(timeout: 2))
+        XCTAssertFalse(element(app, "map-state-loading").exists, "spinner shown over snapshot rows")
+        XCTAssertTrue(app.staticTexts["3 work cafés"].waitForExistence(timeout: 20),
+                      "live fixtures never replaced the snapshot")
+        XCTAssertFalse(element(app, "snapshot-banner-loading").exists)
+    }
+
+    /// Reconnect recovers without relaunch: the first fetch fails offline,
+    /// Retry on the banner brings live data into the same session.
+    @MainActor
+    func testColdStartRetryRecoversWithoutRelaunch() {
+        let app = launch("offlineThenRecovers", extra: ["-UITestSeedSnapshot"])
+        XCTAssertTrue(element(app, "snapshot-banner-offline").waitForExistence(timeout: wait))
+        app.buttons["snapshot-retry"].tap()
+        XCTAssertTrue(app.staticTexts["3 work cafés"].waitForExistence(timeout: wait),
+                      "retry did not bring live data")
+        XCTAssertFalse(element(app, "snapshot-banner-offline").exists)
+        XCTAssertFalse(element(app, "snapshot-banner-loading").exists)
+    }
+
     // MARK: - Map
 
     @MainActor

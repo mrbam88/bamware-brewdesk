@@ -51,8 +51,13 @@ Launch arguments (UI tests only; inert in normal launches):
 
 - `-UITestScenario <name>` — swaps the venue/photo service for
   `ScenarioVenueService`. Scenarios: `fixtureOK`, `engineDown`, `offline`,
-  `emptyVenues`, `photosEmpty`, `photosFail`, `slow`.
+  `emptyVenues`, `photosEmpty`, `photosFail`, `slow`, `offlineThenRecovers`
+  (first venue fetch fails offline, later calls succeed — the retry path).
 - `-UITestLocationDenied` — pins Core Location authorization to `.denied`.
+- `-UITestSeedSnapshot` — scenario launches only: also load the bundled
+  first-paint snapshot (`BrewDesk/Resources/VenueSnapshot.json`, brewdesk#28).
+  Without it, scenario launches start empty so the no-snapshot loading/error
+  states stay testable. Normal launches always load the snapshot.
 
 To eyeball a state by hand, add the same arguments to the scheme's Run action.
 

@@ -21,6 +21,19 @@ public final class VenuesModel {
     public private(set) var phase: Phase = .idle
     public private(set) var venues: [Venue] = []
 
+    /// True while `venues` is the bundled snapshot rather than an engine
+    /// response (brewdesk#28). Cleared by the first successful load.
+    public private(set) var isShowingSnapshot = false
+
+    /// What the snapshot banner should say, or nil when the rows on screen
+    /// came from the engine.
+    public enum SnapshotBannerState: Equatable, Sendable { case loading, offline }
+    public var snapshotBanner: SnapshotBannerState? {
+        guard isShowingSnapshot else { return nil }
+        if case .failed = phase { return .offline }
+        return .loading
+    }
+
     // Filters — mutating them and calling load() re-queries the engine.
     public var laptopFriendlyOnly = false
     public var minWifi: WifiMinimum?
@@ -56,9 +69,15 @@ public final class VenuesModel {
     private let api: any VenueListing
     @ObservationIgnored
     private var loadGeneration = 0
+    /// Bundled first-paint venues (`VenueSnapshot.load()`); empty when none ship.
+    @ObservationIgnored
+    private let snapshot: [Venue]
+    @ObservationIgnored
+    private var hasReceivedLiveVenues = false
 
-    public init(api: any VenueListing) {
+    public init(api: any VenueListing, snapshot: [Venue] = []) {
         self.api = api
+        self.snapshot = snapshot
     }
 
     public var request: VenueLoadRequest {
@@ -173,15 +192,24 @@ public final class VenuesModel {
         loadGeneration += 1
         let generation = loadGeneration
         phase = .loading
+        // Cold start: until the engine has answered once, paint the bundled
+        // snapshot instead of a spinner. Never re-seed after a live answer —
+        // an empty filter result must stay empty, not flash the snapshot.
+        if !hasReceivedLiveVenues, venues.isEmpty, !snapshot.isEmpty {
+            venues = snapshot
+            isShowingSnapshot = true
+        }
         do {
             let loadedVenues = try await api.fetchVenues(request.query)
             try Task.checkCancellation()
             guard generation == loadGeneration else { return }
             venues = loadedVenues
+            hasReceivedLiveVenues = true
+            isShowingSnapshot = false
             phase = .loaded
         } catch is CancellationError {
             guard generation == loadGeneration else { return }
-            phase = venues.isEmpty ? .idle : .loaded
+            phase = (venues.isEmpty || isShowingSnapshot) ? .idle : .loaded
             return
         } catch {
             guard generation == loadGeneration else { return }

@@ -39,6 +39,86 @@ import VenueKit
         #expect(model.phase == .idle)
     }
 
+    // MARK: - Cold start (brewdesk#28)
+
+    @Test func snapshotPaintsBeforeTheFirstAnswerAndYieldsToLiveData() async throws {
+        let api = ControlledVenueService()
+        let model = VenuesModel(api: api, snapshot: ScenarioVenueService.fixtureVenues)
+        let request = model.request
+        let load = Task { await model.load(request) }
+        try await api.waitForRequest(key: "any")
+
+        #expect(model.phase == .loading)
+        #expect(model.venues.count == 3)
+        #expect(model.isShowingSnapshot)
+        #expect(model.snapshotBanner == .loading)
+
+        await api.succeed(key: "any")
+        await load.value
+        #expect(model.phase == .loaded)
+        #expect(model.venues.isEmpty)          // the engine's answer wins, even when empty
+        #expect(!model.isShowingSnapshot)
+        #expect(model.snapshotBanner == nil)
+    }
+
+    @Test func snapshotSurvivesFailureAsOfflineBanner() async {
+        let model = VenuesModel(api: ScenarioVenueService(scenario: .offline),
+                                snapshot: ScenarioVenueService.fixtureVenues)
+        await model.load(model.request)
+
+        guard case .failed = model.phase else {
+            Issue.record("expected .failed, got \(model.phase)"); return
+        }
+        #expect(model.venues.count == 3)
+        #expect(model.isShowingSnapshot)
+        #expect(model.snapshotBanner == .offline)
+    }
+
+    @Test func snapshotIsNeverReseededAfterALiveAnswer() async throws {
+        let api = ControlledVenueService()
+        let model = VenuesModel(api: api, snapshot: ScenarioVenueService.fixtureVenues)
+
+        let first = Task { await model.load(model.request) }
+        try await api.waitForRequest(key: "any")
+        await api.succeed(key: "any")
+        await first.value
+        #expect(model.venues.isEmpty)
+
+        model.minWifi = .fast
+        let second = Task { await model.load(model.request) }
+        try await api.waitForRequest(key: "fast")
+        #expect(model.venues.isEmpty)          // empty stays empty — no snapshot flash
+        #expect(model.snapshotBanner == nil)
+        await api.fail(key: "fast")
+        await second.value
+        #expect(model.snapshotBanner == nil)
+    }
+
+    @Test func retryAfterOfflineRecoversWithoutANewModel() async {
+        let model = VenuesModel(api: ScenarioVenueService(scenario: .offlineThenRecovers),
+                                snapshot: ScenarioVenueService.fixtureVenues)
+        await model.load(model.request)
+        #expect(model.snapshotBanner == .offline)
+
+        model.retry()
+        await model.load(model.request)
+        #expect(model.phase == .loaded)
+        #expect(model.snapshotBanner == nil)
+        #expect(model.venues.map(\.id) == ["fixture-roasters", "fixture-library", "fixture-corner"])
+    }
+
+    @Test func withoutASnapshotColdStartIsUnchanged() async throws {
+        let api = ControlledVenueService()
+        let model = VenuesModel(api: api)
+        let load = Task { await model.load(model.request) }
+        try await api.waitForRequest(key: "any")
+        #expect(model.venues.isEmpty)
+        #expect(!model.isShowingSnapshot)
+        #expect(model.snapshotBanner == nil)
+        load.cancel()
+        await load.value
+    }
+
     @Test func engineFailureLandsInFailedPhase() async {
         let model = VenuesModel(api: ScenarioVenueService(scenario: .engineDown))
 
