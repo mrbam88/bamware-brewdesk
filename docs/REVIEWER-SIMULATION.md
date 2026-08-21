@@ -12,7 +12,7 @@ and `fastlane/metadata/4.3-preflight.md`.
 |---|---|---|---|
 | 1 | Fresh install → onboarding | "Continue" ×2, "Every score shows its work.", "Find my work cafe" | `01`, `02` |
 | 2 | Decline location ("Use Union Square instead") | "100 work cafés" + "Gregorys Coffee" on the map | `03`, `04` |
-| 3 | Browse: Nearby list, stat strip, Filters → Laptop-friendly only, search "Housing Works" | venue rows; `dataset-stat-strip` (**expected failure until brewdesk#34** — the strip never renders today); "1 work café" | `05`–`08` |
+| 3 | Browse: Nearby list, stat strip, Filters → Laptop-friendly only, search "Housing Works" | venue rows; `dataset-stat-strip`; "1 work café" | `05`–`08` |
 | 4 | Detail: Housing Works Bookstore Cafe | nav "Details", "Workability", Directions / Save / Share | `09` |
 | 5 | Methodology from the Nearby toolbar | nav "How Work Fit works" | `10` |
 | 6 | Grant location while simulated at Cupertino | `coverage-banner` ("You're outside NYC — showing our NYC coverage.") **and** "100 work cafés" — the map must not empty (brewdesk#1) | `11` |

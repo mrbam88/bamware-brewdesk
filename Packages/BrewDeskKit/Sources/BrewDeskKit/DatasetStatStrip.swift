@@ -7,18 +7,18 @@ import VenueKit
 struct DatasetStatStrip: View {
     @Bindable var model: VenuesModel
 
+    // Health is loaded by the discovery root (`VenuesModel.loadHealthIfNeeded`),
+    // which always exists. Loading from here never worked: an `if let` whose
+    // value is nil renders no view, so a `.task` on it never ran (brewdesk#34).
     var body: some View {
-        Group {
-            if let health = model.health, health.ok {
-                Text(text(for: health))
-                    .font(.caption2.bold())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity)
-                    .accessibilityIdentifier("dataset-stat-strip")
-            }
+        if let health = model.health, health.ok {
+            Text(text(for: health))
+                .font(.caption2.bold())
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("dataset-stat-strip")
         }
-        .task { await model.loadHealth() }
     }
 
     private func text(for health: HealthResponse) -> String {

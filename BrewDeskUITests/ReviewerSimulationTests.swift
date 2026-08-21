@@ -57,17 +57,8 @@ final class ReviewerSimulationTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Nearby"].waitForExistence(timeout: 5))
         XCTAssertTrue(venueRows(app).firstMatch.waitForExistence(timeout: 15),
                       "Nearby list rendered no venue rows")
-        // Known defect, found by this run: the strip never renders because
-        // `loadHealth()` only runs inside an empty Group's `.task`
-        // (brewdesk#34). Delete this block's wrapper when #34 is fixed.
-        // An expected failure still honours continueAfterFailure, so allow
-        // continuation for exactly this assertion — the run must go on.
-        continueAfterFailure = true
-        XCTExpectFailure("brewdesk#34: dataset stat strip never renders", options: .nonStrict()) {
-            XCTAssertTrue(app.descendants(matching: .any)["dataset-stat-strip"].waitForExistence(timeout: 10),
-                          "Dataset stat strip missing from list")
-        }
-        continueAfterFailure = false
+        XCTAssertTrue(app.descendants(matching: .any)["dataset-stat-strip"].waitForExistence(timeout: 10),
+                      "Dataset stat strip missing from list (brewdesk#34 regression)")
         capture("05-list-nearby")
 
         app.buttons["Filters"].tap()

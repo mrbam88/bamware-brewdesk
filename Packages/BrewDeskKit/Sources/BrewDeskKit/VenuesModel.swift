@@ -124,6 +124,13 @@ public final class VenuesModel {
         health = (try? await api.fetchHealth()).flatMap { $0 }
     }
 
+    /// Idempotent entry point for views that merely need the stats present:
+    /// fetches once, refetches only after a failure left `health` nil.
+    public func loadHealthIfNeeded() async {
+        guard health == nil else { return }
+        await loadHealth()
+    }
+
     public func submitSearch() {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
         submittedSearchQuery = query.isEmpty ? nil : query
