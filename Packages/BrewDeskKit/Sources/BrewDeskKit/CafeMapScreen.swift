@@ -10,6 +10,10 @@ public struct CafeMapScreen: View {
     @Bindable private var savedVenues: SavedVenuesStore
     @State private var selected: Venue?
     @State private var position: MapCameraPosition
+    /// Camera region captured at gesture end (`.onMapCameraChange(.onEnd)`).
+    /// Mid-gesture frames never touch state, so a pan composites existing
+    /// annotation views instead of re-evaluating this body (brewdesk#54).
+    @State private var visibleRegion: MKCoordinateRegion?
 
     public init(model: VenuesModel, savedVenues: SavedVenuesStore) {
         self.model = model
@@ -18,35 +22,28 @@ public struct CafeMapScreen: View {
     }
 
     public var body: some View {
+        let plan = MapAnnotationPlanner.plan(
+            venues: model.venues,
+            region: visibleRegion ?? Self.region(lat: model.centerLat, lng: model.centerLng)
+        )
         Map(position: $position) {
             UserAnnotation()
-            ForEach(model.venues.prefix(40)) { venue in
-                Annotation("", coordinate: coordinate(of: venue)) {
-                    Button {
-                        selected = venue
-                    } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "cup.and.saucer.fill")
-                                .font(.caption2)
-                            Text("\(venue.workScore)")
-                                .font(.caption.monospacedDigit().bold())
-                        }
-                        .foregroundStyle(selected?.id == venue.id ? .white : .primary)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .padding(.horizontal, 4)
-                        .background(
-                            selected?.id == venue.id ? AnyShapeStyle(venue.scoreTier.color) : AnyShapeStyle(.regularMaterial),
-                            in: Capsule()
-                        )
-                        .overlay(Capsule().stroke(.white.opacity(0.8), lineWidth: 1))
-                        .shadow(color: .black.opacity(0.16), radius: 4, y: 2)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("\(venue.name), Work Fit \(venue.workScore), \(venue.neighborhood)")
-                    .accessibilityValue(selected?.id == venue.id ? "Selected" : "Not selected")
-                    .accessibilityAddTraits(selected?.id == venue.id ? .isSelected : [])
+            annotations(for: plan)
+            // A venue chosen from a dot, cluster zoom-in, or the shelf still
+            // shows a full selected pin even when the plan has no pin for it.
+            if let selected, !plan.containsVenue(id: selected.id) {
+                Annotation("", coordinate: coordinate(of: selected)) {
+                    pinButton(for: selected, isSelected: true)
                 }
             }
+        }
+        .onMapCameraChange(frequency: .onEnd) { context in
+            // Debounced re-planning: `.onEnd` keeps mid-gesture frames free of
+            // state writes, and the hysteresis below skips re-plans while the
+            // culling margin still covers the viewport — small pans composite
+            // existing annotation views instead of diffing new ones.
+            guard Self.needsReplan(from: visibleRegion, to: context.region) else { return }
+            visibleRegion = context.region
         }
         .mapControls {
             MapCompass()
@@ -58,7 +55,7 @@ public struct CafeMapScreen: View {
         // Frame-timing evidence seam (brewdesk#54); inert without the flag.
         .overlay(alignment: .bottomTrailing) {
             if MapFrameStatsHUD.isEnabled {
-                MapFrameStatsHUD(annotationCount: model.venues.prefix(40).count)
+                MapFrameStatsHUD(annotationCount: plan.annotationCount)
                     .padding(.trailing, 8)
             }
         }
@@ -75,6 +72,81 @@ public struct CafeMapScreen: View {
         .onChange(of: model.centerLng) {
             position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
         }
+    }
+
+    // MARK: - Annotations (representation from MapAnnotationPlanner,
+    // styling from MapAnnotationViews — see brewdesk#54/#55)
+
+    @MapContentBuilder
+    private func annotations(for plan: MapAnnotationPlan) -> some MapContent {
+        switch plan {
+        case .pins(let venues):
+            ForEach(venues) { venue in
+                Annotation("", coordinate: coordinate(of: venue)) {
+                    pinButton(for: venue, isSelected: selected?.id == venue.id)
+                }
+            }
+        case .dots(let venues):
+            ForEach(venues) { venue in
+                Annotation("", coordinate: coordinate(of: venue)) {
+                    dotButton(for: venue)
+                }
+            }
+        case .clusters(let clusters):
+            ForEach(clusters) { cluster in
+                Annotation("", coordinate: cluster.coordinate) {
+                    clusterButton(for: cluster)
+                }
+            }
+        }
+    }
+
+    private func pinButton(for venue: Venue, isSelected: Bool) -> some View {
+        Button {
+            selected = venue
+        } label: {
+            VenueScorePin(venue: venue, isSelected: isSelected)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(venue.name), Work Fit \(venue.workScore), \(venue.neighborhood)")
+        .accessibilityValue(isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func dotButton(for venue: Venue) -> some View {
+        Button {
+            selected = venue
+        } label: {
+            VenueScoreDot(venue: venue)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(venue.name), Work Fit \(venue.workScore), \(venue.neighborhood)")
+    }
+
+    /// Tapping a cluster zooms one representation step in on it.
+    private func clusterButton(for cluster: VenueCluster) -> some View {
+        Button {
+            let span = visibleRegion?.span
+                ?? MKCoordinateSpan(latitudeDelta: 0.035, longitudeDelta: 0.035)
+            let zoomed = MKCoordinateRegion(
+                center: cluster.coordinate,
+                span: MKCoordinateSpan(
+                    latitudeDelta: span.latitudeDelta / 3,
+                    longitudeDelta: span.longitudeDelta / 3
+                )
+            )
+            if reduceMotion {
+                position = .region(zoomed)
+            } else {
+                withAnimation(.snappy) { position = .region(zoomed) }
+            }
+        } label: {
+            VenueClusterPill(cluster: cluster)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("map-cluster")
+        .accessibilityLabel("\(cluster.count) venues, best Work Fit \(cluster.bestScore)")
+        .accessibilityHint("Zooms in to show them")
     }
 
     @ViewBuilder
@@ -327,6 +399,21 @@ public struct CafeMapScreen: View {
         .frame(width: dynamicTypeSize.isAccessibilitySize ? 330 : 285, alignment: .leading)
         .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
         .animation(reduceMotion ? nil : .snappy, value: selected?.id)
+    }
+
+    /// A new plan is needed once the camera leaves what the current plan's
+    /// culling margin (`MapAnnotationPlanner.cullMargin`) already annotated:
+    /// the center moved by more than a quarter span, or the zoom changed
+    /// meaningfully. Anything less keeps the existing annotations untouched.
+    static func needsReplan(from current: MKCoordinateRegion?, to next: MKCoordinateRegion) -> Bool {
+        guard let current else { return true }
+        let latMove = abs(next.center.latitude - current.center.latitude)
+        let lngMove = abs(next.center.longitude - current.center.longitude)
+        guard current.span.latitudeDelta > 0 else { return true }
+        let spanRatio = next.span.latitudeDelta / current.span.latitudeDelta
+        return latMove > current.span.latitudeDelta * 0.25
+            || lngMove > current.span.longitudeDelta * 0.25
+            || spanRatio < 0.75 || spanRatio > 1.33
     }
 
     private static func region(lat: Double, lng: Double) -> MKCoordinateRegion {

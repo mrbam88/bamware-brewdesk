@@ -50,6 +50,42 @@ final class MapPerformanceUITests: XCTestCase {
         XCTAssertLessThan(hitchRatio ?? 1, 0.20, "map pan dropped too much frame time: \(hud.label)")
     }
 
+    // MARK: - Representation behavior (clusters → dots/pins → detail)
+
+    /// At dataset scale the default zoom must show cluster pills, not one
+    /// annotation per venue; tapping clusters zooms until individual venues
+    /// appear, and tapping a venue still reaches the detail sheet.
+    @MainActor
+    func testClustersZoomToVenuesAndDetailTapThrough() throws {
+        let app = launchManyVenues()
+
+        let cluster = app.buttons.matching(identifier: "map-cluster").firstMatch
+        XCTAssertTrue(
+            cluster.waitForExistence(timeout: wait),
+            "2,180 venues at default zoom should render as cluster pills"
+        )
+
+        // Each tap zooms one step in; individual venue annotations (labelled
+        // "<name>, Work Fit <n>, <neighborhood>") must appear within a few.
+        var zoomSteps = 0
+        while zoomSteps < 6, !app.mapPins.firstMatch.exists {
+            let pill = app.buttons.matching(identifier: "map-cluster").firstMatch
+            guard pill.waitForExistence(timeout: 5) else { break }
+            pill.tap()
+            zoomSteps += 1
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+
+        let pin = app.mapPins.firstMatch
+        XCTAssertTrue(pin.waitForExistence(timeout: wait), "zooming into clusters never yielded venue annotations")
+
+        pin.tap()
+        XCTAssertTrue(
+            app.staticTexts["Workability"].waitForExistence(timeout: wait),
+            "tapping a venue annotation no longer opens the detail sheet"
+        )
+    }
+
     // MARK: - Helpers
 
     @MainActor
