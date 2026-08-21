@@ -72,16 +72,17 @@ final class BrewDeskUITests: XCTestCase {
 
         XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: 8))
         app.tabBars.buttons["Nearby"].tap()
-        let cafe = app.staticTexts["Gregorys Coffee"].firstMatch
-        XCTAssertTrue(cafe.waitForExistence(timeout: 15))
-        cafe.tap()
+        // Ranked list: open whichever café is on top and carry its name.
+        let top = try XCTUnwrap(app.firstVenueRow(), "Nearby list rendered no venue rows")
+        top.row.tap()
         XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 3))
         app.buttons["Save"].tap()
         XCTAssertTrue(app.buttons["Saved"].waitForExistence(timeout: 2))
 
         app.tabBars.buttons["Saved"].tap()
         XCTAssertTrue(app.navigationBars["Saved"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["Gregorys Coffee"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts[top.name].waitForExistence(timeout: 8),
+                      "Saved tab does not list \(top.name)")
     }
 
     @MainActor
@@ -92,9 +93,8 @@ final class BrewDeskUITests: XCTestCase {
 
         XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: 8))
         app.tabBars.buttons["Nearby"].tap()
-        let cafe = app.staticTexts["Housing Works Bookstore Cafe"].firstMatch
-        XCTAssertTrue(cafe.waitForExistence(timeout: 15))
-        cafe.tap()
+        let top = try XCTUnwrap(app.firstVenueRow(), "Nearby list rendered no venue rows")
+        top.row.tap()
         XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 3))
 
         try app.performAccessibilityAudit(for: [
@@ -112,6 +112,9 @@ final class BrewDeskUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += [
             "-UITestSkipGates",
+            // The top-ranked venue may have been saved by an earlier test in
+            // this run; start unsaved so the button reads "Save", not "Saved".
+            "-brewdesk.saved-venue-ids", "",
             "-UIPreferredContentSizeCategoryName",
             "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
         ]
@@ -119,9 +122,8 @@ final class BrewDeskUITests: XCTestCase {
 
         XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: 8))
         app.tabBars.buttons["Nearby"].tap()
-        let cafe = app.staticTexts["Housing Works Bookstore Cafe"].firstMatch
-        XCTAssertTrue(cafe.waitForExistence(timeout: 15))
-        cafe.tap()
+        let top = try XCTUnwrap(app.firstVenueRow(), "Nearby list rendered no venue rows")
+        top.row.tap()
         XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Workability"].exists)
         XCTAssertTrue(app.buttons["Directions"].exists)

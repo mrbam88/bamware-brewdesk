@@ -24,12 +24,12 @@ final class AppStoreScreenshotTests: XCTestCase {
 
         app.buttons["Use Union Square instead"].tap()
         XCTAssertTrue(app.staticTexts["100 work cafés"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["Gregorys Coffee"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: 5))
         capture("03-work-fit-map")
 
         app.tabBars.buttons["Nearby"].tap()
         XCTAssertTrue(app.navigationBars["Nearby"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Gregorys Coffee"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.venueRows.firstMatch.waitForExistence(timeout: 5))
         app.buttons["Filters"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["Laptop-friendly only"].waitForExistence(timeout: 2))
         capture("02-work-filters")
