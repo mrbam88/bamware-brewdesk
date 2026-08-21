@@ -64,7 +64,7 @@ struct RootView: View {
                 venueListing: VenueAPI(baseURL: env.baseURL),
                 venueDetails: VenueAPI(baseURL: env.baseURL)
             )
-            .environment(\.venuePhotoService, VenueAPI(baseURL: env.baseURL))
+            .environment(\.venuePhotoService, uiTestPhotoService(VenueAPI(baseURL: env.baseURL)))
             .id(env)
             #else
             DiscoveryRootView(
@@ -73,9 +73,20 @@ struct RootView: View {
                 venueListing: venueListing,
                 venueDetails: venueDetails
             )
-            .environment(\.venuePhotoService, venueListing as? any VenuePhotoServing)
+            .environment(\.venuePhotoService, uiTestPhotoService(venueListing as? any VenuePhotoServing))
             #endif
         }
+    }
+
+    /// `-UITestNoPhotos` nils the photo service so photo UI never renders —
+    /// used by the App Store screenshot capture (brewdesk#30: marketing
+    /// screenshots must not feature Google Places photos). The fixture-driven
+    /// scenario seam above keeps its own service; degraded-state tests cover
+    /// photo behavior there.
+    private func uiTestPhotoService(
+        _ service: (any VenuePhotoServing)?
+    ) -> (any VenuePhotoServing)? {
+        ProcessInfo.processInfo.arguments.contains("-UITestNoPhotos") ? nil : service
     }
 }
 

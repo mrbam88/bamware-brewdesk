@@ -11,6 +11,100 @@ struct Slide {
     let accent: NSColor
 }
 
+/// Locale is the sole argument: `swift scripts/compose_app_store_screenshots.swift [en|es]`
+/// (default `en`). `en` composes fastlane/screenshots/raw → en-US; `es`
+/// composes fastlane/screenshots/raw-es → es-ES with translated captions.
+enum CaptureLocale: String {
+    case en
+    case es
+
+    var rawDirectoryName: String {
+        switch self {
+        case .en: "raw"
+        case .es: "raw-es"
+        }
+    }
+
+    var outputDirectoryName: String {
+        switch self {
+        case .en: "en-US"
+        case .es: "es-ES"
+        }
+    }
+}
+
+let localeArgument = CommandLine.arguments.dropFirst().first ?? "en"
+guard let captureLocale = CaptureLocale(rawValue: localeArgument) else {
+    fatalError("Unknown locale \(localeArgument) — expected en or es")
+}
+
+/// Captions per slide, per locale. Spanish mirrors the tone of
+/// fastlane/metadata/es-ES (evidencia, portátiles, sin historial de ubicación).
+struct Captions {
+    let headline: String
+    let evidence: String
+}
+
+let captions: [String: [CaptureLocale: Captions]] = [
+    "01": [
+        .en: Captions(
+            headline: "See the evidence, not just a rating.",
+            evidence: "SOURCE  /  CONFIDENCE  /  OBSERVED"
+        ),
+        .es: Captions(
+            headline: "Ve la evidencia, no solo una nota.",
+            evidence: "FUENTE  /  CONFIANZA  /  OBSERVADO"
+        ),
+    ],
+    "02": [
+        .en: Captions(
+            headline: "Filter for the way you actually work.",
+            evidence: "LAPTOPS  /  WI-FI  /  OUTLETS"
+        ),
+        .es: Captions(
+            headline: "Filtra según tu forma real de trabajar.",
+            evidence: "PORTÁTILES  /  WI-FI  /  ENCHUFES"
+        ),
+    ],
+    "03": [
+        .en: Captions(
+            headline: "A Work Fit map built for NYC.",
+            evidence: "2,000+ CAFES  /  TRANSPARENT SCORES"
+        ),
+        .es: Captions(
+            headline: "Un mapa Work Fit hecho para NYC.",
+            evidence: "2.000+ CAFÉS  /  PUNTUACIONES TRANSPARENTES"
+        ),
+    ],
+    "04": [
+        .en: Captions(
+            headline: "Every score shows its work.",
+            evidence: "ESTIMATES STAY LABELED"
+        ),
+        .es: Captions(
+            headline: "Cada puntuación muestra su evidencia.",
+            evidence: "LAS ESTIMACIONES QUEDAN ETIQUETADAS"
+        ),
+    ],
+    "05": [
+        .en: Captions(
+            headline: "Location is useful. Never required.",
+            evidence: "YOUR CHOICE  /  NO LOCATION HISTORY"
+        ),
+        .es: Captions(
+            headline: "La ubicación es útil. Nunca obligatoria.",
+            evidence: "TÚ DECIDES  /  SIN HISTORIAL DE UBICACIÓN"
+        ),
+    ],
+]
+
+func caption(_ index: String) -> Captions {
+    guard let entry = captions[index]?[captureLocale] else {
+        fatalError("No \(captureLocale.rawValue) captions for slide \(index)")
+    }
+    return entry
+}
+
 let width = 1320
 let height = 2868
 let screenshotWidth: CGFloat = 1068
@@ -28,8 +122,8 @@ let slides = [
         input: "01-claim-provenance.png",
         output: "01_evidence_not_ratings.png",
         index: "01",
-        headline: "See the evidence, not just a rating.",
-        evidence: "SOURCE  /  CONFIDENCE  /  OBSERVED",
+        headline: caption("01").headline,
+        evidence: caption("01").evidence,
         background: oat,
         foreground: espresso,
         accent: clay
@@ -38,8 +132,8 @@ let slides = [
         input: "02-work-filters.png",
         output: "02_filters_for_work.png",
         index: "02",
-        headline: "Filter for the way you actually work.",
-        evidence: "LAPTOPS  /  WI-FI  /  OUTLETS",
+        headline: caption("02").headline,
+        evidence: caption("02").evidence,
         background: foam,
         foreground: espresso,
         accent: moss
@@ -48,8 +142,8 @@ let slides = [
         input: "03-work-fit-map.png",
         output: "03_work_fit_across_nyc.png",
         index: "03",
-        headline: "A Work Fit map built for NYC.",
-        evidence: "2,000+ CAFES  /  TRANSPARENT SCORES",
+        headline: caption("03").headline,
+        evidence: caption("03").evidence,
         background: espresso,
         foreground: foam,
         accent: clay
@@ -58,8 +152,8 @@ let slides = [
         input: "04-honest-by-design.png",
         output: "04_every_score_shows_its_work.png",
         index: "04",
-        headline: "Every score shows its work.",
-        evidence: "ESTIMATES STAY LABELED",
+        headline: caption("04").headline,
+        evidence: caption("04").evidence,
         background: oat,
         foreground: espresso,
         accent: clay
@@ -68,8 +162,8 @@ let slides = [
         input: "05-location-is-optional.png",
         output: "05_location_is_optional.png",
         index: "05",
-        headline: "Location is useful. Never required.",
-        evidence: "YOUR CHOICE  /  NO LOCATION HISTORY",
+        headline: caption("05").headline,
+        evidence: caption("05").evidence,
         background: foam,
         foreground: espresso,
         accent: moss
@@ -77,8 +171,8 @@ let slides = [
 ]
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-let rawDirectory = root.appendingPathComponent("fastlane/screenshots/raw")
-let outputDirectory = root.appendingPathComponent("fastlane/screenshots/en-US")
+let rawDirectory = root.appendingPathComponent("fastlane/screenshots/\(captureLocale.rawDirectoryName)")
+let outputDirectory = root.appendingPathComponent("fastlane/screenshots/\(captureLocale.outputDirectoryName)")
 
 try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 

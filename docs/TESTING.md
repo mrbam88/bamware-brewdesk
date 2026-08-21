@@ -92,11 +92,47 @@ xcodebuild -project BrewDesk.xcodeproj -scheme BrewDesk \
 
 It does not prove distribution signing or upload.
 
+## App Store screenshots (EN + ES)
+
+`BrewDeskUITests/AppStoreScreenshotTests` replays the store-listing flow in
+Release against the production API and attaches the five raw screens. The
+capture launches with `-UITestNoPhotos` (nils the photo service) so the detail
+shot leads with Workability and no Google Places photo appears in marketing
+assets (brewdesk#30). Locale comes from `TEST_RUNNER_SCREENSHOT_LOCALE`
+(`en` default, `es`); the localized flow strings live in the test and mirror
+`Localizable.xcstrings`.
+
+```bash
+# Capture (repeat with TEST_RUNNER_SCREENSHOT_LOCALE=es and a -es bundle path)
+xcodebuild -workspace BrewDeskDevelopment.xcworkspace -scheme BrewDesk \
+  -configuration Release ENABLE_TESTABILITY=YES \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+  -only-testing:BrewDeskUITests/AppStoreScreenshotTests \
+  CODE_SIGNING_ALLOWED=NO -resultBundlePath /tmp/shots.xcresult test
+
+# Export raw screens (en → fastlane/screenshots/raw, es → …/raw-es), then
+# rename each exported UUID file to its attachment name via manifest.json
+xcrun xcresulttool export attachments --path /tmp/shots.xcresult \
+  --output-path fastlane/screenshots/raw
+(cd fastlane/screenshots/raw && python3 -c "
+import json, os
+for entry in json.load(open('manifest.json')):
+    for a in entry['attachments']:
+        os.rename(a['exportedFileName'],
+                  a['suggestedHumanReadableName'].split('_0_')[0] + '.png')
+" && rm manifest.json)
+
+# Compose captioned 1320×2868 sets (writes en-US/ or es-ES/)
+swift scripts/compose_app_store_screenshots.swift        # en
+swift scripts/compose_app_store_screenshots.swift es     # es
+```
+
 ## Identity and asset checks
 
 ```bash
 ./.github/scripts/check-identity.sh
-sips -g pixelWidth -g pixelHeight -g hasAlpha fastlane/screenshots/en-US/*.png
+sips -g pixelWidth -g pixelHeight -g hasAlpha \
+  fastlane/screenshots/en-US/*.png fastlane/screenshots/es-ES/*.png
 git diff --check
 ```
 
