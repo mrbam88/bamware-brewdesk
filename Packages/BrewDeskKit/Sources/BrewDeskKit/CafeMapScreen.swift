@@ -15,6 +15,10 @@ public struct CafeMapScreen: View {
     /// annotation views instead of re-evaluating this body (brewdesk#54).
     @State private var visibleRegion: MKCoordinateRegion?
     @State private var replanTask: Task<Void, Never>?
+    /// Shelf-card score tile scales with Dynamic Type instead of clipping in
+    /// a fixed 72×82 frame (ui-review-2026-08-21 finding 7).
+    @ScaledMetric(relativeTo: .title2) private var scoreTileMinWidth: CGFloat = 72
+    @ScaledMetric(relativeTo: .title2) private var scoreTileMinHeight: CGFloat = 82
 
     public init(model: VenuesModel, savedVenues: SavedVenuesStore) {
         self.model = model
@@ -83,6 +87,11 @@ public struct CafeMapScreen: View {
             }
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+            // At medium detent a scroll gesture must scroll the detail content
+            // (clearing the action dock) rather than resize the sheet first —
+            // the dock occluded the photo strip with no way to scroll it into
+            // view (ui-review-2026-08-21 finding 6).
+            .presentationContentInteraction(.scrolls)
         }
         .onChange(of: model.centerLat) {
             position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
@@ -251,39 +260,49 @@ public struct CafeMapScreen: View {
         }
     }
 
+    /// One glass card for search + count + hint + stat strip: bare text
+    /// painted on the map collided with map labels in light mode and vanished
+    /// dark-on-dark (ui-review-2026-08-21 finding 2). Banners dock directly
+    /// beneath the card as sibling rows (finding 15's grouping).
     private var searchHeader: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField("Search cafes", text: $model.searchQuery)
-                    .submitLabel(.search)
-                    .onSubmit { model.submitSearch() }
-                if !model.searchQuery.isEmpty {
-                    Button {
-                        model.clearSearch()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.secondary)
+        VStack(spacing: 8) {
+            VStack(spacing: 10) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                    TextField("Search cafes", text: $model.searchQuery)
+                        .submitLabel(.search)
+                        .onSubmit { model.submitSearch() }
+                    if !model.searchQuery.isEmpty {
+                        Button {
+                            model.clearSearch()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
+                .padding(.horizontal, 14)
+                .frame(minHeight: 44)
+                .background(.thinMaterial, in: Capsule())
+
+                HStack {
+                    Text(localizedWorkCafeCount(model.venues.count))
+                        .font(.caption.bold())
+                    Spacer()
+                    Text("Scores show Work Fit")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 6)
+
+                DatasetStatStrip(model: model)
             }
-            .padding(.horizontal, 14)
-            .frame(height: 48)
-            .brewDeskGlass(in: Capsule())
+            .padding(10)
+            .brewDeskGlass(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
             .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
-
-            HStack {
-                Text(localizedWorkCafeCount(model.venues.count))
-                    .font(.caption.bold())
-                Spacer()
-                Text("Scores show Work Fit")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 8)
-
-            DatasetStatStrip(model: model)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("map-header-card")
 
             if let state = model.snapshotBanner {
                 SnapshotBanner(state: state) { model.retry() }
@@ -398,7 +417,9 @@ public struct CafeMapScreen: View {
                     }
                     .padding(.horizontal, 16)
                 }
-                .frame(height: dynamicTypeSize.isAccessibilitySize ? 190 : 126)
+                // No fixed shelf height: cards reflow vertically at
+                // accessibility sizes instead of clipping (finding 7).
+                .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.vertical, 10)
@@ -435,21 +456,26 @@ public struct CafeMapScreen: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
+    /// Shelf card. No fixed frames on the score tile and no hard-coded 8pt
+    /// label: at accessibility sizes the old 72×82 tile clipped to "7 WOR"
+    /// (ui-review-2026-08-21 finding 7). The tile now scales with the score's
+    /// text style and the caption rides Dynamic Type via `.caption2`.
     private func venueCard(_ venue: Venue) -> some View {
         HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(venue.scoreTier.color.opacity(0.14))
-                VStack(spacing: 3) {
-                    Text("\(venue.workScore)")
-                        .font(.title2.monospacedDigit().bold())
-                    Text("WORK FIT")
-                        .font(.system(size: 8, weight: .black))
-                        .tracking(0.5)
-                }
-                .foregroundStyle(venue.scoreTier.color)
+            VStack(spacing: 3) {
+                Text("\(venue.workScore)")
+                    .font(.title2.monospacedDigit().bold())
+                Text("WORK FIT")
+                    .font(.caption2.weight(.heavy))
+                    .tracking(0.5)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
-            .frame(width: 72, height: 82)
+            .foregroundStyle(venue.scoreTier.color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 12)
+            .frame(minWidth: scoreTileMinWidth, minHeight: scoreTileMinHeight)
+            .background(venue.scoreTier.color.opacity(0.14), in: RoundedRectangle(cornerRadius: 14))
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(venue.name)
@@ -469,7 +495,7 @@ public struct CafeMapScreen: View {
         }
         .padding(10)
         .frame(width: dynamicTypeSize.isAccessibilitySize ? 330 : 285, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 20))
+        .background(BrewDeskPalette.surface, in: RoundedRectangle(cornerRadius: 20))
         .animation(reduceMotion ? nil : .snappy, value: selected?.id)
     }
 

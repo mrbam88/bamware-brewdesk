@@ -3,6 +3,12 @@ import SwiftUI
 import VenueKit
 
 struct DiscoveryRootView: View {
+    /// Tab selection is programmable so empty states can route the user
+    /// (Saved's "Browse Nearby" CTA — ui-review-2026-08-21 finding 5).
+    enum DiscoveryTab: Hashable {
+        case explore, nearby, saved
+    }
+
     let configuration: AppConfiguration
     let locationService: LocationService
     private let venueListing: any VenueListing
@@ -10,6 +16,7 @@ struct DiscoveryRootView: View {
     @State private var model: VenuesModel
     @State private var savedVenues = SavedVenuesStore()
     @State private var connectivity = ConnectivityMonitor()
+    @State private var selectedTab: DiscoveryTab = .explore
     #if DEBUG
     @State private var envTapCount = 0
     @State private var showEnvPicker = false
@@ -32,12 +39,18 @@ struct DiscoveryRootView: View {
     var body: some View {
         let request = model.request
 
-        TabView {
+        TabView(selection: $selectedTab) {
             CafeMapScreen(model: model, savedVenues: savedVenues)
                 .tabItem { Label("Explore", systemImage: "map.fill") }
+                .tag(DiscoveryTab.explore)
 
             CafeListScreen(model: model, savedVenues: savedVenues)
-                .tabItem { Label("Nearby", systemImage: "cup.and.saucer.fill") }
+                // `list.bullet`, not the cup: the cup glyph was carrying three
+                // meanings at once (tab, pin, empty state). The Nearby tab is
+                // a list; the cup stays reserved for cafe-venue-type semantics
+                // (ui-review-2026-08-21 finding 4).
+                .tabItem { Label("Nearby", systemImage: "list.bullet") }
+                .tag(DiscoveryTab.nearby)
 
             savedTab
                 .tabItem {
@@ -47,6 +60,7 @@ struct DiscoveryRootView: View {
                         Image(systemName: "bookmark.fill")
                     }
                 }
+                .tag(DiscoveryTab.saved)
         }
         .environment(\.locationDenied, locationService.isDenied)
         // Dataset stats are independent of the venue request and the TabView
@@ -87,7 +101,12 @@ struct DiscoveryRootView: View {
 
     private var savedTab: some View {
         NavigationStack {
-            SavedCafesScreen(savedVenues: savedVenues, venueDetails: venueDetails, listing: venueListing)
+            SavedCafesScreen(
+                savedVenues: savedVenues,
+                venueDetails: venueDetails,
+                listing: venueListing,
+                browseNearby: { selectedTab = .nearby }
+            )
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         NavigationLink {

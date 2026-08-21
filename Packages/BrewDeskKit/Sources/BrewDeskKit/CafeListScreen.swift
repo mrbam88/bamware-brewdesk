@@ -68,6 +68,9 @@ public struct CafeListScreen: View {
                     .padding(.vertical, 6)
                 }
             }
+            // Cream page treatment: Nearby spoke stock system gray while
+            // Explore spoke the brand (ui-review-2026-08-21 finding 3).
+            .background(BrewDeskPalette.page.ignoresSafeArea())
             .navigationTitle("Nearby")
             .navigationDestination(for: Venue.self) { venue in
                 VenueDetailScreen(venue: venue, savedVenues: savedVenues)
@@ -93,9 +96,11 @@ public struct CafeListScreen: View {
         List {
             DatasetStatStrip(model: model)
                 .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             venueRows
         }
         .listStyle(.plain)
+        .scrollContentBackground(.hidden)
         .refreshable { model.retry() }
     }
 
@@ -104,6 +109,7 @@ public struct CafeListScreen: View {
             NavigationLink(value: venue) {
                 VenueRow(venue: venue)
             }
+            .listRowBackground(Color.clear)
             .swipeActions(edge: .trailing) {
                 Button {
                     savedVenues.toggle(venue.id)
@@ -120,24 +126,33 @@ public struct CafeListScreen: View {
         }
     }
 
+    /// Each filter group is a labeled submenu naming its dimension (the menu
+    /// picker style also surfaces the current selection on the row), and a
+    /// Reset row clears everything — the old menu was nine unlabeled options
+    /// the user had to decode (ui-review-2026-08-21 finding 10).
+    /// `Section("…")` headers were tried first but `Menu` does not render
+    /// them; labeled submenu pickers carry the same information.
     private var filterMenu: some View {
         Menu {
             Toggle("Laptop-friendly only", isOn: $model.laptopFriendlyOnly)
-            Picker("Wifi", selection: $model.minWifi) {
+            Picker("Wi-Fi", selection: $model.minWifi) {
                 Text("Any Wi-Fi").tag(WifiMinimum?.none)
                 Text("OK or better").tag(WifiMinimum?.some(.ok))
                 Text("Fast only").tag(WifiMinimum?.some(.fast))
             }
+            .pickerStyle(.menu)
             Picker("Outlets", selection: $model.minOutlets) {
                 Text("Any outlets").tag(OutletMinimum?.none)
                 Text("Some or better").tag(OutletMinimum?.some(.some))
                 Text("Plenty").tag(OutletMinimum?.some(.plenty))
             }
+            .pickerStyle(.menu)
             Picker("Seating", selection: $model.minSeating) {
                 Text("Any seating").tag(SeatingMinimum?.none)
                 Text("Some or better").tag(SeatingMinimum?.some(.some))
                 Text("Plenty").tag(SeatingMinimum?.some(.plenty))
             }
+            .pickerStyle(.menu)
             if model.venueTypesAvailable {
                 Picker("Spot type", selection: $model.venueType) {
                     Text("All spots").tag(VenueTypeFilter?.none)
@@ -145,12 +160,28 @@ public struct CafeListScreen: View {
                         Text(LocalizedStringKey(type.rawValue)).tag(VenueTypeFilter?.some(type))
                     }
                 }
+                .pickerStyle(.menu)
+            }
+            Section {
+                Button("Reset all filters", systemImage: "arrow.counterclockwise") {
+                    resetFilters()
+                }
+                .disabled(!filtersActive)
+                .accessibilityIdentifier("filters-reset")
             }
         } label: {
             Label("Filters", systemImage: filtersActive
                 ? "line.3.horizontal.decrease.circle.fill"
                 : "line.3.horizontal.decrease.circle")
         }
+    }
+
+    private func resetFilters() {
+        model.laptopFriendlyOnly = false
+        model.minWifi = nil
+        model.minOutlets = nil
+        model.minSeating = nil
+        model.venueType = nil
     }
 
     private var filtersActive: Bool {

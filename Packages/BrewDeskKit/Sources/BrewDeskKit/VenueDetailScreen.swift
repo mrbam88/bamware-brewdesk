@@ -41,7 +41,11 @@ public struct VenueDetailScreen: View {
             }
             .padding(.horizontal, 18)
             .padding(.top, 14)
-            .padding(.bottom, 100)
+            // The action dock is a bottom `safeAreaInset`, so the scroll
+            // content is already inset by its exact (Dynamic Type-aware)
+            // height — the old fixed 100pt under-cleared tall docks and
+            // double-padded short ones (ui-review-2026-08-21 finding 6).
+            .padding(.bottom, 24)
         }
         .background(theme.backgroundColor.ignoresSafeArea())
         .safeAreaInset(edge: .bottom) { actionDock }
@@ -499,12 +503,12 @@ public struct VenueDetailScreen: View {
         VStack(alignment: .leading, spacing: 14) {
             Label(title, systemImage: systemImage)
                 .font(.headline)
-                .foregroundStyle(BrewDeskPalette.roast)
+                .foregroundStyle(theme.primaryColor)
             content()
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemBackground))
+        .background(BrewDeskPalette.surface)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 

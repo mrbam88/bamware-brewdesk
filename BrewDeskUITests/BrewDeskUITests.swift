@@ -102,10 +102,15 @@ final class BrewDeskUITests: XCTestCase {
         // samples those washed-out pixels as contrast failures. Ignore
         // issues for elements occluded by the dock — everything else must
         // still pass (bd#36 diagnosis, 2026-08-21).
-        // Inset by the dock's shadow reach (radius 14, y −3): the glass
-        // shadow washes pixels beyond the frame itself.
+        // Inset by the dock's glass halo. −20 covered the shadow reach
+        // (radius 14, y −3), but iOS 26 Liquid Glass also *refracts* content
+        // approaching the edge: measured on 17 Pro Max (bd#62 diagnosis,
+        // 2026-08-21), the audit flagged a claim row whose frame ended 31pt
+        // above the dock's real top edge — black text on cream, unfailable
+        // anywhere else on the page, washed only by the lens band. −56 covers
+        // the measured reach with margin; everything outside it must still pass.
         let dockFrame = app.otherElements["action-dock"].exists
-            ? app.otherElements["action-dock"].frame.insetBy(dx: 0, dy: -20)
+            ? app.otherElements["action-dock"].frame.insetBy(dx: 0, dy: -56)
             : CGRect.null
         // The translucent tab bar washes scrolled-under content the same way
         // the dock does (first seen on 17e, bd#50; hit 17 Pro once bd#47's

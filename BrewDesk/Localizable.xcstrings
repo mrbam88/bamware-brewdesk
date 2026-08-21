@@ -1820,6 +1820,38 @@
           }
         }
       }
+    },
+    "Browse Nearby": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browse Nearby"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver cercanos"
+          }
+        }
+      }
+    },
+    "Reset all filters": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset all filters"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restablecer todos los filtros"
+          }
+        }
+      }
     }
   },
   "version": "1.1"
