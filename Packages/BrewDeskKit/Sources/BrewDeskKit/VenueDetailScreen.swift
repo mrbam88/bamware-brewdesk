@@ -14,6 +14,9 @@ public struct VenueDetailScreen: View {
     @State private var photoLoad: PhotoLoad = .loading
     @State private var photoAttempt = 0
     @State private var failedThumbnailURLs: Set<String> = []
+    #if DEBUG
+        @State private var showCaptureFlow = false
+    #endif
 
     private enum PhotoLoad { case loading, loaded, failed }
 
@@ -46,6 +49,23 @@ public struct VenueDetailScreen: View {
         .safeAreaInset(edge: .bottom) { actionDock }
         .navigationTitle("Details")
         .navigationBarTitleDisplayMode(.inline)
+        #if DEBUG
+            // Community capture prototype entry (brewdesk#46). Debug-only:
+            // the App Store binary contains no capture UI (Guideline 2.3.1).
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showCaptureFlow = true
+                    } label: {
+                        Label("Add photos", systemImage: "camera")
+                    }
+                    .accessibilityIdentifier("capture-entry")
+                }
+            }
+            .sheet(isPresented: $showCaptureFlow) {
+                CaptureFlowScreen(venue: venue, service: MockCaptureSubmissionService())
+            }
+        #endif
         .task(id: photoAttempt) {
             guard let photoService else { return }
             photoLoad = .loading
