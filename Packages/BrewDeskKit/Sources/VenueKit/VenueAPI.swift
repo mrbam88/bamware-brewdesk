@@ -117,7 +117,8 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
                 attribution: photo.attribution,
                 attributionUri: photo.attributionUri,
                 widthPx: photo.widthPx,
-                heightPx: photo.heightPx
+                heightPx: photo.heightPx,
+                contributorName: photo.contributorName
             )
         }
     }
