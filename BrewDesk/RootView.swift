@@ -9,6 +9,10 @@ struct RootView: View {
     // UI-test fixture seam (`-UITestScenario <name>`); nil in every normal launch.
     private let uiTestScenario: ScenarioVenueService.Scenario?
     private let uiTestTakeoutURL: URL?
+    // Bundled first-paint venues (brewdesk#28). Decoded once here; scenario
+    // launches opt in with `-UITestSeedSnapshot` so degraded-state tests that
+    // pin the no-snapshot states keep their meaning.
+    private let snapshot: [Venue]
     @State private var flow: AppFlowStore
     @State private var locationService = LocationService()
 
@@ -21,6 +25,7 @@ struct RootView: View {
         let scenario = UITestScenario.current()
         self.uiTestScenario = scenario
         self.uiTestTakeoutURL = scenario == nil ? nil : UITestScenario.takeoutFixtureURL()
+        self.snapshot = (scenario == nil || UITestScenario.seedsSnapshot()) ? VenueSnapshot.load() : []
         _flow = State(initialValue: AppFlowStore())
     }
 
@@ -49,7 +54,8 @@ struct RootView: View {
                 configuration: configuration,
                 locationService: locationService,
                 venueListing: service,
-                venueDetails: service
+                venueDetails: service,
+                snapshot: snapshot
             )
             .environment(\.venuePhotoService, service)
             .environment(\.takeoutImportAutorunURL, uiTestTakeoutURL)
@@ -62,7 +68,8 @@ struct RootView: View {
                 configuration: configuration,
                 locationService: locationService,
                 venueListing: VenueAPI(baseURL: env.baseURL),
-                venueDetails: VenueAPI(baseURL: env.baseURL)
+                venueDetails: VenueAPI(baseURL: env.baseURL),
+                snapshot: snapshot
             )
             .environment(\.venuePhotoService, VenueAPI(baseURL: env.baseURL))
             .id(env)
@@ -71,7 +78,8 @@ struct RootView: View {
                 configuration: configuration,
                 locationService: locationService,
                 venueListing: venueListing,
-                venueDetails: venueDetails
+                venueDetails: venueDetails,
+                snapshot: snapshot
             )
             .environment(\.venuePhotoService, venueListing as? any VenuePhotoServing)
             #endif

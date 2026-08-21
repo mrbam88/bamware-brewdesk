@@ -15,6 +15,11 @@ public struct CafeListScreen: View {
         NavigationStack {
             Group {
                 switch model.phase {
+                // With the bundled snapshot on screen, loading and failure are
+                // banners over real rows — never a spinner or a wall.
+                case .idle where !model.venues.isEmpty, .loading where !model.venues.isEmpty,
+                     .failed where !model.venues.isEmpty:
+                    venueList
                 case .idle, .loading:
                     ProgressView("Finding work-friendly cafes…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -45,21 +50,22 @@ public struct CafeListScreen: View {
                         .accessibilityElement(children: .contain)
                         .accessibilityIdentifier("list-state-empty")
                     } else {
-                        List {
-                            DatasetStatStrip(model: model)
-                                .listRowSeparator(.hidden)
-                            venueRows
-                        }
-                        .listStyle(.plain)
-                        .refreshable { model.retry() }
+                        venueList
                     }
                 }
             }
             .safeAreaInset(edge: .top) {
-                if locationDenied {
-                    LocationDeniedBanner()
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 6)
+                if locationDenied || model.snapshotBanner != nil {
+                    VStack(spacing: 6) {
+                        if let state = model.snapshotBanner {
+                            SnapshotBanner(state: state) { model.retry() }
+                        }
+                        if locationDenied {
+                            LocationDeniedBanner()
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 6)
                 }
             }
             .navigationTitle("Nearby")
@@ -81,6 +87,16 @@ public struct CafeListScreen: View {
                 }
             }
         }
+    }
+
+    private var venueList: some View {
+        List {
+            DatasetStatStrip(model: model)
+                .listRowSeparator(.hidden)
+            venueRows
+        }
+        .listStyle(.plain)
+        .refreshable { model.retry() }
     }
 
     private var venueRows: some View {

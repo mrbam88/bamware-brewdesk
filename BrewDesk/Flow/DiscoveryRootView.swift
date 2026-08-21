@@ -9,6 +9,7 @@ struct DiscoveryRootView: View {
     private let venueDetails: any VenueDetailServing
     @State private var model: VenuesModel
     @State private var savedVenues = SavedVenuesStore()
+    @State private var connectivity = ConnectivityMonitor()
     #if DEBUG
     @State private var envTapCount = 0
     @State private var showEnvPicker = false
@@ -18,13 +19,14 @@ struct DiscoveryRootView: View {
         configuration: AppConfiguration,
         locationService: LocationService,
         venueListing: any VenueListing,
-        venueDetails: any VenueDetailServing
+        venueDetails: any VenueDetailServing,
+        snapshot: [Venue] = []
     ) {
         self.configuration = configuration
         self.locationService = locationService
         self.venueListing = venueListing
         self.venueDetails = venueDetails
-        _model = State(initialValue: VenuesModel(api: venueListing))
+        _model = State(initialValue: VenuesModel(api: venueListing, snapshot: snapshot))
     }
 
     var body: some View {
@@ -50,6 +52,13 @@ struct DiscoveryRootView: View {
         // Dataset stats are independent of the venue request and the TabView
         // always exists — the strip itself cannot load them (brewdesk#34).
         .task { await model.loadHealthIfNeeded() }
+        // Cold start (brewdesk#28): a reconnect retries a failed load so the
+        // snapshot gives way to live data without a relaunch.
+        .task { connectivity.start() }
+        .onChange(of: connectivity.isOnline) { wasOnline, isOnline in
+            guard wasOnline == false, isOnline == true, case .failed = model.phase else { return }
+            model.retry()
+        }
         .task(id: request) {
             if let coordinate = locationService.location?.coordinate,
                model.updateCenterIfNeeded(lat: coordinate.latitude, lng: coordinate.longitude) {

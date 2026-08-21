@@ -6,9 +6,11 @@ import VenueKit
 ///
 ///   -UITestScenario <ScenarioVenueService.Scenario.rawValue>
 ///   -UITestLocationDenied
+///   -UITestSeedSnapshot   (scenario launches only: also load the bundled snapshot)
 enum UITestScenario {
     static let scenarioArgument = "-UITestScenario"
     static let locationDeniedArgument = "-UITestLocationDenied"
+    static let seedSnapshotArgument = "-UITestSeedSnapshot"
 
     static func current(_ arguments: [String] = ProcessInfo.processInfo.arguments) -> ScenarioVenueService.Scenario? {
         guard let index = arguments.firstIndex(of: scenarioArgument),
@@ -19,6 +21,10 @@ enum UITestScenario {
 
     static func isLocationDenied(_ arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
         arguments.contains(locationDeniedArgument)
+    }
+
+    static func seedsSnapshot(_ arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
+        arguments.contains(seedSnapshotArgument)
     }
 
     /// A one-row Takeout CSV that matches the first fixture venue by name, so

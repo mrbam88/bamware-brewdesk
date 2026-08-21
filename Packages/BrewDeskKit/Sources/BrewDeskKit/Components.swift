@@ -247,6 +247,42 @@ struct LocationDeniedBanner: View {
     }
 }
 
+/// Cold-start companion to the list/map (brewdesk#28): the rows on screen are
+/// the bundled snapshot — say so, and say whether live data is on its way or
+/// unreachable. Same glass capsule as `LocationDeniedBanner`.
+struct SnapshotBanner: View {
+    let state: VenuesModel.SnapshotBannerState
+    let retry: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            switch state {
+            case .loading:
+                ProgressView()
+                    .controlSize(.small)
+                Text("Updating from live data…")
+                    .font(.caption.bold())
+            case .offline:
+                Label("Offline — showing saved snapshot", systemImage: "wifi.exclamationmark")
+                    .font(.caption.bold())
+            }
+            Spacer(minLength: 0)
+            if state == .offline {
+                Button("Retry", action: retry)
+                    .font(.caption.bold())
+                    .accessibilityIdentifier("snapshot-retry")
+            }
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.8)
+        .padding(.horizontal, 12)
+        .frame(minHeight: 32)
+        .brewDeskGlass(in: Capsule())
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(state == .offline ? "snapshot-banner-offline" : "snapshot-banner-loading")
+    }
+}
+
 struct VibeChips: View {
     let tags: [String]
 

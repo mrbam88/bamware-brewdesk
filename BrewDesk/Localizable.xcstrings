@@ -1702,6 +1702,26 @@
           }
         }
       }
+    },
+    "Updating from live data…": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizando con datos en vivo…"
+          }
+        }
+      }
+    },
+    "Offline — showing saved snapshot": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin conexión — mostrando la instantánea guardada"
+          }
+        }
+      }
     }
   },
   "version": "1.1"

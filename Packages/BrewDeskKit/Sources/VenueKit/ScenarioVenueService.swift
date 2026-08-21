@@ -22,9 +22,14 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         case photosFail
         /// Venues resolve after a 6 s delay (cancellation-honouring); then fixtures.
         case slow
+        /// The first venue fetch throws `URLError(.notConnectedToInternet)`;
+        /// every later call succeeds with fixtures. Pins "reconnect recovers
+        /// without relaunch" (brewdesk#28) — the retry path, not the network.
+        case offlineThenRecovers
     }
 
     public let scenario: Scenario
+    private let attempts = AttemptCounter()
 
     public init(scenario: Scenario) {
         self.scenario = scenario
@@ -95,6 +100,9 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         case .slow:
             try await Task.sleep(for: .seconds(6))
             return Self.fixtureVenues
+        case .offlineThenRecovers:
+            if attempts.next() == 1 { throw Self.offlineError }
+            return Self.fixtureVenues
         case .fixtureOK, .photosEmpty, .photosFail:
             return Self.fixtureVenues
         }
@@ -129,7 +137,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         case .engineDown, .photosFail: throw Self.serverError
         case .offline: throw Self.offlineError
         case .emptyVenues, .photosEmpty: return []
-        case .fixtureOK, .slow: return Self.fixturePhotos
+        case .fixtureOK, .slow, .offlineThenRecovers: return Self.fixturePhotos
         }
     }
 
@@ -137,6 +145,14 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
 
     private static let serverError = VenueAPIError.http(statusCode: 500)
     private static let offlineError = URLError(.notConnectedToInternet)
+
+    /// Per-service call counter so a value-type scenario can behave
+    /// differently on its first call (`offlineThenRecovers`).
+    private final class AttemptCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        func next() -> Int { lock.withLock { count += 1; return count } }
+    }
 
     private static func fixtureVenue(
         id: String,

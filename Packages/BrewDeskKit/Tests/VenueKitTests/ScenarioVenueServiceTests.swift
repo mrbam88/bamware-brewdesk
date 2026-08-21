@@ -43,6 +43,18 @@ import Testing
         await #expect(throws: URLError(.notConnectedToInternet)) { try await service.fetchPhotos(venueId: "x") }
     }
 
+    @Test func offlineThenRecoversFailsExactlyOnce() async throws {
+        let service = ScenarioVenueService(scenario: .offlineThenRecovers)
+        await #expect(throws: URLError(.notConnectedToInternet)) { try await service.fetchVenues(query) }
+        #expect(try await service.fetchVenues(query).count == 3)
+        #expect(try await service.fetchVenues(query).count == 3)
+        #expect(try await service.fetchHealth()?.ok == true)
+        // A fresh instance starts over — the counter is per service, not global.
+        await #expect(throws: URLError(.notConnectedToInternet)) {
+            try await ScenarioVenueService(scenario: .offlineThenRecovers).fetchVenues(query)
+        }
+    }
+
     @Test func emptyVenuesIsASuccessfulEmptyAnswer() async throws {
         let service = ScenarioVenueService(scenario: .emptyVenues)
         #expect(try await service.fetchVenues(query).isEmpty)
