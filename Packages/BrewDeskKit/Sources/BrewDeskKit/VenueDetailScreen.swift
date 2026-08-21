@@ -162,8 +162,13 @@ public struct VenueDetailScreen: View {
             NavigationLink {
                 MethodologyScreen()
             } label: {
+                // ≥44pt hit region + espresso at footnote size: passes the
+                // accessibility audit (hit area + contrast on foam) — bd#36.
                 Label("How scoring works", systemImage: "info.circle")
-                    .font(.caption.bold())
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(theme.primaryColor)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
             }
             .accessibilityIdentifier("methodology-link")
         }
@@ -233,6 +238,8 @@ public struct VenueDetailScreen: View {
         .brewDeskGlass(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .padding(.horizontal, 14)
         .padding(.bottom, 6)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("action-dock")
     }
 
     @ViewBuilder
@@ -269,7 +276,7 @@ public struct VenueDetailScreen: View {
         }
             .frame(maxWidth: .infinity, minHeight: 44)
             .padding(.horizontal, dynamicTypeSize.isAccessibilitySize ? 12 : 8)
-            .foregroundStyle(BrewDeskPalette.espresso)
+            .foregroundStyle(theme.primaryColor)
             .fixedSize(horizontal: false, vertical: true)
             .contentShape(Rectangle())
     }
