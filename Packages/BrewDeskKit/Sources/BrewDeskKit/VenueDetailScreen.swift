@@ -7,6 +7,7 @@ public struct VenueDetailScreen: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.venuePhotoService) private var photoService
+    @Environment(\.openURL) private var openURL
     private let venue: Venue
     @Bindable private var savedVenues: SavedVenuesStore
     @State private var photos: [VenuePhoto] = []
@@ -33,13 +34,7 @@ public struct VenueDetailScreen: View {
                 hero
                 photoSection
                 workability
-                if let hours = venue.hoursRaw {
-                    informationCard(title: "Hours", systemImage: "clock") {
-                        Text(hours)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                businessInfo
             }
             .padding(.horizontal, 18)
             .padding(.top, 14)
@@ -230,6 +225,222 @@ public struct VenueDetailScreen: View {
                 ClaimRow(title: "Noise", systemImage: "speaker.wave.2", claim: venue.attributes.noise)
             }
         }
+    }
+
+    // MARK: - Business info (brewdesk#50)
+
+    /// Hours + website + phone in one card. Collapses entirely when the venue
+    /// carries none of the three (same policy as the photo strip: no layout
+    /// jump for the common case).
+    @ViewBuilder
+    private var businessInfo: some View {
+        if venue.hoursRaw != nil || websiteURL != nil || phoneURL != nil {
+            informationCard(title: "Info", systemImage: "storefront") {
+                VStack(alignment: .leading, spacing: 14) {
+                    if let raw = venue.hoursRaw {
+                        hoursBlock(raw: raw)
+                    }
+                    if let url = websiteURL {
+                        if venue.hoursRaw != nil { Divider() }
+                        websiteRow(url)
+                    }
+                    if let url = phoneURL, let number = venue.phone {
+                        if venue.hoursRaw != nil || websiteURL != nil { Divider() }
+                        callRow(url, number: number)
+                    }
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("business-info-card")
+        }
+    }
+
+    /// Structured schedule with an open-now badge when the OSM string parses;
+    /// otherwise the raw string exactly as served — a wrong open/closed claim
+    /// is worse than no claim (see `OpeningHours`).
+    @ViewBuilder
+    private func hoursBlock(raw: String) -> some View {
+        if let hours = OpeningHours.parse(raw) {
+            VStack(alignment: .leading, spacing: 8) {
+                openNowBadge(hours)
+                ForEach(hours.dayGroups) { group in
+                    dayGroupRow(group)
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("business-hours-structured")
+        } else {
+            Text(raw)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .accessibilityIdentifier("business-hours-raw")
+        }
+    }
+
+    private func openNowBadge(_ hours: OpeningHours) -> some View {
+        let isOpen = hours.isOpen(at: referenceNow)
+        return Text(isOpen ? "Open now" : "Closed now")
+            .font(.caption.bold())
+            .foregroundStyle(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(
+                Capsule().fill(isOpen ? BrewDeskPalette.moss : BrewDeskPalette.berry)
+            )
+            .accessibilityIdentifier("hours-open-badge")
+    }
+
+    private func dayGroupRow(_ group: OpeningHours.DayGroup) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(dayGroupLabel(group))
+                    .font(.subheadline)
+                Spacer()
+                dayGroupTimes(group)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(dayGroupLabel(group))
+                    .font(.subheadline)
+                dayGroupTimes(group)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private func dayGroupTimes(_ group: OpeningHours.DayGroup) -> some View {
+        if group.segments.isEmpty {
+            Text("Closed")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        } else {
+            Text(timesLabel(group.segments))
+                .font(.subheadline.bold())
+                .multilineTextAlignment(.trailing)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func websiteRow(_ url: URL) -> some View {
+        Button {
+            openURL(url)
+        } label: {
+            businessRowLabel(
+                "Website",
+                systemImage: "safari",
+                value: url.host() ?? url.absoluteString,
+                trailingSymbol: "arrow.up.right"
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("business-website")
+        .accessibilityHint("Opens the website in Safari")
+    }
+
+    private func callRow(_ url: URL, number: String) -> some View {
+        Button {
+            openURL(url)
+        } label: {
+            businessRowLabel(
+                "Call",
+                systemImage: "phone",
+                value: number,
+                trailingSymbol: "arrow.up.right"
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("business-call")
+        .accessibilityHint("Calls the cafe")
+    }
+
+    /// Row chrome shared by website/call: ≥44 pt hit region and an explicit
+    /// trailing glyph so the tappable rows read as links (bd#36 hit-area and
+    /// affordance lessons).
+    private func businessRowLabel(
+        _ title: LocalizedStringKey,
+        systemImage: String,
+        value: String,
+        trailingSymbol: String
+    ) -> some View {
+        HStack(spacing: 12) {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(theme.primaryColor)
+                    Text(value)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            } icon: {
+                Image(systemName: systemImage)
+                    .foregroundStyle(theme.primaryColor)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: trailingSymbol)
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+        }
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+    }
+
+    /// http(s) only — anything else is treated as absent rather than rendered
+    /// as a dead row.
+    private var websiteURL: URL? {
+        guard let raw = venue.website,
+              let url = URL(string: raw),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "http" || scheme == "https"
+        else { return nil }
+        return url
+    }
+
+    private var phoneURL: URL? {
+        guard let raw = venue.phone else { return nil }
+        let dialable = raw.filter { $0.isNumber || $0 == "+" }
+        guard dialable.count >= 7 else { return nil }
+        return URL(string: "tel:\(dialable)")
+    }
+
+    /// "Mon–Fri" / "Sat" via the current calendar's localized symbols.
+    /// `DayGroup` days are Monday-first (0…6); `shortWeekdaySymbols` is
+    /// Sunday-first.
+    private func dayGroupLabel(_ group: OpeningHours.DayGroup) -> String {
+        let symbols = Calendar.current.shortWeekdaySymbols
+        let first = symbols[(group.firstDay + 1) % 7]
+        guard group.lastDay != group.firstDay else { return first }
+        return "\(first)–\(symbols[(group.lastDay + 1) % 7])"
+    }
+
+    /// "7:30 AM–5:00 PM" (locale-formatted), segments joined with ", ".
+    private func timesLabel(_ segments: [OpeningHours.Segment]) -> String {
+        segments.map { segment in
+            "\(clockLabel(minutes: segment.start))–\(clockLabel(minutes: segment.end))"
+        }.joined(separator: ", ")
+    }
+
+    private func clockLabel(minutes: Int) -> String {
+        let calendar = Calendar.current
+        let base = calendar.startOfDay(for: referenceNow)
+        let date = calendar.date(byAdding: .minute, value: minutes, to: base) ?? base
+        return date.formatted(.dateTime.hour().minute())
+    }
+
+    /// The clock the open-now badge is judged against. UI tests pin it with
+    /// `-brewdesk.uitest-fixed-now yyyy-MM-dd'T'HH:mm` (local wall time) so
+    /// open/closed assertions are deterministic; inert in normal launches —
+    /// same policy as `-brewdesk.saved-venue-ids`.
+    private var referenceNow: Date {
+        if let fixed = UserDefaults.standard.string(forKey: "brewdesk.uitest-fixed-now") {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+            if let date = formatter.date(from: fixed) { return date }
+        }
+        return Date()
     }
 
     private func informationCard<Content: View>(
