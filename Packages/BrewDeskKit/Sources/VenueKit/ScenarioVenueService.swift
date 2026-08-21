@@ -54,7 +54,8 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             laptopPolicy: "unrestricted",
             venueType: "cafe",
             website: "https://fixture-roasters.example",
-            phone: "+1 212-555-0142"
+            phone: "+1 212-555-0142",
+            email: "hello@fixture-roasters.example"
         ),
         fixtureVenue(
             id: "fixture-library",
@@ -207,7 +208,8 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         laptopPolicy: String,
         venueType: String,
         website: String? = nil,
-        phone: String? = nil
+        phone: String? = nil,
+        email: String? = nil
     ) -> Venue {
         let observedAt = "2026-08-01T00:00:00Z"
         return Venue(
@@ -233,7 +235,8 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             distanceM: 120,
             venueType: venueType,
             website: website,
-            phone: phone
+            phone: phone,
+            email: email
         )
     }
 }

@@ -232,12 +232,12 @@ public struct VenueDetailScreen: View {
 
     // MARK: - Business info (brewdesk#50)
 
-    /// Hours + website + phone in one card. Collapses entirely when the venue
-    /// carries none of the three (same policy as the photo strip: no layout
-    /// jump for the common case).
+    /// Hours + website + phone + email in one card. Collapses entirely when
+    /// the venue carries none of them (same policy as the photo strip: no
+    /// layout jump for the common case).
     @ViewBuilder
     private var businessInfo: some View {
-        if venue.hoursRaw != nil || websiteURL != nil || phoneURL != nil {
+        if venue.hoursRaw != nil || websiteURL != nil || phoneURL != nil || emailURL != nil {
             informationCard(title: "Info", systemImage: "storefront") {
                 VStack(alignment: .leading, spacing: 14) {
                     if let raw = venue.hoursRaw {
@@ -250,6 +250,12 @@ public struct VenueDetailScreen: View {
                     if let url = phoneURL, let number = venue.phone {
                         if venue.hoursRaw != nil || websiteURL != nil { Divider() }
                         callRow(url, number: number)
+                    }
+                    if let url = emailURL, let address = venue.email {
+                        if venue.hoursRaw != nil || websiteURL != nil || phoneURL != nil {
+                            Divider()
+                        }
+                        emailRow(url, address: address)
                     }
                 }
             }
@@ -356,6 +362,22 @@ public struct VenueDetailScreen: View {
         .accessibilityHint("Calls the cafe")
     }
 
+    private func emailRow(_ url: URL, address: String) -> some View {
+        Button {
+            openURL(url)
+        } label: {
+            businessRowLabel(
+                "Email",
+                systemImage: "envelope",
+                value: address,
+                trailingSymbol: "arrow.up.right"
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("business-email")
+        .accessibilityHint("Composes an email to the cafe")
+    }
+
     /// Row chrome shared by website/call: ≥44 pt hit region and an explicit
     /// trailing glyph so the tappable rows read as links (bd#36 hit-area and
     /// affordance lessons).
@@ -408,28 +430,23 @@ public struct VenueDetailScreen: View {
         return URL(string: "tel:\(dialable)")
     }
 
-    /// "Mon–Fri" / "Sat" via the current calendar's localized symbols.
-    /// `DayGroup` days are Monday-first (0…6); `shortWeekdaySymbols` is
-    /// Sunday-first.
+    /// mailto: link, or nil when the engine served no (plausible) address —
+    /// same "no dead rows" policy as website/phone.
+    private var emailURL: URL? {
+        guard let raw = venue.email, raw.contains("@"), !raw.contains(" ")
+        else { return nil }
+        return URL(string: "mailto:\(raw)")
+    }
+
+    /// "Mon–Fri" / "Sat" — locale display via OpeningHoursFormatter (bd#56).
     private func dayGroupLabel(_ group: OpeningHours.DayGroup) -> String {
-        let symbols = Calendar.current.shortWeekdaySymbols
-        let first = symbols[(group.firstDay + 1) % 7]
-        guard group.lastDay != group.firstDay else { return first }
-        return "\(first)–\(symbols[(group.lastDay + 1) % 7])"
+        OpeningHoursFormatter.dayGroupLabel(group)
     }
 
-    /// "7:30 AM–5:00 PM" (locale-formatted), segments joined with ", ".
+    /// "7:30 AM – 5:00 PM" in the device locale (24h locales stay 24h);
+    /// segments joined with ", ". See OpeningHoursFormatter (bd#56).
     private func timesLabel(_ segments: [OpeningHours.Segment]) -> String {
-        segments.map { segment in
-            "\(clockLabel(minutes: segment.start))–\(clockLabel(minutes: segment.end))"
-        }.joined(separator: ", ")
-    }
-
-    private func clockLabel(minutes: Int) -> String {
-        let calendar = Calendar.current
-        let base = calendar.startOfDay(for: referenceNow)
-        let date = calendar.date(byAdding: .minute, value: minutes, to: base) ?? base
-        return date.formatted(.dateTime.hour().minute())
+        OpeningHoursFormatter.timesLabel(segments)
     }
 
     /// The clock the open-now badge is judged against. UI tests pin it with

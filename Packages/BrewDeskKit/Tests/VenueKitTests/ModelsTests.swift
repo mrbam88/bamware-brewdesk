@@ -92,11 +92,12 @@ import Testing
         let v1 = try JSONDecoder().decode(Venue.self, from: Data(base.utf8))
         #expect(v1.venueType == nil)
         #expect(v1.attributes.seating == nil)
+        #expect(v1.email == nil) // optional-first (bd#56): absent decodes as nil
 
         let v2Json = base.replacingOccurrences(
             of: "\"vibeTags\":[],",
             with: """
-            "vibeTags":[],"venueType":"library",
+            "vibeTags":[],"venueType":"library","email":"hello@spot.example",
             """
         ).replacingOccurrences(
             of: "\"noise\":",
@@ -110,6 +111,7 @@ import Testing
         #expect(v2.venueType == "library")
         #expect(v2.attributes.seating?.value == "plenty")
         #expect(v2.attributes.outdoorSeating?.value == "yes")
+        #expect(v2.email == "hello@spot.example")
     }
 }
 

@@ -1,8 +1,10 @@
 import XCTest
 
-/// Venue detail business-info card (brewdesk#50): structured hours with a
-/// deterministic open-now badge, website and call rows, raw-string fallback
-/// for unparseable hours, and full collapse when the venue carries none of it.
+/// Venue detail business-info card (brewdesk#50, #56): structured hours with a
+/// deterministic open-now badge — rendered in the device locale's clock (the
+/// en-US simulator must show AM/PM, never military time) — website, call, and
+/// email rows, raw-string fallback for unparseable hours, and full collapse
+/// when the venue carries none of it.
 /// Fixture-driven via `-UITestScenario fixtureOK` (see `ScenarioVenueService`);
 /// the badge's clock is pinned with `-brewdesk.uitest-fixed-now` so open/closed
 /// assertions cannot drift with the machine or the hour the suite runs.
@@ -58,7 +60,7 @@ final class BusinessInfoUITests: XCTestCase {
 
     /// Wednesday 10:00 against "Mo-Fr 07:00-19:00; Sa-Su 08:00-18:00" → open.
     @MainActor
-    func testStructuredHoursShowOpenNowWithWebsiteAndCallRows() {
+    func testStructuredHoursShowOpenNowWithWebsiteCallAndEmailRows() {
         let app = launch(fixedNow: "2026-08-19T10:00")
         openDetail(app, venueName: "Fixture Roasters")
         revealBusinessInfo(app)
@@ -75,6 +77,29 @@ final class BusinessInfoUITests: XCTestCase {
 
         XCTAssertTrue(app.buttons["business-website"].exists, "website row missing")
         XCTAssertTrue(app.buttons["business-call"].exists, "call row missing")
+        XCTAssertTrue(app.buttons["business-email"].exists, "email row missing (bd#56)")
+    }
+
+    /// bd#56: the en-US simulator must render parsed hours on a 12-hour
+    /// clock ("7:00 AM – 7:00 PM"), never the OSM string's military time.
+    @MainActor
+    func testStructuredHoursRenderTwelveHourClockOnEnUSDevice() {
+        let app = launch(fixedNow: "2026-08-19T10:00")
+        openDetail(app, venueName: "Fixture Roasters")
+        revealBusinessInfo(app)
+
+        let structured = element(app, "business-hours-structured")
+        XCTAssertTrue(structured.waitForExistence(timeout: wait))
+        let twelveHour = structured.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "AM", "PM")
+        )
+        XCTAssertGreaterThan(twelveHour.count, 0,
+                             "no schedule row shows an AM/PM time on an en-US device")
+        let military = structured.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "07:00")
+        )
+        XCTAssertEqual(military.count, 0,
+                       "military time leaked into the structured schedule")
     }
 
     /// Same venue, Wednesday 22:00 → past the 19:00 close → closed.
@@ -106,9 +131,10 @@ final class BusinessInfoUITests: XCTestCase {
         XCTAssertFalse(element(app, "hours-open-badge").exists,
                        "open/closed claimed for unparseable hours")
         XCTAssertFalse(element(app, "business-hours-structured").exists)
-        // Corner Cafe has no website/phone: hours-only card, no dead rows.
+        // Corner Cafe has no website/phone/email: hours-only card, no dead rows.
         XCTAssertFalse(app.buttons["business-website"].exists)
         XCTAssertFalse(app.buttons["business-call"].exists)
+        XCTAssertFalse(app.buttons["business-email"].exists)
     }
 
     // MARK: - Absent: the card collapses entirely
@@ -126,6 +152,7 @@ final class BusinessInfoUITests: XCTestCase {
         XCTAssertFalse(element(app, "hours-open-badge").exists)
         XCTAssertFalse(app.buttons["business-website"].exists)
         XCTAssertFalse(app.buttons["business-call"].exists)
+        XCTAssertFalse(app.buttons["business-email"].exists)
         // The rest of the detail screen is unaffected.
         XCTAssertTrue(app.staticTexts["Workability"].exists)
     }

@@ -92,10 +92,12 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
     public let distanceM: Int?
     /// v2 — "cafe" | "park" | "library" | "mall" | "other"; optional-first.
     public let venueType: String?
-    /// Business info (brewdesk#50) — optional-first: detail payloads may carry
-    /// them, list payloads typically don't; absent fields render nothing.
+    /// Business info (brewdesk#50, email brewdesk#56) — optional-first: detail
+    /// payloads may carry them, list payloads typically don't; absent fields
+    /// render nothing.
     public let website: String?
     public let phone: String?
+    public let email: String?
 
     public init(
         id: String,
@@ -114,7 +116,8 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         distanceM: Int?,
         venueType: String? = nil,
         website: String? = nil,
-        phone: String? = nil
+        phone: String? = nil,
+        email: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -133,12 +136,13 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         self.venueType = venueType
         self.website = website
         self.phone = phone
+        self.email = email
     }
 
     enum CodingKeys: String, CodingKey {
         case id, name, lat, lng, address, neighborhood, borough, hoursRaw,
              vertical, attributes, vibeTags, workScore, lastVerified, venueType,
-             website, phone
+             website, phone, email
         case distanceM = "distance_m"
     }
 
