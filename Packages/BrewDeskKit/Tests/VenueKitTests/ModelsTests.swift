@@ -133,4 +133,37 @@ import Testing
         #expect(VenueAPI.absolutePhotoURL(response.photos[1].url, base: base)
             == "https://elsewhere.example/x.jpg")
     }
+
+    // MARK: - Contributor bylines (brewdesk#49)
+
+    @Test func decodesContributorNameAndStaysAdditive() throws {
+        let json = """
+        {"photos":[{"url":"https://cdn.example/community.jpg","contributorName":"Ada L.","widthPx":1200,"heightPx":900},
+                   {"url":"https://cdn.example/google.jpg","attribution":"Grace","attributionUri":"https://maps.google.com/grace"}]}
+        """
+        let response = try JSONDecoder().decode(VenuePhotosResponse.self, from: Data(json.utf8))
+        let community = response.photos[0]
+        #expect(community.contributorName == "Ada L.")
+        #expect(community.communityByline == "Ada L.")
+        #expect(community.attribution == nil)
+
+        // Pre-#49 payload shape (no contributorName) decodes as a Google photo.
+        let google = response.photos[1]
+        #expect(google.contributorName == nil)
+        #expect(google.communityByline == nil)
+        #expect(google.attribution == "Grace")
+    }
+
+    @Test func communityBylineTrimsAndTreatsBlankAsAbsent() {
+        #expect(VenuePhoto(url: "u", contributorName: "  Ada L. \n").communityByline == "Ada L.")
+        #expect(VenuePhoto(url: "u", contributorName: "   ").communityByline == nil)
+        #expect(VenuePhoto(url: "u", contributorName: "").communityByline == nil)
+        #expect(VenuePhoto(url: "u").communityByline == nil)
+    }
+
+    @Test func contributorNameRoundTripsThroughCodable() throws {
+        let photo = VenuePhoto(url: "https://cdn.example/c.jpg", contributorName: "Ada L.")
+        let data = try JSONEncoder().encode(photo)
+        #expect(try JSONDecoder().decode(VenuePhoto.self, from: data) == photo)
+    }
 }
