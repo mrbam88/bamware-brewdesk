@@ -39,14 +39,16 @@ public struct MethodologyScreen: View {
         }
         .navigationTitle(Text("How Work Fit works"))
         .navigationBarTitleDisplayMode(.large)
-        .background(Color(uiColor: .systemGroupedBackground))
+        // Brand page + surface tokens instead of stock grouped grays
+        // (ui-review-2026-08-21 finding 3).
+        .background(BrewDeskPalette.page.ignoresSafeArea())
     }
 
     private func section(_ title: LocalizedStringKey, icon: String, body key: LocalizedStringKey) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label(title, systemImage: icon)
                 .font(.headline)
-                .foregroundStyle(BrewDeskPalette.espresso)
+                .foregroundStyle(.tint)
             Text(key)
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -54,7 +56,7 @@ public struct MethodologyScreen: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+        .background(BrewDeskPalette.surface, in: RoundedRectangle(cornerRadius: 16))
         .accessibilityElement(children: .combine)
     }
 }

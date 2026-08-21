@@ -103,6 +103,7 @@ public struct ImportSavedScreen: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
+                .listRowBackground(BrewDeskPalette.surface)
                 instructions
             case .engineFailed:
                 Section {
@@ -118,6 +119,7 @@ public struct ImportSavedScreen: View {
                     .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("import-retry")
                 }
+                .listRowBackground(BrewDeskPalette.surface)
                 instructions
             case let .done(matched, unmatched):
                 if !matched.isEmpty {
@@ -127,6 +129,7 @@ public struct ImportSavedScreen: View {
                                 .foregroundStyle(BrewDeskPalette.moss)
                         }
                     }
+                    .listRowBackground(BrewDeskPalette.surface)
                 }
                 if !unmatched.isEmpty {
                     Section("Not in BrewDesk yet") {
@@ -135,9 +138,14 @@ public struct ImportSavedScreen: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
+                    .listRowBackground(BrewDeskPalette.surface)
                 }
             }
         }
+        // Brand page + surface tokens instead of stock grouped grays
+        // (ui-review-2026-08-21 finding 3).
+        .scrollContentBackground(.hidden)
+        .background(BrewDeskPalette.page.ignoresSafeArea())
         .navigationTitle(Text("Import saved places"))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -184,5 +192,6 @@ public struct ImportSavedScreen: View {
                 .foregroundStyle(.secondary)
         }
         .font(.subheadline)
+        .listRowBackground(BrewDeskPalette.surface)
     }
 }

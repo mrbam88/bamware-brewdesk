@@ -5,14 +5,17 @@ public struct SavedCafesScreen: View {
     @Bindable private var savedVenues: SavedVenuesStore
     @State private var model: SavedVenuesModel
     private let listing: (any VenueListing)?
+    private let browseNearby: (() -> Void)?
 
     public init(
         savedVenues: SavedVenuesStore,
         venueDetails: any VenueDetailServing,
-        listing: (any VenueListing)? = nil
+        listing: (any VenueListing)? = nil,
+        browseNearby: (() -> Void)? = nil
     ) {
         self.savedVenues = savedVenues
         self.listing = listing
+        self.browseNearby = browseNearby
         _model = State(initialValue: SavedVenuesModel(service: venueDetails))
     }
 
@@ -79,13 +82,17 @@ public struct SavedCafesScreen: View {
                             NavigationLink(value: venue) {
                                 VenueRow(venue: venue)
                             }
+                            .listRowBackground(Color.clear)
                         }
                     }
                     .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                     .refreshable { await model.load(venueIDs: savedVenues.venueIDs) }
                 }
             }
         }
+        // Cream page treatment for brand cohesion (finding 3).
+        .background(BrewDeskPalette.page.ignoresSafeArea())
         .navigationTitle("saved_tab_title")
         .navigationDestination(for: Venue.self) { venue in
             VenueDetailScreen(venue: venue, savedVenues: savedVenues)
@@ -95,11 +102,19 @@ public struct SavedCafesScreen: View {
         }
     }
 
+    /// Empty state with a way out: "go bookmark a cafe" now carries the
+    /// button that gets you there (ui-review-2026-08-21 finding 5).
     private var emptyState: some View {
         ContentUnavailableView {
             Label("Save your next work spot", systemImage: "bookmark")
         } description: {
             Text("Bookmark a café from Explore or Nearby to keep it here.")
+        } actions: {
+            if let browseNearby {
+                Button("Browse Nearby") { browseNearby() }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("saved-browse-nearby")
+            }
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("saved-state-empty")
@@ -118,6 +133,7 @@ public struct SavedCafesScreen: View {
         .font(.caption)
         .foregroundStyle(.secondary)
         .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("saved-partial-banner")
     }

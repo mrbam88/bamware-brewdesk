@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 public enum BrewDeskPalette {
     public static let espresso = Color(red: 0.17, green: 0.11, blue: 0.08)
@@ -16,6 +17,38 @@ public enum BrewDeskPalette {
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
+
+    // MARK: - Semantic surfaces (brewdesk#62)
+
+    /// Screen background: cream in light mode, deep espresso in dark.
+    /// Matches `BrewDeskTheme.backgroundColor` so screens styled either way
+    /// read as one app.
+    public static let page = adaptive(
+        light: oat,
+        dark: Color(red: 0.11, green: 0.09, blue: 0.08)
+    )
+
+    /// Card/section background sitting on `page` — replaces ad-hoc
+    /// `Color(uiColor: .secondarySystemBackground)` usages that fell back to
+    /// stock gray (ui-review-2026-08-21 finding 3).
+    public static let surface = adaptive(
+        light: foam,
+        dark: Color(red: 0.16, green: 0.13, blue: 0.11)
+    )
+
+    /// Inset/nested background sitting on `surface` (chips, wells).
+    public static let surfaceSecondary = adaptive(
+        light: Color(red: 0.93, green: 0.89, blue: 0.82),
+        dark: Color(red: 0.21, green: 0.17, blue: 0.14)
+    )
+
+    /// The package ships no asset catalog, so adaptive brand colors are built
+    /// from a dynamic provider — one definition, both appearances.
+    private static func adaptive(light: Color, dark: Color) -> Color {
+        Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark ? UIColor(dark) : UIColor(light)
+        })
+    }
 }
 
 public extension View {
