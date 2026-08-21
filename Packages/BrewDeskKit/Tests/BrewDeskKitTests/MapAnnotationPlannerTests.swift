@@ -92,7 +92,19 @@ struct MapAnnotationPlannerTests {
             Issue.record("expected dots, got \(plan)")
             return
         }
-        #expect(venues.count == 100)
+        #expect(venues.count == MapAnnotationPlanner.dotBudget)
+    }
+
+    @Test func dotBudgetKeepsTheBestRankedVisibleVenues() {
+        // The model orders venues by Work Fit; culling preserves that order,
+        // so the budget keeps exactly the top of the ranking.
+        let venues = grid(count: 100)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: region())
+        guard case .dots(let dots) = plan else {
+            Issue.record("expected dots, got \(plan)")
+            return
+        }
+        #expect(dots.map(\.id) == venues.prefix(MapAnnotationPlanner.dotBudget).map(\.id))
     }
 
     @Test func highDensityGetsClusters() {

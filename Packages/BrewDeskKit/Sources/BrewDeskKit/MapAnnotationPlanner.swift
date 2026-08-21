@@ -55,19 +55,25 @@ public enum MapAnnotationPlanner {
     public static let pinLimit = 25
     /// At or below this many, score dots; above, clusters.
     public static let dotLimit = 150
+    /// Dot mode renders at most this many dots — the best-ranked visible
+    /// venues (the model orders by Work Fit). Fewer, smarter pins (#55) and
+    /// fewer hosted annotation views: on-simulator, per-frame pan cost scales
+    /// with annotation count before anything else (brewdesk#54 measurements).
+    public static let dotBudget = 40
     /// Extra region kept annotated on every side (fraction of the span), so
     /// a pan shorter than half a screen never uncovers un-annotated map.
     public static let cullMargin = 0.5
-    /// Cluster grid targets about this many cells across the viewport (the
-    /// margin-padded annotated region is 2× the viewport, so roughly twice
-    /// this many cells carry annotations) — dataset-scale zooms collapse to
-    /// a few dozen count pills, never hundreds.
-    public static let targetCellsAcross = 3.0
+    /// Cluster grid targets about this many cells across the viewport.
+    /// Deliberately coarse: with the whole dataset clustered, the citywide
+    /// pill count stays in the dozens (~25 for the 2,180-venue fixture at the
+    /// default zoom) — per-frame pan cost scales with hosted annotation views
+    /// before anything else, so fewer, denser pills IS the perf fix (#54/#55).
+    public static let targetCellsAcross = 1.5
 
     public static func plan(venues: [Venue], region: MKCoordinateRegion) -> MapAnnotationPlan {
         let visible = culled(venues, region: region)
         if visible.count <= pinLimit { return .pins(visible) }
-        if visible.count <= dotLimit { return .dots(visible) }
+        if visible.count <= dotLimit { return .dots(Array(visible.prefix(dotBudget))) }
         // Cluster the WHOLE dataset, not the culled set: the grid is absolute,
         // so at an unchanged zoom every pan yields the identical cluster list —
         // zero annotation churn — and the pill count stays bounded by the grid

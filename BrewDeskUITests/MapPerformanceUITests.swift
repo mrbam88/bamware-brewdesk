@@ -30,6 +30,9 @@ final class MapPerformanceUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1.5)
         hud.tap()
 
+        // NOTE: pass `hud:` to log per-drag annotation counts when debugging
+        // representation churn — the extra accessibility snapshots perturb the
+        // measurement (~1% hitch time), so the measured run keeps them off.
         scriptedPan(app)
 
         // One publish interval so the final counters land in the label.
@@ -48,6 +51,45 @@ final class MapPerformanceUITests: XCTestCase {
         // Loose bound: catches sustained stutter without flaking on one-off
         // simulator scheduling blips. The PR carries the exact numbers.
         XCTAssertLessThan(hitchRatio ?? 1, 0.20, "map pan dropped too much frame time: \(hud.label)")
+    }
+
+    /// Same measurement one representation step in: a cluster tap zooms to
+    /// dot density (~80–120 score dots — the shape of the live 100-venue
+    /// dataset at default zoom), then the same scripted pan runs.
+    @MainActor
+    func testScriptedPanFrameTimingAtDotZoom() throws {
+        let app = launchManyVenues(extra: ["-UITestFrameStats"])
+        let hud = app.descendants(matching: .any)["frame-stats"].firstMatch
+        XCTAssertTrue(hud.waitForExistence(timeout: wait), "frame-stats HUD missing")
+        waitForAnnotations(hud, timeout: wait)
+
+        let preCount = parse(hud.label)["annotations"]
+        XCTAssertTrue(
+            app.buttons.matching(identifier: "map-cluster").firstMatch.waitForExistence(timeout: wait)
+        )
+        // Tap a pill clear of the screen corners — the frame-stats HUD sits
+        // bottom-trailing and would swallow the tap of a pill under it.
+        tapCentralCluster(app)
+        Thread.sleep(forTimeInterval: 2)
+        XCTAssertNotEqual(
+            parse(hud.label)["annotations"], preCount,
+            "cluster tap did not change the representation (still \(hud.label))"
+        )
+        hud.tap()
+
+        scriptedPan(app)
+
+        Thread.sleep(forTimeInterval: 0.5)
+        let stats = parse(hud.label)
+        let attachment = XCTAttachment(string: "dot-zoom pan frame stats: \(hud.label)")
+        attachment.name = "map-pan-frame-stats-dot-zoom"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        print("MAP-PERF-DOTS \(hud.label)")
+
+        let hitchRatio = stats["hitchRatio"].flatMap(Double.init)
+        XCTAssertNotNil(hitchRatio, "frame stats label not parseable: \(hud.label)")
+        XCTAssertLessThan(hitchRatio ?? 1, 0.20, "dot-zoom pan dropped too much frame time: \(hud.label)")
     }
 
     // MARK: - Representation behavior (clusters → dots/pins → detail)
@@ -99,6 +141,23 @@ final class MapPerformanceUITests: XCTestCase {
         return app
     }
 
+    /// Taps the cluster pill closest to the window center, avoiding pills
+    /// under the corner-anchored HUD or the map controls.
+    @MainActor
+    private func tapCentralCluster(_ app: XCUIApplication) {
+        let window = app.windows.firstMatch.frame
+        let center = CGPoint(x: window.midX, y: window.midY)
+        let pills = app.buttons.matching(identifier: "map-cluster").allElementsBoundByIndex
+        let best = pills
+            .filter { $0.isHittable }
+            .min { lhs, rhs in
+                hypot(lhs.frame.midX - center.x, lhs.frame.midY - center.y)
+                    < hypot(rhs.frame.midX - center.x, rhs.frame.midY - center.y)
+            }
+        XCTAssertNotNil(best, "no hittable cluster pill to tap")
+        best?.tap()
+    }
+
     /// Annotation count is published on the HUD label (`annotations=N`).
     @MainActor
     private func waitForAnnotations(_ hud: XCUIElement, timeout: TimeInterval) {
@@ -113,7 +172,7 @@ final class MapPerformanceUITests: XCTestCase {
     /// Eight fast drags across the map body — horizontal and vertical, kept
     /// between the search header and the discovery shelf.
     @MainActor
-    private func scriptedPan(_ app: XCUIApplication) {
+    private func scriptedPan(_ app: XCUIApplication, hud: XCUIElement? = nil) {
         let window = app.windows.firstMatch
         let pairs: [(CGVector, CGVector)] = [
             (CGVector(dx: 0.80, dy: 0.48), CGVector(dx: 0.15, dy: 0.48)),
@@ -125,7 +184,7 @@ final class MapPerformanceUITests: XCTestCase {
             (CGVector(dx: 0.75, dy: 0.50), CGVector(dx: 0.25, dy: 0.50)),
             (CGVector(dx: 0.25, dy: 0.50), CGVector(dx: 0.75, dy: 0.50)),
         ]
-        for (from, to) in pairs {
+        for (index, (from, to)) in pairs.enumerated() {
             window.coordinate(withNormalizedOffset: from)
                 .press(
                     forDuration: 0.02,
@@ -133,6 +192,10 @@ final class MapPerformanceUITests: XCTestCase {
                     withVelocity: .fast,
                     thenHoldForDuration: 0.05
                 )
+            if let hud {
+                // Representation flapping shows up as annotation-count swings.
+                print("MAP-PERF-DRAG \(index) \(parse(hud.label)["annotations"] ?? "?")")
+            }
         }
     }
 

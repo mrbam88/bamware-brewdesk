@@ -10,10 +10,11 @@ public struct CafeMapScreen: View {
     @Bindable private var savedVenues: SavedVenuesStore
     @State private var selected: Venue?
     @State private var position: MapCameraPosition
-    /// Camera region captured at gesture end (`.onMapCameraChange(.onEnd)`).
+    /// Camera region recovered after a gesture settles (see `scheduleReplan`).
     /// Mid-gesture frames never touch state, so a pan composites existing
     /// annotation views instead of re-evaluating this body (brewdesk#54).
     @State private var visibleRegion: MKCoordinateRegion?
+    @State private var replanTask: Task<Void, Never>?
 
     public init(model: VenuesModel, savedVenues: SavedVenuesStore) {
         self.model = model
@@ -26,24 +27,41 @@ public struct CafeMapScreen: View {
             venues: model.venues,
             region: visibleRegion ?? Self.region(lat: model.centerLat, lng: model.centerLng)
         )
-        Map(position: $position) {
-            UserAnnotation()
-            annotations(for: plan)
-            // A venue chosen from a dot, cluster zoom-in, or the shelf still
-            // shows a full selected pin even when the plan has no pin for it.
-            if let selected, !plan.containsVenue(id: selected.id) {
-                Annotation("", coordinate: coordinate(of: selected)) {
-                    pinButton(for: selected, isSelected: true)
+        // Camera tracking WITHOUT `.onMapCameraChange`: measured on-simulator
+        // (brewdesk#54), merely attaching that modifier cost ~1.5–2% of frame
+        // time to per-frame camera bookkeeping. Instead the camera region is
+        // recovered on demand — a gesture ending schedules one debounced
+        // `MapProxy` corner conversion after momentum settles, and
+        // programmatic moves (cluster zoom, recenter) write the region they
+        // already know. Mid-gesture frames never touch SwiftUI state.
+        MapReader { proxy in
+            GeometryReader { geometry in
+                Map(position: $position) {
+                    UserAnnotation()
+                    annotations(for: plan)
+                    // A venue chosen from a dot, cluster zoom-in, or the shelf
+                    // still shows a full selected pin even when the plan has
+                    // no pin for it.
+                    if let selected, !plan.containsVenue(id: selected.id) {
+                        Annotation("", coordinate: coordinate(of: selected)) {
+                            pinButton(for: selected, isSelected: true)
+                        }
+                    }
                 }
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 1)
+                        .onEnded { _ in scheduleReplan(proxy: proxy, size: geometry.size) }
+                )
+                .simultaneousGesture(
+                    MagnifyGesture()
+                        .onEnded { _ in scheduleReplan(proxy: proxy, size: geometry.size) }
+                )
+                // Built-in double-tap zoom has no drag or magnify phase.
+                .simultaneousGesture(
+                    TapGesture(count: 2)
+                        .onEnded { scheduleReplan(proxy: proxy, size: geometry.size) }
+                )
             }
-        }
-        .onMapCameraChange(frequency: .onEnd) { context in
-            // Debounced re-planning: `.onEnd` keeps mid-gesture frames free of
-            // state writes, and the hysteresis below skips re-plans while the
-            // culling margin still covers the viewport — small pans composite
-            // existing annotation views instead of diffing new ones.
-            guard Self.needsReplan(from: visibleRegion, to: context.region) else { return }
-            visibleRegion = context.region
         }
         .mapControls {
             MapCompass()
@@ -68,10 +86,61 @@ public struct CafeMapScreen: View {
         }
         .onChange(of: model.centerLat) {
             position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
+            visibleRegion = Self.region(lat: model.centerLat, lng: model.centerLng)
         }
         .onChange(of: model.centerLng) {
             position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
+            visibleRegion = Self.region(lat: model.centerLat, lng: model.centerLng)
         }
+        .onDisappear { replanTask?.cancel() }
+    }
+
+    // MARK: - Camera-driven re-planning
+
+    /// One re-plan per settled gesture. A fling keeps the camera decelerating
+    /// long after touch-up, and re-planning mid-animation is itself a visible
+    /// hitch — so poll the camera center (two cheap point conversions) until
+    /// two consecutive readings match, then re-plan at rest. Hysteresis skips
+    /// the update entirely while the culling margin still covers the viewport,
+    /// so small pans and taps never rebuild annotations.
+    private func scheduleReplan(proxy: MapProxy, size: CGSize) {
+        replanTask?.cancel()
+        replanTask = Task {
+            let midpoint = CGPoint(x: size.width / 2, y: size.height / 2)
+            var previous: CLLocationCoordinate2D?
+            for _ in 0..<12 {
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled else { return }
+                guard let center = proxy.convert(midpoint, from: .local) else { return }
+                if let previous,
+                   abs(previous.latitude - center.latitude) < 1e-7,
+                   abs(previous.longitude - center.longitude) < 1e-7 {
+                    break
+                }
+                previous = center
+            }
+            guard !Task.isCancelled, let region = Self.cameraRegion(proxy: proxy, size: size) else { return }
+            guard Self.needsReplan(from: visibleRegion, to: region) else { return }
+            visibleRegion = region
+        }
+    }
+
+    /// The region between the map view's corners, via `MapProxy`.
+    private static func cameraRegion(proxy: MapProxy, size: CGSize) -> MKCoordinateRegion? {
+        guard size.width > 0, size.height > 0,
+              let topLeft = proxy.convert(.zero, from: .local),
+              let bottomRight = proxy.convert(CGPoint(x: size.width, y: size.height), from: .local)
+        else { return nil }
+        let latDelta = abs(topLeft.latitude - bottomRight.latitude)
+        let lngDelta = abs(bottomRight.longitude - topLeft.longitude)
+        guard latDelta > 0, lngDelta > 0 else { return nil }
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(
+                latitude: (topLeft.latitude + bottomRight.latitude) / 2,
+                longitude: (topLeft.longitude + bottomRight.longitude) / 2
+            ),
+            span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lngDelta)
+        )
     }
 
     // MARK: - Annotations (representation from MapAnnotationPlanner,
@@ -135,6 +204,9 @@ public struct CafeMapScreen: View {
                     longitudeDelta: span.longitudeDelta / 3
                 )
             )
+            // Programmatic move: the target region is known, so re-plan
+            // directly — no camera observation needed.
+            visibleRegion = zoomed
             if reduceMotion {
                 position = .region(zoomed)
             } else {
