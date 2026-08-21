@@ -5,13 +5,16 @@ name: Reviewer simulation
 # bundles plus every step screenshot as a downloadable evidence archive.
 #
 # Cost: this repo is private, so macOS minutes bill at 10x. A run is ~15-20
-# wall-clock minutes. If quota bites, drop `pull_request` and keep main + manual.
+# wall-clock minutes. Quota bit on 2026-08-21 — per Bilal's approval the
+# trigger is now main + nightly + manual (not per-PR); PR-level coverage
+# comes from ci.yml, and QA runs this suite locally when a diff warrants it.
 
 on:
-  pull_request:
+  schedule:
+    - cron: "0 7 * * *"   # nightly ~03:00 New York
+  workflow_dispatch:
   push:
     branches: [main]
-  workflow_dispatch:
 
 concurrency:
   group: brewdesk-reviewer-sim-${{ github.ref }}
