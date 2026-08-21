@@ -16,6 +16,9 @@ final class RecordingURLProtocol: URLProtocol {
         let method: String
         let url: URL
         let body: Data?
+        /// Request headers (brewdesk#48: AuthAPI tests assert the Bearer).
+        /// Defaulted so pre-#48 Recorded call sites stay source-compatible.
+        var headers: [String: String] = [:]
 
         var host: String? { url.host }
         var path: String { url.path }
@@ -71,7 +74,8 @@ final class RecordingURLProtocol: URLProtocol {
         let entry = Recorded(
             method: request.httpMethod ?? "GET",
             url: request.url!,
-            body: body
+            body: body,
+            headers: request.allHTTPHeaderFields ?? [:]
         )
         Self.lock.lock()
         Self.recorded.append(entry)
@@ -125,7 +129,50 @@ enum EngineFixtures {
         try! JSONSerialization.data(withJSONObject: object)
     }
 
+    /// Canned bamware-auth-service responses (brewdesk#48). Mirrors
+    /// `authHandler.ts`: register 201/409, login 200/401, delete 200/404 with
+    /// a Bearer check. Magic fixture inputs select the error paths.
+    private static func authRespond(to request: RecordingURLProtocol.Recorded) -> (Int, Data)? {
+        func envelope(email: String, name: String) -> Data {
+            json([
+                "tokens": ["accessToken": "fixture-access", "refreshToken": "fixture-refresh"],
+                "user": [
+                    "userId": "user-fixture", "email": email, "name": name,
+                    "role": "customer", "tenantId": "bamware-brewdesk",
+                    "createdAt": "2026-08-01T00:00:00.000Z",
+                    "schemaVersion": 1, "emailVerified": false,
+                ],
+            ])
+        }
+        let bodyObject = request.body.flatMap {
+            try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+        }
+        switch (request.method, request.path) {
+        case ("POST", "/auth/register"):
+            let email = bodyObject?["email"] as? String ?? ""
+            if email == "taken@bamware.com" { return (409, json(["error": "Email already registered"])) }
+            return (201, envelope(email: email, name: bodyObject?["name"] as? String ?? ""))
+        case ("POST", "/auth/login"):
+            let email = bodyObject?["email"] as? String ?? ""
+            if bodyObject?["password"] as? String == "WrongPass99!" {
+                return (401, json(["error": "Invalid email or password"]))
+            }
+            return (200, envelope(email: email, name: "Fixture User"))
+        case ("DELETE", "/auth/account"):
+            guard request.headers["Authorization"]?.hasPrefix("Bearer ") == true else {
+                return (401, json(["error": "Missing bearer token"]))
+            }
+            if request.headers["Authorization"] == "Bearer already-gone" {
+                return (404, json(["error": "not_found"]))
+            }
+            return (200, json(["ok": true]))
+        default:
+            return nil
+        }
+    }
+
     static func respond(to request: RecordingURLProtocol.Recorded) -> (Int, Data) {
+        if let authResponse = authRespond(to: request) { return authResponse }
         let path = request.path
         switch (request.method, path) {
         case ("GET", "/v1/health"):

@@ -19,6 +19,16 @@ public struct SavedCafesScreen: View {
     public var body: some View {
         content
             .toolbar {
+                // Account entry (brewdesk#48). AccountScreen resolves its own
+                // services, so this stays a single additive toolbar item.
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        AccountScreen()
+                    } label: {
+                        Label("Account", systemImage: "person.circle")
+                    }
+                    .accessibilityIdentifier("account-entry")
+                }
                 if let listing {
                     ToolbarItem(placement: .topBarTrailing) {
                         NavigationLink {

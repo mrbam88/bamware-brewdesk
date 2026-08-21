@@ -9,6 +9,12 @@ struct PhotoViewer: View {
     let photo: VenuePhoto
     let venueName: String
     @State private var attempt = 0
+    // Report/block (brewdesk#48): community photos only — Google Places
+    // photos are licensed, not UGC. Self-contained state + default services
+    // so the (untouched) VenueDetailScreen call site stays a two-arg init.
+    @State private var showsReportSheet = false
+    @State private var showsBlockConfirm = false
+    var blockStore: ContributorBlockStore = .shared
 
     var body: some View {
         NavigationStack {
@@ -78,6 +84,27 @@ struct PhotoViewer: View {
             .navigationTitle(Text(verbatim: venueName))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if let byline = photo.communityByline {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Menu {
+                            Button {
+                                showsReportSheet = true
+                            } label: {
+                                Label("Report Photo", systemImage: "flag")
+                            }
+                            .accessibilityIdentifier("photo-report-entry")
+                            Button(role: .destructive) {
+                                showsBlockConfirm = true
+                            } label: {
+                                Label("Block \(byline)", systemImage: "hand.raised")
+                            }
+                            .accessibilityIdentifier("photo-block-entry")
+                        } label: {
+                            Label("Photo Options", systemImage: "ellipsis.circle")
+                        }
+                        .accessibilityIdentifier("photo-moderation-menu")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         dismiss()
@@ -85,6 +112,24 @@ struct PhotoViewer: View {
                         Label("Close", systemImage: "xmark.circle.fill")
                     }
                 }
+            }
+            .sheet(isPresented: $showsReportSheet) {
+                ReportContentSheet(photo: photo, venueName: venueName)
+            }
+            .confirmationDialog(
+                "Block \(photo.communityByline ?? "contributor")?",
+                isPresented: $showsBlockConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Block", role: .destructive) {
+                    if let byline = photo.communityByline {
+                        blockStore.block(byline)
+                    }
+                    dismiss()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Their photos will be hidden on this device. You can unblock from Account → Contact & Content Rules.")
             }
         }
     }
