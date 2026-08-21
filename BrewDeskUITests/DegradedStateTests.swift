@@ -55,6 +55,21 @@ final class DegradedStateTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
     }
 
+    // MARK: - Dataset stat strip (brewdesk#34)
+
+    /// The provenance line must render on both discovery tabs whenever the
+    /// engine reports health. It never did before #34: the strip's own
+    /// `.task` hung off a view that did not exist while health was nil.
+    @MainActor
+    func testStatStripRendersOnExploreAndNearby() {
+        let app = launch("fixtureOK")
+        XCTAssertTrue(element(app, "dataset-stat-strip").waitForExistence(timeout: wait),
+                      "Dataset stat strip missing from Explore")
+        openNearby(app)
+        XCTAssertTrue(element(app, "dataset-stat-strip").waitForExistence(timeout: wait),
+                      "Dataset stat strip missing from Nearby")
+    }
+
     // MARK: - Map
 
     @MainActor

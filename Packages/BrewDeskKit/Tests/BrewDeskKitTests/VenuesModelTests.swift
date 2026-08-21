@@ -261,6 +261,40 @@ private actor ControlledVenueService: VenueListing {
         await model.loadHealth()
         #expect(model.health == nil)
     }
+
+    nonisolated final class CountingHealthService: VenueListing, @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored = 0
+        var failing: Bool
+        init(failing: Bool = false) { self.failing = failing }
+        var fetches: Int { lock.withLock { stored } }
+        func fetchVenues(_ query: VenueQuery) async throws -> [Venue] { [] }
+        func fetchHealth() async throws -> HealthResponse? {
+            lock.withLock { stored += 1 }
+            if failing { throw VenueAPIError.invalidResponse }
+            return HealthResponse(ok: true, venueCount: 1, seededAt: "2026-08-15T00:00:00Z", observationCount: nil)
+        }
+    }
+
+    @Test func loadHealthIfNeededFetchesOnce() async {
+        let service = CountingHealthService()
+        let model = VenuesModel(api: service)
+        await model.loadHealthIfNeeded()
+        await model.loadHealthIfNeeded()
+        #expect(service.fetches == 1)
+        #expect(model.health?.venueCount == 1)
+    }
+
+    @Test func loadHealthIfNeededRetriesAfterFailure() async {
+        let service = CountingHealthService(failing: true)
+        let model = VenuesModel(api: service)
+        await model.loadHealthIfNeeded()
+        #expect(model.health == nil)
+        service.failing = false
+        await model.loadHealthIfNeeded()
+        #expect(service.fetches == 2)
+        #expect(model.health != nil)
+    }
 }
 
 @Suite @MainActor struct SchemaV2FilterTests {

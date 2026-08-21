@@ -47,6 +47,9 @@ struct DiscoveryRootView: View {
                 }
         }
         .environment(\.locationDenied, locationService.isDenied)
+        // Dataset stats are independent of the venue request and the TabView
+        // always exists — the strip itself cannot load them (brewdesk#34).
+        .task { await model.loadHealthIfNeeded() }
         .task(id: request) {
             if let coordinate = locationService.location?.coordinate,
                model.updateCenterIfNeeded(lat: coordinate.latitude, lng: coordinate.longitude) {
