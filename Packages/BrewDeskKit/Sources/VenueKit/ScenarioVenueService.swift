@@ -216,7 +216,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         case .offlineThenRecovers:
             if observationAttempts.next() == 1 { throw Self.offlineError }
             return Self.observedVenue(id: venueId)
-        case .fixtureOK, .emptyVenues, .photosEmpty, .photosFail:
+        case .fixtureOK, .emptyVenues, .photosEmpty, .photosFail, .manyVenues:
             return Self.observedVenue(id: venueId)
         }
     }
