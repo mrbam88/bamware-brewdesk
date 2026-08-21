@@ -43,10 +43,14 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             name: "Fixture Roasters",
             lat: 40.7365, lng: -73.9905,
             neighborhood: "Union Square",
-            hoursRaw: "Mon–Fri 7am–7pm · Sat–Sun 8am–6pm",
+            // OSM syntax → the detail screen's structured hours + open-now
+            // badge. UI tests pin the clock with -brewdesk.uitest-fixed-now.
+            hoursRaw: "Mo-Fr 07:00-19:00; Sa-Su 08:00-18:00",
             workScore: 84,
             laptopPolicy: "unrestricted",
-            venueType: "cafe"
+            venueType: "cafe",
+            website: "https://fixture-roasters.example",
+            phone: "+1 212-555-0142"
         ),
         fixtureVenue(
             id: "fixture-library",
@@ -63,6 +67,8 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             name: "Fixture Corner Cafe",
             lat: 40.7380, lng: -73.9890,
             neighborhood: "Flatiron",
+            // Deliberately NOT OSM syntax: pins the raw-string fallback
+            // (never a wrong open/closed claim on unparseable hours).
             hoursRaw: "Daily 8am–5pm",
             workScore: 52,
             laptopPolicy: "discouraged",
@@ -163,7 +169,9 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         hoursRaw: String?,
         workScore: Int,
         laptopPolicy: String,
-        venueType: String
+        venueType: String,
+        website: String? = nil,
+        phone: String? = nil
     ) -> Venue {
         let observedAt = "2026-08-01T00:00:00Z"
         return Venue(
@@ -187,7 +195,9 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             workScore: workScore,
             lastVerified: observedAt,
             distanceM: 120,
-            venueType: venueType
+            venueType: venueType,
+            website: website,
+            phone: phone
         )
     }
 }

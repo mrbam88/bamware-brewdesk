@@ -158,6 +158,28 @@
         }
       }
     },
+    "Call": {
+      "extractionState": "stale",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llamar"
+          }
+        }
+      }
+    },
+    "Calls the cafe": {
+      "extractionState": "stale",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Llama al café"
+          }
+        }
+      }
+    },
     "Check your connection and try again.": {
       "extractionState": "stale",
       "localizations": {
@@ -197,6 +219,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cerrar"
+          }
+        }
+      }
+    },
+    "Closed": {
+      "extractionState": "stale",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrado"
+          }
+        }
+      }
+    },
+    "Closed now": {
+      "extractionState": "stale",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cerrado ahora"
           }
         }
       }
@@ -533,6 +577,17 @@
         }
       }
     },
+    "Info": {
+      "extractionState": "stale",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Información"
+          }
+        }
+      }
+    },
     "Know before you order.": {
       "localizations": {
         "es": {
@@ -760,6 +815,16 @@
         }
       }
     },
+    "Offline — showing saved snapshot": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin conexión — mostrando la instantánea guardada"
+          }
+        }
+      }
+    },
     "On": {
       "extractionState": "stale",
       "localizations": {
@@ -778,6 +843,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Abrir Ajustes"
+          }
+        }
+      }
+    },
+    "Open now": {
+      "extractionState": "stale",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abierto ahora"
           }
         }
       }
@@ -809,6 +885,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Abre la foto a tamaño completo"
+          }
+        }
+      }
+    },
+    "Opens the website in Safari": {
+      "extractionState": "stale",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre el sitio web en Safari"
           }
         }
       }
@@ -1269,6 +1356,16 @@
         }
       }
     },
+    "Updating from live data…": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizando con datos en vivo…"
+          }
+        }
+      }
+    },
     "Use Union Square instead": {
       "localizations": {
         "es": {
@@ -1339,6 +1436,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "TRABAJA SIN ADIVINAR"
+          }
+        }
+      }
+    },
+    "Website": {
+      "extractionState": "stale",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sitio web"
           }
         }
       }
@@ -1709,26 +1817,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "investigación web"
-          }
-        }
-      }
-    },
-    "Updating from live data…": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Actualizando con datos en vivo…"
-          }
-        }
-      }
-    },
-    "Offline — showing saved snapshot": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sin conexión — mostrando la instantánea guardada"
           }
         }
       }
