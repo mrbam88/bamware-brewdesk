@@ -16,7 +16,7 @@ permissions:
 jobs:
   test-and-build:
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       # The development workspace references the sibling ../bamware-ios
       # checkout, so CI reproduces the sibling layout with two checkouts.
@@ -37,6 +37,17 @@ jobs:
         run: |
           xcodebuild -scheme BrewDeskKit-Package \
             -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+
+      # Privacy-claim verifier (brewdesk#29): the app unit suite runs against
+      # the Release bundle so PrivacyClaimTests inspects the manifest, ATS
+      # policy, and endpoint that actually ship. UI tests stay out of CI.
+      - name: Release app unit tests (privacy audit)
+        working-directory: bamware-brewdesk
+        run: |
+          xcodebuild -project BrewDesk.xcodeproj -scheme BrewDesk \
+            -configuration Release ENABLE_TESTABILITY=YES CODE_SIGNING_ALLOWED=NO \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+            -only-testing:BrewDeskTests test
 
       - name: Simulator build (no signing)
         working-directory: bamware-brewdesk
