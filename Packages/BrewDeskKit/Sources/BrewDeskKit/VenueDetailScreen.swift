@@ -11,6 +11,11 @@ public struct VenueDetailScreen: View {
     @Bindable private var savedVenues: SavedVenuesStore
     @State private var photos: [VenuePhoto] = []
     @State private var expandedPhoto: VenuePhoto?
+    @State private var photoLoad: PhotoLoad = .loading
+    @State private var photoAttempt = 0
+    @State private var failedThumbnailURLs: Set<String> = []
+
+    private enum PhotoLoad { case loading, loaded, failed }
 
     public init(venue: Venue, savedVenues: SavedVenuesStore) {
         self.venue = venue
@@ -23,9 +28,7 @@ public struct VenueDetailScreen: View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 20) {
                 hero
-                if !photos.isEmpty {
-                    photoStrip
-                }
+                photoSection
                 workability
                 if let hours = venue.hoursRaw {
                     informationCard(title: "Hours", systemImage: "clock") {
@@ -43,10 +46,49 @@ public struct VenueDetailScreen: View {
         .safeAreaInset(edge: .bottom) { actionDock }
         .navigationTitle("Details")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
+        .task(id: photoAttempt) {
             guard let photoService else { return }
-            photos = (try? await photoService.fetchPhotos(venueId: venue.id)) ?? []
+            photoLoad = .loading
+            do {
+                photos = try await photoService.fetchPhotos(venueId: venue.id)
+                photoLoad = .loaded
+            } catch is CancellationError {
+                // View went away; nothing to show.
+            } catch {
+                guard !Task.isCancelled else { return }
+                photoLoad = .failed
+            }
         }
+    }
+
+    /// Photos are optional content: while loading, or when the engine has none,
+    /// the section collapses (no layout jump for the common case — same policy
+    /// as the stat strip). A *failed* fetch is different: it gets a compact,
+    /// intentional row with a Retry, never a silent gap.
+    @ViewBuilder
+    private var photoSection: some View {
+        switch photoLoad {
+        case .loaded where !photos.isEmpty:
+            photoStrip
+        case .failed:
+            photoStripError
+        default:
+            EmptyView()
+        }
+    }
+
+    private var photoStripError: some View {
+        HStack(spacing: 10) {
+            Label("Photos unavailable", systemImage: "photo")
+            Spacer(minLength: 0)
+            Button("Retry") { photoAttempt += 1 }
+                .accessibilityIdentifier("photos-retry")
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("photo-strip-error")
     }
 
     /// Google Places photos, display-only. Thumbnails omit author attribution
@@ -56,20 +98,36 @@ public struct VenueDetailScreen: View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 10) {
                 ForEach(photos) { photo in
+                    let thumbnailFailed = failedThumbnailURLs.contains(photo.url)
                     Button {
                         expandedPhoto = photo
                     } label: {
-                        AsyncImage(url: URL(string: photo.url)) { image in
-                            image.resizable().scaledToFill()
-                        } placeholder: {
-                            Rectangle().fill(.quaternary)
+                        AsyncImage(url: URL(string: photo.url)) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image.resizable().scaledToFill()
+                            case .failure:
+                                // Unloadable image: a glyph, not a forever-grey
+                                // rectangle. Still tappable — the viewer has Retry.
+                                ZStack {
+                                    Rectangle().fill(.quaternary)
+                                    Image(systemName: "photo")
+                                        .font(.title2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .onAppear { failedThumbnailURLs.insert(photo.url) }
+                            default:
+                                Rectangle().fill(.quaternary)
+                            }
                         }
                         .frame(width: 210, height: 140)
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(Text("Photo of \(venue.name)"))
+                    .accessibilityValue(thumbnailFailed ? Text("Photo unavailable") : Text(verbatim: ""))
                     .accessibilityHint(Text("Opens the full-size photo"))
+                    .accessibilityIdentifier(thumbnailFailed ? "photo-thumb-failed" : "photo-thumb")
                 }
             }
         }

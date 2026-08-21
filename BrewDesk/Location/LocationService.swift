@@ -3,15 +3,32 @@ import Observation
 
 @MainActor
 @Observable
-final class LocationService {
-    private let manager = CLLocationManager()
+final class LocationService: NSObject, CLLocationManagerDelegate {
+    private let manager: CLLocationManager
     private(set) var location: CLLocation?
+    /// Mirrors the system authorization so screens can explain a denied state.
+    /// Pinned to `.denied` under `-UITestLocationDenied` (UI tests only).
+    private(set) var authorizationStatus: CLAuthorizationStatus
 
     @ObservationIgnored
     private var updatesTask: Task<Void, Never>?
+    @ObservationIgnored
+    private let forcedDenied: Bool
 
-    init() {
-        if manager.authorizationStatus == .authorizedAlways ||
+    var isDenied: Bool {
+        authorizationStatus == .denied || authorizationStatus == .restricted
+    }
+
+    override init() {
+        let manager = CLLocationManager()
+        let forcedDenied = UITestScenario.isLocationDenied()
+        self.manager = manager
+        self.forcedDenied = forcedDenied
+        self.authorizationStatus = forcedDenied ? .denied : manager.authorizationStatus
+        super.init()
+        manager.delegate = self
+        if !forcedDenied,
+           manager.authorizationStatus == .authorizedAlways ||
             manager.authorizationStatus == .authorizedWhenInUse {
             startUpdates()
         }
@@ -22,10 +39,19 @@ final class LocationService {
     }
 
     func requestAccess() {
+        guard !forcedDenied else { return }
         if manager.authorizationStatus == .notDetermined {
             manager.requestWhenInUseAuthorization()
         }
         startUpdates()
+    }
+
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        let status = manager.authorizationStatus
+        Task { @MainActor [weak self] in
+            guard let self, !self.forcedDenied else { return }
+            self.authorizationStatus = status
+        }
     }
 
     private func startUpdates() {

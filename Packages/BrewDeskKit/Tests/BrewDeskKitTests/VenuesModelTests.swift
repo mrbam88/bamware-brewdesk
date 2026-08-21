@@ -39,6 +39,38 @@ import VenueKit
         #expect(model.phase == .idle)
     }
 
+    @Test func engineFailureLandsInFailedPhase() async {
+        let model = VenuesModel(api: ScenarioVenueService(scenario: .engineDown))
+
+        await model.load(model.request)
+
+        guard case .failed = model.phase else {
+            Issue.record("expected .failed, got \(model.phase)")
+            return
+        }
+        #expect(model.venues.isEmpty)
+    }
+
+    @Test func offlineLandsInTheSameFailedPhase() async {
+        let model = VenuesModel(api: ScenarioVenueService(scenario: .offline))
+
+        await model.load(model.request)
+
+        guard case .failed = model.phase else {
+            Issue.record("expected .failed, got \(model.phase)")
+            return
+        }
+    }
+
+    @Test func emptyAnswerIsLoadedNotFailed() async {
+        let model = VenuesModel(api: ScenarioVenueService(scenario: .emptyVenues))
+
+        await model.load(model.request)
+
+        #expect(model.phase == .loaded)
+        #expect(model.venues.isEmpty)
+    }
+
     @Test func searchChangesOnlyAfterSubmission() {
         let model = VenuesModel(api: ControlledVenueService())
 

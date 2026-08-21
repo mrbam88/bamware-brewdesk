@@ -46,6 +46,7 @@ struct DiscoveryRootView: View {
                     }
                 }
         }
+        .environment(\.locationDenied, locationService.isDenied)
         .task(id: request) {
             if let coordinate = locationService.location?.coordinate,
                model.updateCenterIfNeeded(lat: coordinate.latitude, lng: coordinate.longitude) {

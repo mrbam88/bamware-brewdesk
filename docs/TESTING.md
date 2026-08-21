@@ -33,6 +33,29 @@ xcodebuild -project BrewDesk.xcodeproj -scheme BrewDesk \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' test
 ```
 
+## Degraded states (fixture-driven)
+
+`BrewDeskUITests/DegradedStateTests.swift` pins every screen under engine
+500, offline, empty results, photo failures, slow network, and denied
+location. They run against an in-process fixture service instead of the live
+API, so they pass identically in Debug and Release, online or offline:
+
+```bash
+xcodebuild -project BrewDesk.xcodeproj -scheme BrewDesk \
+  -configuration Release ENABLE_TESTABILITY=YES \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+  -only-testing:BrewDeskUITests/DegradedStateTests test
+```
+
+Launch arguments (UI tests only; inert in normal launches):
+
+- `-UITestScenario <name>` — swaps the venue/photo service for
+  `ScenarioVenueService`. Scenarios: `fixtureOK`, `engineDown`, `offline`,
+  `emptyVenues`, `photosEmpty`, `photosFail`, `slow`.
+- `-UITestLocationDenied` — pins Core Location authorization to `.denied`.
+
+To eyeball a state by hand, add the same arguments to the scheme's Run action.
+
 ## Shared-package workspace
 
 ```bash
@@ -52,7 +75,8 @@ Although BrewDesk is iPhone-only, Apple may review it on iPad:
 xcodebuild -project BrewDesk.xcodeproj -scheme BrewDesk \
   -configuration Release ENABLE_TESTABILITY=YES \
   -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)' \
-  -only-testing:BrewDeskUITests/BrewDeskUITests/testDiscoveryTabsExist test
+  -only-testing:BrewDeskUITests/BrewDeskUITests/testDiscoveryTabsExist \
+  -only-testing:BrewDeskUITests/DegradedStateTests/testListEngineDownShowsRetry test
 ```
 
 ## Unsigned archive

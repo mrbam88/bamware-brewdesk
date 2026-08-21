@@ -587,6 +587,17 @@
         }
       }
     },
+    "Location is off — showing NYC.": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La ubicación está desactivada: mostramos NYC."
+          }
+        }
+      }
+    },
     "Measured facts lead. Estimates stay labeled. Sources and verification dates show how much to trust.": {
       "localizations": {
         "es": {
@@ -750,6 +761,17 @@
         }
       }
     },
+    "Open Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abrir Ajustes"
+          }
+        }
+      }
+    },
     "Open takeout.google.com and select only \"Saved\" (Maps)": {
       "extractionState": "stale",
       "localizations": {
@@ -809,6 +831,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Foto de %@"
+          }
+        }
+      }
+    },
+    "Photo unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foto no disponible"
+          }
+        }
+      }
+    },
+    "Photos unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fotos no disponibles"
           }
         }
       }
@@ -1039,6 +1083,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Algunos o más"
+          }
+        }
+      }
+    },
+    "Some saved cafés couldn't load.": {
+      "extractionState": "manual",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Algunos cafés guardados no se pudieron cargar."
           }
         }
       }

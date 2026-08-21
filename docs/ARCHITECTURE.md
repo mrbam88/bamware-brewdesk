@@ -113,6 +113,15 @@ models do not need to become actors merely because they call async functions.
 The Debug plist permits local HTTP only for development. Production does not
 accept a runtime environment switch that could leak into a store archive.
 
+`VenueAPI` uses a 15-second request timeout so a stalled engine becomes an
+explicit error state with Retry instead of a long spinner.
+
+UI tests may pass `-UITestScenario <name>` / `-UITestLocationDenied`
+(`UITestScenario` in the app target) to swap in `ScenarioVenueService`
+fixtures. The seam compiles in Release because the release gate runs UI tests
+in Release; it is a single launch-argument lookup with no UI entry point and
+no network, same precedent as `-UITestSkipGates`.
+
 ## Localization and accessibility
 
 User-facing copy lives in Xcode string catalogs with English and Spanish.
