@@ -26,6 +26,10 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         /// every later call succeeds with fixtures. Pins "reconnect recovers
         /// without relaunch" (brewdesk#28) — the retry path, not the network.
         case offlineThenRecovers
+        /// 2,180 deterministic venues on a ~290 m grid around Union Square —
+        /// matches the live dataset's venue count. The perf harness for
+        /// brewdesk#54's map frame-timing measurements; health OK, photos `[]`.
+        case manyVenues
     }
 
     public let scenario: Scenario
@@ -76,6 +80,32 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         )
     ]
 
+    /// Deterministic venue-count-scale fixture (brewdesk#54): 2,180 venues on
+    /// a 47-column grid (~290 m spacing, ~0.12° square) centred on Union
+    /// Square, mirroring the live engine's dataset size. Scores cycle 0–100 so
+    /// every tier renders. Lazily materialised — only the `manyVenues`
+    /// scenario pays for it.
+    public static let perfVenues: [Venue] = {
+        let columns = 47
+        let count = 2_180
+        let step = 0.0026
+        let originLat = 40.7359 - Double(columns - 1) / 2 * step
+        let originLng = -73.9911 - Double(columns - 1) / 2 * step
+        return (0..<count).map { index in
+            fixtureVenue(
+                id: "perf-\(index)",
+                name: "Perf Cafe \(index)",
+                lat: originLat + Double(index / columns) * step,
+                lng: originLng + Double(index % columns) * step,
+                neighborhood: "Perf Grid",
+                hoursRaw: nil,
+                workScore: (index * 37) % 101,
+                laptopPolicy: "unrestricted",
+                venueType: "cafe"
+            )
+        }
+    }()
+
     public static let fixtureHealth = HealthResponse(
         ok: true,
         venueCount: 3,
@@ -109,6 +139,8 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         case .offlineThenRecovers:
             if attempts.next() == 1 { throw Self.offlineError }
             return Self.fixtureVenues
+        case .manyVenues:
+            return Self.perfVenues
         case .fixtureOK, .photosEmpty, .photosFail:
             return Self.fixtureVenues
         }
@@ -118,6 +150,13 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         switch scenario {
         case .engineDown: throw Self.serverError
         case .offline: throw Self.offlineError
+        case .manyVenues:
+            return HealthResponse(
+                ok: true,
+                venueCount: Self.perfVenues.count,
+                seededAt: "2026-08-01T00:00:00Z",
+                observationCount: 0
+            )
         default: return Self.fixtureHealth
         }
     }
@@ -128,6 +167,11 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         switch scenario {
         case .engineDown: throw Self.serverError
         case .offline: throw Self.offlineError
+        case .manyVenues:
+            guard let venue = Self.perfVenues.first(where: { $0.id == id }) else {
+                throw VenueAPIError.http(statusCode: 404)
+            }
+            return venue
         default:
             guard let venue = Self.fixtureVenues.first(where: { $0.id == id }) else {
                 throw VenueAPIError.http(statusCode: 404)
@@ -142,7 +186,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         switch scenario {
         case .engineDown, .photosFail: throw Self.serverError
         case .offline: throw Self.offlineError
-        case .emptyVenues, .photosEmpty: return []
+        case .emptyVenues, .photosEmpty, .manyVenues: return []
         case .fixtureOK, .slow, .offlineThenRecovers: return Self.fixturePhotos
         }
     }

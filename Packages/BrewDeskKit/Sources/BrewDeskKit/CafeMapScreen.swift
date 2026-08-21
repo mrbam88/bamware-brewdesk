@@ -55,6 +55,13 @@ public struct CafeMapScreen: View {
         .safeAreaInset(edge: .top) { searchHeader }
         .safeAreaInset(edge: .bottom) { discoveryShelf }
         .overlay { loadStatus }
+        // Frame-timing evidence seam (brewdesk#54); inert without the flag.
+        .overlay(alignment: .bottomTrailing) {
+            if MapFrameStatsHUD.isEnabled {
+                MapFrameStatsHUD(annotationCount: model.venues.prefix(40).count)
+                    .padding(.trailing, 8)
+            }
+        }
         .sheet(item: $selected) { venue in
             NavigationStack {
                 VenueDetailScreen(venue: venue, savedVenues: savedVenues)
