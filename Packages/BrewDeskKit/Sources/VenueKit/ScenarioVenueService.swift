@@ -5,7 +5,7 @@ import Foundation
 /// slow network). It is inert unless constructed; the app only constructs it
 /// when launched with `-UITestScenario <name>` (see `UITestScenario` in the app
 /// target). No network, no persistence, no UI entry point.
-public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhotoServing, Sendable {
+public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhotoServing, VenueObservationSubmitting, Sendable {
     public enum Scenario: String, CaseIterable, Sendable {
         /// Three fixture venues, health OK, one photo per venue whose URL is
         /// deliberately unloadable (pins thumbnail / viewer failure states).
@@ -30,6 +30,10 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
 
     public let scenario: Scenario
     private let attempts = AttemptCounter()
+    /// Independent of `attempts`: `offlineThenRecovers` must fail the first
+    /// observation submit even after the venue fetch consumed its own first
+    /// failure (brewdesk#47 — the form's retry path).
+    private let observationAttempts = AttemptCounter()
 
     public init(scenario: Scenario) {
         self.scenario = scenario
@@ -145,6 +149,38 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         case .emptyVenues, .photosEmpty: return []
         case .fixtureOK, .slow, .offlineThenRecovers: return Self.fixturePhotos
         }
+    }
+
+    // MARK: - VenueObservationSubmitting (brewdesk#47)
+
+    /// Same degradation contract as the fetch paths, with one addition:
+    /// `offlineThenRecovers` fails the FIRST submit and succeeds afterwards,
+    /// pinning the form's error → Retry → thank-you path deterministically.
+    @discardableResult
+    public func submitObservation(
+        venueId: String,
+        submittedBy: String,
+        answers: ObservationAnswers
+    ) async throws -> Venue {
+        switch scenario {
+        case .engineDown: throw Self.serverError
+        case .offline: throw Self.offlineError
+        case .slow:
+            try await Task.sleep(for: .seconds(6))
+            return Self.observedVenue(id: venueId)
+        case .offlineThenRecovers:
+            if observationAttempts.next() == 1 { throw Self.offlineError }
+            return Self.observedVenue(id: venueId)
+        case .fixtureOK, .emptyVenues, .photosEmpty, .photosFail:
+            return Self.observedVenue(id: venueId)
+        }
+    }
+
+    /// The "rescored venue" a successful submit returns. Lenient on unknown
+    /// ids (snapshot-seeded launches submit against non-fixture venues): the
+    /// form ignores the payload, so the first fixture stands in.
+    private static func observedVenue(id: String) -> Venue {
+        fixtureVenues.first { $0.id == id } ?? fixtureVenues[0]
     }
 
     // MARK: - Helpers

@@ -35,6 +35,9 @@ public struct VenueDetailScreen: View {
                 photoSection
                 workability
                 businessInfo
+                // Structured observation entry (brewdesk#47) — the section
+                // owns its sheet and service resolution; ships in Release.
+                ObservationFormEntrySection(venue: venue)
             }
             .padding(.horizontal, 18)
             .padding(.top, 14)

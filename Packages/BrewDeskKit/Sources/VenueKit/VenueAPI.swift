@@ -55,7 +55,7 @@ public protocol VenueMeasuring: Sendable {
 /// Async client for the bamware-venue-engine master API.
 /// The iOS Simulator reaches `http://localhost:3000` on the host Mac directly.
 /// The app target permits local HTTP networking in its Debug configuration.
-public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenuePhotoServing, Sendable {
+public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenuePhotoServing, VenueObservationSubmitting, Sendable {
     public static var defaultBaseURL: URL {
         #if DEBUG
         URL(string: "http://localhost:3000")!
@@ -176,6 +176,34 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
         }
         let mbps = (totalBytes * 8 / 1_000_000) / max(totalSeconds, 0.001)
         return min((mbps * 10).rounded() / 10, 500)
+    }
+
+    /// Structured community observation (brewdesk#47): the four enum answers
+    /// become community claims (source `user_report`) and the venue is
+    /// rescored. Contract: bamware-venue-engine PR #26 —
+    /// `POST /v1/venues/:id/observations`; 401 = missing/empty submitter,
+    /// 400 = anything outside the enum vocabulary (both surface as `.http`).
+    @discardableResult
+    public func submitObservation(
+        venueId: String,
+        submittedBy: String,
+        answers: ObservationAnswers
+    ) async throws -> Venue {
+        var req = URLRequest(
+            url: baseURL.appendingPathComponent("/v1/venues/\(venueId)/observations")
+        )
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(
+            VenueObservationRequest(submittedBy: submittedBy, answers: answers)
+        )
+        let (data, resp) = try await session.data(for: req)
+        try Self.check(resp)
+        do {
+            return try JSONDecoder().decode(ObservationResponse.self, from: data).venue
+        } catch is DecodingError {
+            throw VenueAPIError.decoding
+        }
     }
 
     private func get<T: Decodable>(_ type: T.Type, from url: URL) async throws -> T {
