@@ -107,6 +107,12 @@ final class BrewDeskUITests: XCTestCase {
         let dockFrame = app.otherElements["action-dock"].exists
             ? app.otherElements["action-dock"].frame.insetBy(dx: 0, dy: -20)
             : CGRect.null
+        // The translucent tab bar washes scrolled-under content the same way
+        // the dock does (first seen on 17e, bd#50; hit 17 Pro once bd#47's
+        // entry card made the page taller). Same occlusion class, same rule.
+        let tabBarFrame = app.tabBars.firstMatch.exists
+            ? app.tabBars.firstMatch.frame.insetBy(dx: 0, dy: -20)
+            : CGRect.null
         try app.performAccessibilityAudit(for: [
             .contrast,
             .elementDetection,
@@ -115,8 +121,10 @@ final class BrewDeskUITests: XCTestCase {
             .textClipped,
             .trait,
         ]) { issue in
-            guard let element = issue.element, !dockFrame.isNull else { return false }
-            return element.frame.intersects(dockFrame)
+            guard let element = issue.element else { return false }
+            let frame = element.frame
+            return (!dockFrame.isNull && frame.intersects(dockFrame))
+                || (!tabBarFrame.isNull && frame.intersects(tabBarFrame))
         }
     }
 

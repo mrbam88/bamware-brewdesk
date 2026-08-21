@@ -22,6 +22,7 @@ can send:
 | Neighborhood chips | `GET /v1/neighborhoods` | engine | none |
 | Import from Takeout | `GET /v1/venues?sort&limit=200&radius_m` | engine | none |
 | *(not reachable in v1 UI)* speed test | `POST /v1/observations` `{venueId,kind,mbpsDown}`; probe `GET /v1/venues?limit&_speed_test_nonce` | engine | none |
+| Rate this visit (observation form, brewdesk#47) | `POST /v1/venues/{id}/observations` `{submittedBy, answers:{laptopFriendlyToday,seatsAvailable,outletsWorking,noise}}` — enum values only, no free text | engine | none |
 
 The complete query vocabulary `VenueQuery` can emit is
 `sort limit radius_m lat lng wifi_min outlets_min minSeating venueType laptops
@@ -39,6 +40,19 @@ set changes.
 So a user who denies location — and every reviewer outside NYC — never has a
 device coordinate leave the phone. This is asserted, not assumed
 (`VenuesModelPrivacyTests`, `PrivacyClaimTests.fallbackQueryTargetsUnionSquareNotTheDevice`).
+
+### Identifier: per-install submitter id (brewdesk#47) — ⚠ re-review before next store submission
+
+The observation form sends `submittedBy`: a random UUID minted on device on
+first submit and stored in UserDefaults (`brewdesk.observation.submitter-id`,
+covered by the already-declared CA92.1 UserDefaults reason). It is not an OS
+identifier (not IDFA/IDFV), carries no personal data, and leaves the device
+only inside an observation submit — but it IS a stable per-install identifier
+reaching the engine. The **"Data Not Collected"** App Privacy answer must be
+re-assessed before the next store submission (likely "User ID — not linked to
+identity, App Functionality"); that call is a store-submission gate (Bilal).
+brewdesk#48 (real accounts) replaces this UUID and owns the final privacy
+position.
 
 ### Out of band (not URLSession, not interceptable, not ours)
 
@@ -74,6 +88,7 @@ device coordinate leave the phone. This is asserted, not assumed
 | --- | --- | --- | --- |
 | `PrivacyRequestAuditTests` | `VenueKitTests` | package tests (CI on every PR) | per-flow host + param audit via `RecordingURLProtocol` injected into `VenueAPI(session:)`; denied → anchor only; granted → engine only; photo URLs coordinate-free; wire vocabulary closed |
 | `VenuesModelPrivacyTests` | `BrewDeskKitTests` | package tests (CI) | anchor when no location; out-of-coverage device coordinate never sent; in-coverage coordinate is the only other value |
+| `ObservationSubmissionTests` | `VenueKitTests` | package tests (CI) | observation submit reaches only the engine; body is exactly `{submittedBy, answers}` with enum-string values (no free text, no coordinates under any plausible key) |
 | `PrivacyClaimTests` | `BrewDeskTests` (host app) | Release app unit tests (CI step "Release app unit tests (privacy audit)") | shipped `PrivacyInfo.xcprivacy` = no tracking / no collected data / UserDefaults CA92.1 only; When-In-Use location only; Release endpoint is HTTPS production with no ATS exception; fallback query = Union Square |
 
 Re-run locally:

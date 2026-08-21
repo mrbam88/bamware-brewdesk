@@ -136,6 +136,26 @@ enum EngineFixtures {
             return (200, json(["neighborhoods": [["name": "Williamsburg", "borough": "Brooklyn", "count": 12]]]))
         case ("POST", "/v1/observations"):
             return (201, json(["venue": firstVenueJSON()]))
+        case ("POST", _) where path.hasPrefix("/v1/venues/") && path.hasSuffix("/observations"):
+            // Structured community observation (brewdesk#47). Mirrors the
+            // engine contract (venue-engine PR #26): 401 whenever
+            // submittedBy is missing, empty, or whitespace; otherwise 201
+            // with the stored record + rescored venue.
+            guard let body = request.body,
+                  let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+                  let submitter = object["submittedBy"] as? String,
+                  !submitter.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else {
+                return (401, json(["error": "missing_submitter"]))
+            }
+            return (201, json([
+                "observation": [
+                    "kind": "community",
+                    "source": "community",
+                    "submittedBy": submitter,
+                ],
+                "venue": firstVenueJSON(),
+            ]))
         case ("GET", _) where path.hasPrefix("/v1/venues/") && path.hasSuffix("/photos"):
             return (200, json(["photos": [[
                 "url": googlePhotoURL,
