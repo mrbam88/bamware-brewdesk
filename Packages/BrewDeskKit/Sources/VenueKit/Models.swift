@@ -200,21 +200,47 @@ public struct VenuePhoto: Codable, Hashable, Identifiable, Sendable {
     public let attributionUri: String?
     public let widthPx: Int?
     public let heightPx: Int?
+    /// Contributor display name for an *approved community photo* (brewdesk#49).
+    ///
+    /// Display-name rules:
+    /// - The engine sends it only on community photos, already moderated and
+    ///   sanitized server-side; the client renders it verbatim ("Photo by
+    ///   <name>") after trimming — see `communityByline`.
+    /// - Google Places photos never carry it; they keep `attribution` /
+    ///   `attributionUri` and the Google attribution UI unchanged.
+    /// - The engine never sends both; if a malformed payload does, the
+    ///   community byline wins (our own attribution UI replaces Google's for
+    ///   community shots — issue #49).
+    /// - Optional-first: absent on pre-#49 payloads, decodes as nil, UI falls
+    ///   back to the Google attribution path.
+    public let contributorName: String?
 
     public var id: String { url }
+
+    /// The byline text for a community photo, or nil for a Google photo.
+    /// Whitespace-only names count as absent — a blank "Photo by " row is
+    /// worse than no byline.
+    public var communityByline: String? {
+        guard let trimmed = contributorName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else { return nil }
+        return trimmed
+    }
 
     public init(
         url: String,
         attribution: String? = nil,
         attributionUri: String? = nil,
         widthPx: Int? = nil,
-        heightPx: Int? = nil
+        heightPx: Int? = nil,
+        contributorName: String? = nil
     ) {
         self.url = url
         self.attribution = attribution
         self.attributionUri = attributionUri
         self.widthPx = widthPx
         self.heightPx = heightPx
+        self.contributorName = contributorName
     }
 }
 

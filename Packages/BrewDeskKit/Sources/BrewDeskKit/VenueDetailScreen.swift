@@ -109,9 +109,11 @@ public struct VenueDetailScreen: View {
         .accessibilityIdentifier("photo-strip-error")
     }
 
-    /// Google Places photos, display-only. Thumbnails omit author attribution
+    /// Display-only venue photos. Google thumbnails omit author attribution
     /// (Places policy allows this for space-limited galleries) BECAUSE the
     /// tap-to-expand viewer shows the full attribution — keep both in sync.
+    /// Community photos (brewdesk#49) instead carry their contributor byline
+    /// right on the thumbnail — our own attribution UI, mirrored fullscreen.
     private var photoStrip: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 10) {
@@ -139,10 +141,21 @@ public struct VenueDetailScreen: View {
                             }
                         }
                         .frame(width: 210, height: 140)
+                        .overlay(alignment: .bottomLeading) {
+                            if let byline = photo.communityByline {
+                                photoBylineBadge(byline)
+                            }
+                        }
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(Text("Photo of \(venue.name)"))
+                    .accessibilityLabel(
+                        // Reuses the two existing localized keys ("Photo of %@",
+                        // "Photo by %@") — no new catalog entries.
+                        photo.communityByline.map {
+                            Text("Photo of \(venue.name)") + Text(verbatim: ", ") + Text("Photo by \($0)")
+                        } ?? Text("Photo of \(venue.name)")
+                    )
                     .accessibilityValue(thumbnailFailed ? Text("Photo unavailable") : Text(verbatim: ""))
                     .accessibilityHint(Text("Opens the full-size photo"))
                     .accessibilityIdentifier(thumbnailFailed ? "photo-thumb-failed" : "photo-thumb")
@@ -154,6 +167,21 @@ public struct VenueDetailScreen: View {
         .sheet(item: $expandedPhoto) { photo in
             PhotoViewer(photo: photo, venueName: venue.name)
         }
+    }
+
+    /// Contributor byline chip on a community thumbnail (brewdesk#49): white
+    /// caption on a dark scrim so contrast holds over any photo content.
+    /// VoiceOver reads the byline through the button's label — the visual
+    /// chip itself stays out of the accessibility tree (no double read).
+    private func photoBylineBadge(_ byline: String) -> some View {
+        Text("Photo by \(byline)")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(Color.black.opacity(0.55)))
+            .padding(8)
+            .accessibilityHidden(true)
     }
 
     private var hero: some View {

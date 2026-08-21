@@ -40,7 +40,22 @@ struct PhotoViewer: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color.black)
 
-                if photo.attribution != nil || photo.attributionUri != nil {
+                // Community photos (brewdesk#49): our own attribution UI —
+                // just the contributor byline, no Google link. Takes
+                // precedence over the Google block (see VenuePhoto docs).
+                if let byline = photo.communityByline {
+                    HStack(spacing: 6) {
+                        Image(systemName: "camera")
+                            .font(.caption)
+                        Text("Photo by \(byline)")
+                            .font(.caption)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("photo-community-byline")
+                } else if photo.attribution != nil || photo.attributionUri != nil {
                     HStack(spacing: 6) {
                         Image(systemName: "camera")
                             .font(.caption)

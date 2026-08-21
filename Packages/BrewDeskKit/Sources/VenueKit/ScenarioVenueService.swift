@@ -30,6 +30,10 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         /// matches the live dataset's venue count. The perf harness for
         /// brewdesk#54's map frame-timing measurements; health OK, photos `[]`.
         case manyVenues
+        /// Venues OK; photos are one Google-attributed photo plus one approved
+        /// community photo carrying `contributorName` (brewdesk#49) — pins the
+        /// byline in the strip + viewer next to an unchanged Google photo.
+        case communityPhotos
     }
 
     public let scenario: Scenario
@@ -131,6 +135,21 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         )
     ]
 
+    /// `communityPhotos` payload (brewdesk#49): index 0 keeps the Google
+    /// attribution contract untouched; index 1 is an approved community photo
+    /// — `contributorName`, no Google attribution. Same closed-port URLs as
+    /// `fixturePhotos` (deterministic load failure; the byline renders
+    /// regardless of image bytes).
+    public static let fixtureCommunityPhotos: [VenuePhoto] = [
+        fixturePhotos[0],
+        VenuePhoto(
+            url: "http://127.0.0.1:9/fixture-photo-community.jpg",
+            widthPx: 1200,
+            heightPx: 900,
+            contributorName: "Ada L."
+        )
+    ]
+
     // MARK: - VenueListing
 
     public func fetchVenues(_ query: VenueQuery) async throws -> [Venue] {
@@ -146,7 +165,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             return Self.fixtureVenues
         case .manyVenues:
             return Self.perfVenues
-        case .fixtureOK, .photosEmpty, .photosFail:
+        case .fixtureOK, .photosEmpty, .photosFail, .communityPhotos:
             return Self.fixtureVenues
         }
     }
@@ -193,6 +212,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         case .offline: throw Self.offlineError
         case .emptyVenues, .photosEmpty, .manyVenues: return []
         case .fixtureOK, .slow, .offlineThenRecovers: return Self.fixturePhotos
+        case .communityPhotos: return Self.fixtureCommunityPhotos
         }
     }
 
@@ -216,7 +236,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         case .offlineThenRecovers:
             if observationAttempts.next() == 1 { throw Self.offlineError }
             return Self.observedVenue(id: venueId)
-        case .fixtureOK, .emptyVenues, .photosEmpty, .photosFail, .manyVenues:
+        case .fixtureOK, .emptyVenues, .photosEmpty, .photosFail, .manyVenues, .communityPhotos:
             return Self.observedVenue(id: venueId)
         }
     }

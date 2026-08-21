@@ -20,6 +20,32 @@ import Testing
         #expect(photos[0].attribution != nil)
     }
 
+    /// brewdesk#49 contract: index 0 is the untouched Google-attributed
+    /// fixture photo, index 1 the community photo whose byline the UI pins.
+    @Test func communityPhotosServesGoogleAndCommunityFixtures() async throws {
+        let service = ScenarioVenueService(scenario: .communityPhotos)
+
+        // Venue + health paths behave like fixtureOK.
+        let venues = try await service.fetchVenues(query)
+        #expect(venues.map(\.id) == ["fixture-roasters", "fixture-library", "fixture-corner"])
+        #expect(try await service.fetchHealth()?.ok == true)
+        #expect(try await service.fetchVenue(id: "fixture-roasters").name == "Fixture Roasters")
+
+        let photos = try await service.fetchPhotos(venueId: "fixture-roasters")
+        #expect(photos.count == 2)
+
+        let google = photos[0]
+        #expect(google.attribution == "Fixture Photographer")
+        #expect(google.attributionUri != nil)
+        #expect(google.communityByline == nil)
+
+        let community = photos[1]
+        #expect(community.communityByline == "Ada L.")
+        #expect(community.attribution == nil)
+        #expect(community.attributionUri == nil)
+        #expect(community.url.hasPrefix("http://127.0.0.1:9/"))
+    }
+
     @Test func fixturesCarryHumanProvenanceAndRoundTrip() throws {
         for venue in ScenarioVenueService.fixtureVenues {
             #expect(venue.attributes.wifi.source == "curated")
