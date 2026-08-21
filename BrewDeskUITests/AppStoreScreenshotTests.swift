@@ -1,53 +1,133 @@
 import XCTest
 
+/// Marketing capture: replays the store-listing flow and attaches the five
+/// raw screens. Locale comes from the `SCREENSHOT_LOCALE` environment
+/// variable (`en` default, `es` supported) — pass it from xcodebuild as
+/// `TEST_RUNNER_SCREENSHOT_LOCALE=es`. Launches with `-UITestNoPhotos` so the
+/// detail screen collapses its Google Places photo strip and leads with
+/// Workability instead (brewdesk#30: no Google photos in marketing shots).
 final class AppStoreScreenshotTests: XCTestCase {
+    /// Every user-visible string the flow touches, per capture locale. The
+    /// values mirror `BrewDesk/Localizable.xcstrings`; if a translation
+    /// changes there, the capture fails loudly here instead of shipping a
+    /// stale screenshot.
+    private struct CaptureLocale {
+        let appleLanguage: String
+        let appleLocale: String
+        let continueButton: String
+        let honestHeadline: String
+        let findMyWorkCafe: String
+        let startWhereYouAre: String
+        let useUnionSquare: String
+        let hundredWorkCafes: String
+        let nearbyTab: String
+        let exploreTab: String
+        let filters: String
+        let laptopFriendlyOnly: String
+        let searchField: String
+        let oneWorkCafe: String
+        let detailsNav: String
+        let workability: String
+
+        static let en = CaptureLocale(
+            appleLanguage: "(en)",
+            appleLocale: "en_US",
+            continueButton: "Continue",
+            honestHeadline: "Every score shows its work.",
+            findMyWorkCafe: "Find my work cafe",
+            startWhereYouAre: "Start where you are.",
+            useUnionSquare: "Use Union Square instead",
+            hundredWorkCafes: "100 work cafés",
+            nearbyTab: "Nearby",
+            exploreTab: "Explore",
+            filters: "Filters",
+            laptopFriendlyOnly: "Laptop-friendly only",
+            searchField: "Search cafes",
+            oneWorkCafe: "1 work café",
+            detailsNav: "Details",
+            workability: "Workability"
+        )
+
+        static let es = CaptureLocale(
+            appleLanguage: "(es)",
+            appleLocale: "es_ES",
+            continueButton: "Continuar",
+            honestHeadline: "Cada puntuación muestra su evidencia.",
+            findMyWorkCafe: "Encontrar mi café para trabajar",
+            startWhereYouAre: "Empieza donde estás.",
+            useUnionSquare: "Usar Union Square",
+            hundredWorkCafes: "100 cafés para trabajar",
+            nearbyTab: "Cercanos",
+            exploreTab: "Explorar",
+            filters: "Filtros",
+            laptopFriendlyOnly: "Solo aptos para portátiles",
+            searchField: "Buscar cafés",
+            oneWorkCafe: "1 café para trabajar",
+            detailsNav: "Detalles",
+            workability: "Aptitud para trabajar"
+        )
+
+        static func current() -> CaptureLocale {
+            switch ProcessInfo.processInfo.environment["SCREENSHOT_LOCALE"] {
+            case "es": .es
+            default: .en
+            }
+        }
+    }
+
     @MainActor
     func testCaptureAppStoreScreens() throws {
+        let locale = CaptureLocale.current()
         let app = XCUIApplication()
         app.launchArguments += [
             "-brewdesk.onboarding.complete", "NO",
             "-brewdesk.location-intro.complete", "NO",
-            "-AppleLanguages", "(en)",
-            "-AppleLocale", "en_US",
+            "-UITestNoPhotos",
+            "-AppleLanguages", locale.appleLanguage,
+            "-AppleLocale", locale.appleLocale,
         ]
         app.launch()
 
-        XCTAssertTrue(app.buttons["Continue"].waitForExistence(timeout: 8))
-        app.buttons["Continue"].tap()
-        app.buttons["Continue"].tap()
-        XCTAssertTrue(app.staticTexts["Every score shows its work."].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons[locale.continueButton].waitForExistence(timeout: 8))
+        app.buttons[locale.continueButton].tap()
+        app.buttons[locale.continueButton].tap()
+        XCTAssertTrue(app.staticTexts[locale.honestHeadline].waitForExistence(timeout: 2))
         capture("04-honest-by-design")
 
-        app.buttons["Find my work cafe"].tap()
-        XCTAssertTrue(app.staticTexts["Start where you are."].waitForExistence(timeout: 2))
+        app.buttons[locale.findMyWorkCafe].tap()
+        XCTAssertTrue(app.staticTexts[locale.startWhereYouAre].waitForExistence(timeout: 2))
         capture("05-location-is-optional")
 
-        app.buttons["Use Union Square instead"].tap()
-        XCTAssertTrue(app.staticTexts["100 work cafés"].waitForExistence(timeout: 15))
+        app.buttons[locale.useUnionSquare].tap()
+        XCTAssertTrue(app.staticTexts[locale.hundredWorkCafes].waitForExistence(timeout: 15))
         XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: 5))
         capture("03-work-fit-map")
 
-        app.tabBars.buttons["Nearby"].tap()
-        XCTAssertTrue(app.navigationBars["Nearby"].waitForExistence(timeout: 5))
+        app.tabBars.buttons[locale.nearbyTab].tap()
+        XCTAssertTrue(app.navigationBars[locale.nearbyTab].waitForExistence(timeout: 5))
         XCTAssertTrue(app.venueRows.firstMatch.waitForExistence(timeout: 5))
-        app.buttons["Filters"].tap()
-        XCTAssertTrue(app.descendants(matching: .any)["Laptop-friendly only"].waitForExistence(timeout: 2))
+        app.buttons[locale.filters].tap()
+        XCTAssertTrue(app.descendants(matching: .any)[locale.laptopFriendlyOnly].waitForExistence(timeout: 2))
         capture("02-work-filters")
-        app.descendants(matching: .any)["Laptop-friendly only"].tap()
+        app.descendants(matching: .any)[locale.laptopFriendlyOnly].tap()
 
-        app.tabBars.buttons["Explore"].tap()
+        app.tabBars.buttons[locale.exploreTab].tap()
 
-        let search = app.textFields["Search cafes"]
+        let search = app.textFields[locale.searchField]
         search.tap()
-        search.typeText("Housing Works")
-        app.keyboards.buttons["Search"].tap()
-        XCTAssertTrue(app.staticTexts["1 work café"].waitForExistence(timeout: 15))
+        // "\n" presses the keyboard's return/search key without depending on
+        // its localized label.
+        search.typeText("Housing Works\n")
+        XCTAssertTrue(app.staticTexts[locale.oneWorkCafe].waitForExistence(timeout: 15))
 
-        app.tabBars.buttons["Nearby"].tap()
+        app.tabBars.buttons[locale.nearbyTab].tap()
         XCTAssertTrue(app.staticTexts["Housing Works Bookstore Cafe"].waitForExistence(timeout: 5))
         app.staticTexts["Housing Works Bookstore Cafe"].tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Workability"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.navigationBars[locale.detailsNav].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts[locale.workability].waitForExistence(timeout: 2))
+        // Ticket rule: no Google Places photos prominent in marketing shots.
+        // -UITestNoPhotos nils the photo service, so no thumbnail may exist.
+        XCTAssertFalse(app.buttons.matching(identifier: "photo-thumb").firstMatch.exists)
         capture("01-claim-provenance")
     }
 

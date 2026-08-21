@@ -565,6 +565,16 @@
         }
       }
     },
+    "Laptop-friendly only": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Solo aptos para portátiles"
+          }
+        }
+      }
+    },
     "Lively": {
       "extractionState": "stale",
       "localizations": {
