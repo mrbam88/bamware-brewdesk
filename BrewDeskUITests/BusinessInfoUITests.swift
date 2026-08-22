@@ -77,7 +77,7 @@ final class BusinessInfoUITests: XCTestCase {
 
         XCTAssertTrue(app.buttons["business-website"].exists, "website row missing")
         XCTAssertTrue(app.buttons["business-call"].exists, "call row missing")
-        XCTAssertTrue(app.buttons["business-email"].exists, "email row missing (bd#56)")
+        XCTAssertFalse(app.buttons["business-email"].exists, "email row removed (bd#80)")
     }
 
     /// bd#56: the en-US simulator must render parsed hours on a 12-hour
