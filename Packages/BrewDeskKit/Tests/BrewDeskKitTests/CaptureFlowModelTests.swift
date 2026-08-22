@@ -4,6 +4,7 @@
 #if DEBUG
 import Testing
 import UIKit
+import VenueKit
 
 @testable import BrewDeskKit
 
@@ -117,6 +118,53 @@ import UIKit
         #expect(model.stage == .submitted)
         #expect(!model.submissionFailed)
         #expect(service.submissions.count == 1)
+    }
+
+    /// brewdesk#71: the rail's own error copy reaches the confirm screen;
+    /// anonymous failures keep the generic connection fallback.
+    @Test func localizedFailureSurfacesItsOwnMessageAndSuccessClearsIt() async {
+        final class SignInRequiredOnceService: CaptureSubmissionService {
+            var failuresRemaining = 1
+            func submit(_ submission: CaptureSubmission) async throws {
+                if failuresRemaining > 0 {
+                    failuresRemaining -= 1
+                    throw VenueKit.UploadRailError.signInRequired
+                }
+            }
+        }
+        let model = CaptureFlowModel(venueID: "venue-1", service: SignInRequiredOnceService())
+        model.start()
+        for _ in 0..<3 {
+            model.setPhoto(photo())
+            model.advance()
+        }
+
+        await model.submit()
+        #expect(model.submissionFailed)
+        #expect(
+            model.submissionErrorMessage
+                == VenueKit.UploadRailError.signInRequired.errorDescription,
+            "A LocalizedError's story reaches the UI verbatim"
+        )
+
+        await model.submit()
+        #expect(model.stage == .submitted)
+        #expect(model.submissionErrorMessage == nil, "Success clears the stale message")
+    }
+
+    @Test func anonymousFailureLeavesMessageNilForTheGenericFallback() async {
+        service.failuresRemaining = 1
+        model.start()
+        for _ in 0..<3 {
+            model.setPhoto(photo())
+            model.advance()
+        }
+        await model.submit()
+        #expect(model.submissionFailed)
+        #expect(
+            model.submissionErrorMessage == nil,
+            "Mock's plain error has no errorDescription — confirm shows the generic copy"
+        )
     }
 
     @Test func discardGuardTracksPhotos() {

@@ -27,6 +27,10 @@ public final class CaptureFlowModel {
     public private(set) var results: [CaptureShotKind: ShotResult] = [:]
     public private(set) var isSubmitting = false
     public private(set) var submissionFailed = false
+    /// The failure's own story when it has one (`LocalizedError` — e.g. the
+    /// rail's sign-in-required or session-expired copy, brewdesk#71); nil
+    /// falls back to the confirm screen's generic connection copy.
+    public private(set) var submissionErrorMessage: String?
     /// Set while a single retake from Confirm is in flight: finishing the
     /// shot (photo, skip, or Back) returns straight to Confirm, not onward.
     private var returningToConfirm = false
@@ -140,12 +144,14 @@ public final class CaptureFlowModel {
         guard stage == .confirm, !isSubmitting else { return }
         isSubmitting = true
         submissionFailed = false
+        submissionErrorMessage = nil
         defer { isSubmitting = false }
         do {
             try await service.submit(payload())
             stage = .submitted
         } catch {
             submissionFailed = true
+            submissionErrorMessage = (error as? any LocalizedError)?.errorDescription
         }
     }
 
