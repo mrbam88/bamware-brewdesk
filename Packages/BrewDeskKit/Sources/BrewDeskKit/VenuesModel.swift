@@ -25,11 +25,11 @@ public final class VenuesModel {
     /// `venues` from this list locally (brewdesk#77).
     private var loadedVenues: [Venue] = []
 
-    /// What the UI shows: the loaded list with the active filters applied.
-    /// Inclusive semantics live in `VenueFilter` — all-selected == no-filter,
-    /// and unknown attribute values never fail a constraint.
+    /// What the UI shows: the loaded list with the active filters and search
+    /// applied. Inclusive filter semantics live in `VenueFilter` (brewdesk#77);
+    /// debounced type-to-search matching lives in `VenueSearch` (brewdesk#78).
     public var venues: [Venue] {
-        filter.apply(to: loadedVenues)
+        VenueSearch.apply(activeSearchText, to: filter.apply(to: loadedVenues))
     }
 
     private var filter: VenueFilter {
@@ -68,8 +68,16 @@ public final class VenuesModel {
     public var venueTypesAvailable: Bool {
         venueType != nil || Set(loadedVenues.compactMap(\.venueType)).count > 1
     }
-    public var searchQuery = ""
-    private var submittedSearchQuery: String?
+    /// Bound to the search fields. Typing filters the loaded list ~200ms
+    /// after the last keystroke (brewdesk#78) — no submit, no network.
+    public var searchQuery = "" {
+        didSet { scheduleSearchApplication() }
+    }
+    /// The text `venues` is currently narrowed by; trails `searchQuery` by
+    /// the debounce, except submit/clear which apply immediately.
+    private var activeSearchText = ""
+    @ObservationIgnored
+    private var searchDebounceTask: Task<Void, Never>?
     private var requestRevision = 0
 
     /// Deterministic fallback until Core Location supplies a coordinate.
@@ -104,14 +112,14 @@ public final class VenuesModel {
 
     public var request: VenueLoadRequest {
         VenueLoadRequest(
-            // Category filters are deliberately absent: the engine's wire
-            // predicate fails unknown values (store.ts), which emptied the
-            // list — filtering is local now (brewdesk#77).
+            // Category filters and search are deliberately absent: the
+            // engine's wire predicate fails unknown values (store.ts), which
+            // emptied the list — filtering (brewdesk#77) and search
+            // (brewdesk#78) are local over the loaded list.
             query: VenueQuery(
                 lat: centerLat,
                 lng: centerLng,
                 radiusM: radiusM,
-                search: submittedSearchQuery,
                 sort: .workScore,
                 limit: 100
             ),
@@ -170,14 +178,32 @@ public final class VenuesModel {
         await loadHealth()
     }
 
+    /// Debounce (~200ms): one application per pause in typing, so the list
+    /// doesn't reshuffle on every keystroke. Clearing applies immediately —
+    /// tapping ✕ must feel instant.
+    private func scheduleSearchApplication() {
+        searchDebounceTask?.cancel()
+        let target = VenueSearch.normalize(searchQuery)
+        guard target != activeSearchText else { return }
+        guard !target.isEmpty else {
+            activeSearchText = ""
+            return
+        }
+        searchDebounceTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard let self, !Task.isCancelled else { return }
+            self.activeSearchText = target
+        }
+    }
+
+    /// Keyboard Search key: skip the debounce and apply now.
     public func submitSearch() {
-        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        submittedSearchQuery = query.isEmpty ? nil : query
+        searchDebounceTask?.cancel()
+        activeSearchText = VenueSearch.normalize(searchQuery)
     }
 
     public func clearSearch() {
-        searchQuery = ""
-        submittedSearchQuery = nil
+        searchQuery = ""    // didSet applies the empty query immediately
     }
 
     public func retry() {

@@ -151,18 +151,21 @@ import VenueKit
         #expect(model.venues.isEmpty)
     }
 
-    @Test func searchChangesOnlyAfterSubmission() {
+    @Test func searchNeverReachesTheQuery() {
+        // brewdesk#78 — search is local over the loaded list; typing and
+        // submitting must never change the request the UI reloads on.
         let model = VenuesModel(api: ControlledVenueService())
+        let request = model.request
 
         model.searchQuery = "  espresso  "
-        #expect(model.request.query.search == nil)
+        #expect(model.request == request)
 
         model.submitSearch()
-        #expect(model.request.query.search == "espresso")
+        #expect(model.request == request)
 
         model.clearSearch()
         #expect(model.searchQuery.isEmpty)
-        #expect(model.request.query.search == nil)
+        #expect(model.request == request)
     }
 
     @Test func centerUpdateRestartsOnlyForNewCoordinates() {
