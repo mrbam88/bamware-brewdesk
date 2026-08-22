@@ -12,12 +12,12 @@ import VenueKit
         let firstLoad = Task { await model.load(firstRequest) }
         try await api.waitForRequest(key: "any")
 
-        model.minWifi = .fast
+        model.updateCenterIfNeeded(lat: 40.71, lng: -74.0)
         let secondRequest = model.request
         let secondLoad = Task { await model.load(secondRequest) }
-        try await api.waitForRequest(key: "fast")
+        try await api.waitForRequest(key: "moved")
 
-        await api.succeed(key: "fast")
+        await api.succeed(key: "moved")
         await secondLoad.value
         #expect(model.phase == .loaded)
 
@@ -84,12 +84,12 @@ import VenueKit
         await first.value
         #expect(model.venues.isEmpty)
 
-        model.minWifi = .fast
+        model.updateCenterIfNeeded(lat: 40.71, lng: -74.0)
         let second = Task { await model.load(model.request) }
-        try await api.waitForRequest(key: "fast")
+        try await api.waitForRequest(key: "moved")
         #expect(model.venues.isEmpty)          // empty stays empty — no snapshot flash
         #expect(model.snapshotBanner == nil)
-        await api.fail(key: "fast")
+        await api.fail(key: "moved")
         await second.value
         #expect(model.snapshotBanner == nil)
     }
@@ -203,7 +203,9 @@ private actor ControlledVenueService: VenueListing {
     private var outcomes: [String: Outcome] = [:]
 
     func fetchVenues(_ query: VenueQuery) async throws -> [Venue] {
-        let key = query.wifiMinimum?.rawValue ?? "any"
+        // Filters never reach the wire (brewdesk#77) — distinct requests are
+        // driven by the query coordinate instead.
+        let key = query.lat == VenuesModel.coverageCenterLat ? "any" : "moved"
         requests.insert(key)
         while true {
             try Task.checkCancellation()
@@ -218,7 +220,10 @@ private actor ControlledVenueService: VenueListing {
     }
 
     func waitForRequest(key: String) async throws {
-        for _ in 0..<1_000 {
+        // Deadline, not iteration count: 1ms sleeps stretch under parallel
+        // test load and a 1s budget flaked (cold-simulator baseline runs).
+        let deadline = ContinuousClock.now + .seconds(10)
+        while ContinuousClock.now < deadline {
             if requests.contains(key) { return }
             try await Task.sleep(for: .milliseconds(1))
         }
@@ -378,12 +383,20 @@ private actor ControlledVenueService: VenueListing {
 }
 
 @Suite @MainActor struct SchemaV2FilterTests {
-    @Test func seatingAndVenueTypeReachTheQuery() {
+    @Test func categoryFiltersNeverReachTheQuery() {
+        // brewdesk#77 — filtering is local; the wire predicate (store.ts)
+        // fails unknown values and emptied the list.
         let model = VenuesModel(api: ControlledVenueService())
         model.minSeating = .plenty
         model.venueType = .library
-        #expect(model.request.query.seatingMinimum == .plenty)
-        #expect(model.request.query.venueType == .library)
+        model.minWifi = .fast
+        model.minOutlets = .plenty
+        model.laptopFriendlyOnly = true
+        #expect(model.request.query.seatingMinimum == nil)
+        #expect(model.request.query.venueType == nil)
+        #expect(model.request.query.wifiMinimum == nil)
+        #expect(model.request.query.outletMinimum == nil)
+        #expect(!model.request.query.laptopFriendlyOnly)
     }
 
     @Test func seatingCycleMirrorsOutletCycle() {
