@@ -188,7 +188,7 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
         return min((mbps * 10).rounded() / 10, 500)
     }
 
-    /// Structured community observation (brewdesk#47): the four enum answers
+    /// Structured community observation (brewdesk#47, #79): the five enum answers
     /// become community claims (source `user_report`) and the venue is
     /// rescored. Contract: bamware-venue-engine PR #26 —
     /// `POST /v1/venues/:id/observations`; 401 = missing/empty submitter,

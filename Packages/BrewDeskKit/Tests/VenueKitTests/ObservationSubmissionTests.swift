@@ -18,7 +18,8 @@ import Testing
             laptopFriendlyToday: .mixed,
             seatsAvailable: .few,
             outletsWorking: .noneAvailable,
-            noise: .quiet
+            noise: .quiet,
+            wifiQuality: .acceptable // brewdesk#79
         )
     }
 
@@ -46,11 +47,13 @@ import Testing
         let answersObject = try #require(object["answers"] as? [String: Any])
         #expect(Set(answersObject.keys) == [
             "laptopFriendlyToday", "seatsAvailable", "outletsWorking", "noise",
+            "wifiQuality", // brewdesk#79 — additive on the engine, always sent here
         ])
         #expect(answersObject["laptopFriendlyToday"] as? String == "mixed")
         #expect(answersObject["seatsAvailable"] as? String == "few")
         #expect(answersObject["outletsWorking"] as? String == "none")
         #expect(answersObject["noise"] as? String == "quiet")
+        #expect(answersObject["wifiQuality"] as? String == "acceptable")
         // Every answer value is a String from the closed enum vocabulary —
         // no free text can exist anywhere in the payload.
         #expect(answersObject.values.allSatisfy { $0 is String })

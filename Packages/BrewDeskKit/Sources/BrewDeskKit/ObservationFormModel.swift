@@ -34,7 +34,7 @@ public enum ObservationSubmitterIdentity {
     }
 }
 
-/// Drives the four-question form: answer → submit → thanked, with a friendly
+/// Drives the five-question form: answer → submit → thanked, with a friendly
 /// failed state whose Retry re-submits the same answers. All transition rules
 /// live here so they are unit-testable without UI (same policy as
 /// `CaptureFlowModel`).
@@ -53,6 +53,7 @@ public final class ObservationFormModel {
     public private(set) var seats: AvailabilityAnswer?
     public private(set) var outlets: AvailabilityAnswer?
     public private(set) var noise: NoiseAnswer?
+    public private(set) var wifiQuality: WifiQualityAnswer? // brewdesk#79
     public private(set) var phase: Phase = .editing
 
     private let service: any VenueObservationSubmitting
@@ -72,6 +73,7 @@ public final class ObservationFormModel {
 
     public var isComplete: Bool {
         laptopFriendly != nil && seats != nil && outlets != nil && noise != nil
+            && wifiQuality != nil
     }
 
     public var isSubmitting: Bool { phase == .submitting }
@@ -104,13 +106,19 @@ public final class ObservationFormModel {
         clearFailureAfterEdit()
     }
 
+    public func select(wifiQuality answer: WifiQualityAnswer) {
+        guard canEdit else { return }
+        wifiQuality = answer
+        clearFailureAfterEdit()
+    }
+
     // MARK: Submit
 
-    /// No-op unless all four answers are present and no submit is in flight.
+    /// No-op unless all five answers are present and no submit is in flight.
     /// Failure keeps every answer — Retry is this same method.
     public func submit() async {
         guard isComplete,
-              let laptopFriendly, let seats, let outlets, let noise,
+              let laptopFriendly, let seats, let outlets, let noise, let wifiQuality,
               phase != .submitting, phase != .submitted
         else { return }
         phase = .submitting
@@ -122,7 +130,8 @@ public final class ObservationFormModel {
                     laptopFriendlyToday: laptopFriendly,
                     seatsAvailable: seats,
                     outletsWorking: outlets,
-                    noise: noise
+                    noise: noise,
+                    wifiQuality: wifiQuality
                 )
             )
             phase = .submitted

@@ -11,7 +11,8 @@ import VenueKit
             laptopFriendlyToday: .yes,
             seatsAvailable: .plenty,
             outletsWorking: .few,
-            noise: .moderate
+            noise: .moderate,
+            wifiQuality: .slow // brewdesk#79
         )
     }
 
@@ -26,6 +27,7 @@ import VenueKit
         model.select(seats: .plenty)
         model.select(outlets: .few)
         model.select(noise: .moderate)
+        model.select(wifiQuality: .slow)
         return model
     }
 
@@ -39,6 +41,7 @@ import VenueKit
         model.select(laptopFriendly: .yes)
         model.select(seats: .plenty)
         model.select(outlets: .few)
+        model.select(wifiQuality: .fast)
         // noise unanswered
         #expect(!model.isComplete)
         await model.submit()
@@ -46,7 +49,24 @@ import VenueKit
         #expect(service.ledger.submissions.isEmpty)
     }
 
-    @Test func allFourAnswersComplete() {
+    /// brewdesk#79: the four original answers alone no longer complete the
+    /// form — Wi-Fi is the fifth required question.
+    @Test func fourAnswersWithoutWifiDoNotSubmit() async {
+        let service = MockObservationService()
+        let model = ObservationFormModel(
+            venueId: "fixture-roasters", service: service, submittedBy: "test-device"
+        )
+        model.select(laptopFriendly: .yes)
+        model.select(seats: .plenty)
+        model.select(outlets: .few)
+        model.select(noise: .moderate)
+        #expect(!model.isComplete)
+        await model.submit()
+        #expect(model.phase == .editing)
+        #expect(service.ledger.submissions.isEmpty)
+    }
+
+    @Test func allFiveAnswersComplete() {
         let model = completedModel(service: MockObservationService())
         #expect(model.isComplete)
         #expect(model.phase == .editing)
