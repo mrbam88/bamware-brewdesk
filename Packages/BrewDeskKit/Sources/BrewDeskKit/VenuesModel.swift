@@ -19,7 +19,28 @@ public final class VenuesModel {
     }
 
     public private(set) var phase: Phase = .idle
-    public private(set) var venues: [Venue] = []
+
+    /// Everything the engine answered for the current request (or the cold-
+    /// start snapshot). Category filters never touch the wire — they derive
+    /// `venues` from this list locally (brewdesk#77).
+    private var loadedVenues: [Venue] = []
+
+    /// What the UI shows: the loaded list with the active filters applied.
+    /// Inclusive semantics live in `VenueFilter` — all-selected == no-filter,
+    /// and unknown attribute values never fail a constraint.
+    public var venues: [Venue] {
+        filter.apply(to: loadedVenues)
+    }
+
+    private var filter: VenueFilter {
+        VenueFilter(
+            laptopFriendlyOnly: laptopFriendlyOnly,
+            minWifi: minWifi,
+            minOutlets: minOutlets,
+            minSeating: minSeating,
+            venueType: venueType
+        )
+    }
 
     /// True while `venues` is the bundled snapshot rather than an engine
     /// response (brewdesk#28). Cleared by the first successful load.
@@ -34,7 +55,8 @@ public final class VenuesModel {
         return .loading
     }
 
-    // Filters — mutating them and calling load() re-queries the engine.
+    // Filters — applied locally to the loaded list; mutating them re-queries
+    // nothing (brewdesk#77).
     public var laptopFriendlyOnly = false
     public var minWifi: WifiMinimum?
     public var minOutlets: OutletMinimum?
@@ -44,7 +66,7 @@ public final class VenuesModel {
     /// Show venueType chips only when the dataset actually has more than one
     /// type (or a type filter is active) — all-cafe data keeps the UI as-is.
     public var venueTypesAvailable: Bool {
-        venueType != nil || Set(venues.compactMap(\.venueType)).count > 1
+        venueType != nil || Set(loadedVenues.compactMap(\.venueType)).count > 1
     }
     public var searchQuery = ""
     private var submittedSearchQuery: String?
@@ -82,15 +104,13 @@ public final class VenuesModel {
 
     public var request: VenueLoadRequest {
         VenueLoadRequest(
+            // Category filters are deliberately absent: the engine's wire
+            // predicate fails unknown values (store.ts), which emptied the
+            // list — filtering is local now (brewdesk#77).
             query: VenueQuery(
                 lat: centerLat,
                 lng: centerLng,
                 radiusM: radiusM,
-                wifiMinimum: minWifi,
-                outletMinimum: minOutlets,
-                seatingMinimum: minSeating,
-                venueType: venueType,
-                laptopFriendlyOnly: laptopFriendlyOnly,
                 search: submittedSearchQuery,
                 sort: .workScore,
                 limit: 100
@@ -195,21 +215,21 @@ public final class VenuesModel {
         // Cold start: until the engine has answered once, paint the bundled
         // snapshot instead of a spinner. Never re-seed after a live answer —
         // an empty filter result must stay empty, not flash the snapshot.
-        if !hasReceivedLiveVenues, venues.isEmpty, !snapshot.isEmpty {
-            venues = snapshot
+        if !hasReceivedLiveVenues, loadedVenues.isEmpty, !snapshot.isEmpty {
+            loadedVenues = snapshot
             isShowingSnapshot = true
         }
         do {
-            let loadedVenues = try await api.fetchVenues(request.query)
+            let answer = try await api.fetchVenues(request.query)
             try Task.checkCancellation()
             guard generation == loadGeneration else { return }
-            venues = loadedVenues
+            loadedVenues = answer
             hasReceivedLiveVenues = true
             isShowingSnapshot = false
             phase = .loaded
         } catch is CancellationError {
             guard generation == loadGeneration else { return }
-            phase = (venues.isEmpty || isShowingSnapshot) ? .idle : .loaded
+            phase = (loadedVenues.isEmpty || isShowingSnapshot) ? .idle : .loaded
             return
         } catch {
             guard generation == loadGeneration else { return }
