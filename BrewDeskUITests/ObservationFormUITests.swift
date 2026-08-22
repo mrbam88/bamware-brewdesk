@@ -1,7 +1,7 @@
 import XCTest
 
-/// Structured observation form (brewdesk#47): the "Rate this visit" entry on
-/// the venue detail, the four one-tap questions, submit → thank-you, and the
+/// Structured observation form (brewdesk#47, #79): the "Rate this visit" entry on
+/// the venue detail, the five one-tap questions, submit → thank-you, and the
 /// engine-down friendly error + Retry. Fixture-driven via `-UITestScenario`
 /// (see `ScenarioVenueService`) so every state is deterministic — no live API.
 final class ObservationFormUITests: XCTestCase {
@@ -60,35 +60,54 @@ final class ObservationFormUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Rate this visit"].waitForExistence(timeout: wait))
     }
 
-    /// One tap per question — the whole point of the structured form.
+    /// One tap per question — the whole point of the structured form. The
+    /// Wi-Fi row (brewdesk#79) is answered LAST so `answerAllButWifi` can
+    /// reuse the first four taps for the gating assertion.
     @MainActor
-    private func answerAllFour(_ app: XCUIApplication) {
+    private func answerAllFive(_ app: XCUIApplication) {
+        answerAllButWifi(app)
+        tapOption(app, "observation-wifi-acceptable")
+    }
+
+    @MainActor
+    private func answerAllButWifi(_ app: XCUIApplication) {
         for identifier in [
             "observation-laptop-yes",
             "observation-seats-plenty",
             "observation-outlets-few",
             "observation-noise-quiet",
         ] {
-            let option = element(app, identifier)
-            XCTAssertTrue(option.waitForExistence(timeout: wait), "missing option \(identifier)")
-            option.tap()
+            tapOption(app, identifier)
         }
+    }
+
+    @MainActor
+    private func tapOption(_ app: XCUIApplication, _ identifier: String) {
+        let option = element(app, identifier)
+        // Five cards can push the last one off-screen on smaller type sizes.
+        if !option.exists || !option.isHittable { app.swipeUp() }
+        XCTAssertTrue(option.waitForExistence(timeout: wait), "missing option \(identifier)")
+        option.tap()
     }
 
     // MARK: - Happy path
 
     @MainActor
-    func testHappyPathFourTapsSubmitThanksAndDone() {
+    func testHappyPathFiveTapsSubmitThanksAndDone() {
         let app = launch("fixtureOK")
         openFixtureRoastersDetail(app)
         openObservationForm(app)
 
-        // Submit is gated until all four questions are answered.
+        // Submit is gated until all five questions are answered.
         let submit = element(app, "observation-submit")
         XCTAssertTrue(submit.waitForExistence(timeout: wait))
-        XCTAssertFalse(submit.isEnabled, "Submit must stay disabled until all four answers are in")
+        XCTAssertFalse(submit.isEnabled, "Submit must stay disabled until all five answers are in")
 
-        answerAllFour(app)
+        // brewdesk#79: the four original answers alone must NOT enable Submit.
+        answerAllButWifi(app)
+        XCTAssertFalse(submit.isEnabled, "Submit must stay disabled until the Wi-Fi question is answered")
+
+        tapOption(app, "observation-wifi-acceptable")
         XCTAssertTrue(submit.isEnabled)
         submit.tap()
 
@@ -115,7 +134,7 @@ final class ObservationFormUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
         openObservationForm(app)
 
-        answerAllFour(app)
+        answerAllFive(app)
         element(app, "observation-submit").tap()
 
         XCTAssertTrue(element(app, "observation-error").waitForExistence(timeout: wait),
@@ -142,7 +161,7 @@ final class ObservationFormUITests: XCTestCase {
         openObservationForm(app)
         // Audit the form in its gated state (Submit disabled), then answered.
         try audit(app)
-        answerAllFour(app)
+        answerAllFive(app)
         try audit(app)
     }
 

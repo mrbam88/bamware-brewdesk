@@ -1,5 +1,5 @@
-// Structured observation form — entry card + sheet UI (brewdesk#47).
-// Ships in Release (unlike the Debug-only capture prototype, #46): four enum
+// Structured observation form — entry card + sheet UI (brewdesk#47, #79).
+// Ships in Release (unlike the Debug-only capture prototype, #46): five enum
 // questions, one tap each, no free text anywhere. Submit → thank-you;
 // engine down → friendly error + Retry. Wire contract: venue-engine PR #26.
 import SwiftUI
@@ -44,6 +44,17 @@ extension NoiseAnswer: ObservationAnswerOption {
     }
 }
 
+extension WifiQualityAnswer: ObservationAnswerOption {
+    var optionTitle: String {
+        switch self {
+        case .fast: String(localized: "Fast")
+        case .acceptable: String(localized: "OK")
+        case .slow: String(localized: "Slow")
+        case .unusable: String(localized: "Unusable")
+        }
+    }
+}
+
 /// Supporting copy: `.secondary` (and any translucent text) fails the
 /// accessibility contrast audit on the oat background — verified on the
 /// iPhone 17e audit runs for brewdesk#46. Fully opaque dynamic gray instead.
@@ -84,7 +95,7 @@ public struct ObservationFormEntrySection: View {
             Label("Been here today?", systemImage: "person.2.wave.2")
                 .font(.headline)
                 .foregroundStyle(BrewDeskPalette.roast)
-            Text("Four taps, no typing. Your answers become community claims — stamped with their source, like every claim above.")
+            Text("Five taps, no typing. Your answers become community claims — stamped with their source, like every claim above.")
                 .font(.subheadline)
                 .observationSupportingText()
                 .fixedSize(horizontal: false, vertical: true)
@@ -151,7 +162,7 @@ public struct ObservationFormScreen: View {
                 }
             }
         }
-        // Four taps are cheap to redo; only an in-flight submit must not be
+        // Five taps are cheap to redo; only an in-flight submit must not be
         // torn down mid-request.
         .interactiveDismissDisabled(model.isSubmitting)
     }
@@ -195,6 +206,15 @@ public struct ObservationFormScreen: View {
                     selection: model.noise,
                     theme: theme
                 ) { model.select(noise: $0) }
+
+                // brewdesk#79 — feeds the engine's wifi claim (user_report).
+                ObservationQuestionCard(
+                    title: "How's the Wi-Fi?",
+                    systemImage: "wifi",
+                    questionID: "wifi",
+                    selection: model.wifiQuality,
+                    theme: theme
+                ) { model.select(wifiQuality: $0) }
             }
             .padding(.horizontal, 18)
             .padding(.top, 14)
@@ -246,8 +266,8 @@ public struct ObservationFormScreen: View {
             .accessibilityIdentifier("observation-submit")
             .accessibilityHint(
                 model.isComplete
-                    ? Text("Sends your four answers")
-                    : Text("Answer all four questions first")
+                    ? Text("Sends your five answers")
+                    : Text("Answer all five questions first")
             )
         }
         .padding(.horizontal, 18)
