@@ -116,6 +116,7 @@ public final class LiveCaptureSubmissionService: CaptureSubmissionService {
             venueID: submission.venueID,
             shots: shots,
             contributorName: session.user.name,
+            submittedBy: session.user.userId,
             accessToken: session.accessToken
         )
     }

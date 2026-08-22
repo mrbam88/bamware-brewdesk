@@ -128,6 +128,8 @@ public struct CapturePhotoIntakeLink: Equatable, Sendable {
     public let contentType: String
     public let kind: String
     public let contributorName: String?
+    /// Engine intake auth field (ve#21 as shipped): non-empty submitter id.
+    public let submittedBy: String
 
     public init(
         venueID: String,
@@ -135,7 +137,8 @@ public struct CapturePhotoIntakeLink: Equatable, Sendable {
         url: String,
         contentType: String,
         kind: String,
-        contributorName: String?
+        contributorName: String?,
+        submittedBy: String
     ) {
         self.venueID = venueID
         self.uploadID = uploadID
@@ -143,6 +146,7 @@ public struct CapturePhotoIntakeLink: Equatable, Sendable {
         self.contentType = contentType
         self.kind = kind
         self.contributorName = contributorName
+        self.submittedBy = submittedBy
     }
 }
 
@@ -193,6 +197,7 @@ public struct CaptureUploadChain: Sendable {
         venueID: String,
         shots: [CaptureUploadShot],
         contributorName: String?,
+        submittedBy: String,
         accessToken: String
     ) async throws {
         for shot in shots {
@@ -222,7 +227,8 @@ public struct CaptureUploadChain: Sendable {
                     url: confirmed.url,
                     contentType: confirmed.contentType,
                     kind: shot.kind,
-                    contributorName: contributorName
+                    contributorName: contributorName,
+                    submittedBy: submittedBy
                 ),
                 accessToken: accessToken
             )

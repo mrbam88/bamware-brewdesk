@@ -10,8 +10,8 @@
 // follows the engine's established REST grammar
 // (`/v1/venues/:id/observations`, `/v1/venues/:id/photos`):
 //
-//   POST /v1/venues/{venueID}/photos/intake   (Bearer, JSON)
-//   { uploadId, url, contentType, kind, contributorName? }
+//   POST /v1/venues/{venueID}/photos   (Bearer, JSON) — ve#21 as shipped
+//   { photoUrl, photoId?, contributorName?, submittedBy }
 //
 // If ve#21 lands differently, `VenueIntakeLinking` is the seam: only this
 // file (and its wire tests) changes; the chain, the flow, and the flow's
@@ -32,18 +32,17 @@ public struct VenueIntakeAPI: VenueIntakeLinking, Sendable {
 
     public func linkUploadedPhoto(_ link: CapturePhotoIntakeLink, accessToken: String) async throws {
         var request = URLRequest(
-            url: baseURL.appendingPathComponent("/v1/venues/\(link.venueID)/photos/intake")
+            url: baseURL.appendingPathComponent("/v1/venues/\(link.venueID)/photos")
         )
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.httpBody = try JSONEncoder().encode(
             IntakeBody(
-                uploadId: link.uploadID,
-                url: link.url,
-                contentType: link.contentType,
-                kind: link.kind,
-                contributorName: link.contributorName
+                photoUrl: link.url,
+                photoId: link.uploadID,
+                contributorName: link.contributorName,
+                submittedBy: link.submittedBy
             )
         )
         let (_, response) = try await session.data(for: request)
@@ -57,8 +56,10 @@ public struct VenueIntakeAPI: VenueIntakeLinking, Sendable {
     }
 
     private struct IntakeBody: Encodable {
-        let uploadId, url, contentType, kind: String
+        let photoUrl: String
+        let photoId: String?
         let contributorName: String?
+        let submittedBy: String
     }
 }
 #endif

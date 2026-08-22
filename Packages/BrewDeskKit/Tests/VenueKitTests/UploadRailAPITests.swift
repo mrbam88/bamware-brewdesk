@@ -259,11 +259,11 @@ final class UploadRecordingProtocol: URLProtocol {
         }
     }
 
-    // MARK: - Venue-engine intake (provisional shape, ve#21 seam)
+    // MARK: - Venue-engine intake (ve#21 as shipped)
 
     @Test func intakeLinksUploadToVenueWithBearer() async throws {
         UploadRecordingProtocol.respond(
-            pathSuffix: "/v1/venues/fixture-roasters/photos/intake", status: 201,
+            pathSuffix: "/v1/venues/fixture-roasters/photos", status: 201,
             json: #"{"ok":true,"status":"queued"}"#
         )
         try await VenueIntakeAPI(baseURL: base, session: UploadRecordingProtocol.makeSession())
@@ -274,31 +274,33 @@ final class UploadRecordingProtocol: URLProtocol {
                     url: "https://photos.test/uploads/x.jpg",
                     contentType: "image/jpeg",
                     kind: "room-from-door",
-                    contributorName: "Ada L."
+                    contributorName: "Ada L.",
+                    submittedBy: "test-submitter"
                 ),
                 accessToken: "jwt-abc"
             )
 
         let request = try #require(UploadRecordingProtocol.requests.first)
         #expect(request.method == "POST")
-        #expect(request.path == "/v1/venues/fixture-roasters/photos/intake")
+        #expect(request.path == "/v1/venues/fixture-roasters/photos")
         #expect(request.headers["Authorization"] == "Bearer jwt-abc")
-        #expect(request.bodyObject?["uploadId"] as? String == "9c5b7f3a-1d2e-4f60-8a9b-0c1d2e3f4a5b")
-        #expect(request.bodyObject?["kind"] as? String == "room-from-door")
+        #expect(request.bodyObject?["photoId"] as? String == "9c5b7f3a-1d2e-4f60-8a9b-0c1d2e3f4a5b")
+        #expect(request.bodyObject?["submittedBy"] as? String == "test-submitter")
         #expect(request.bodyObject?["contributorName"] as? String == "Ada L.")
-        #expect(request.bodyObject?["url"] as? String == "https://photos.test/uploads/x.jpg")
+        #expect(request.bodyObject?["photoUrl"] as? String == "https://photos.test/uploads/x.jpg")
     }
 
     @Test func intake401MapsToSessionExpired() async {
         UploadRecordingProtocol.respond(
-            pathSuffix: "/photos/intake", status: 401, json: #"{"error":"unauthorized"}"#
+            pathSuffix: "/photos", status: 401, json: #"{"error":"unauthorized"}"#
         )
         await #expect(throws: UploadRailError.sessionExpired) {
             try await VenueIntakeAPI(baseURL: base, session: UploadRecordingProtocol.makeSession())
                 .linkUploadedPhoto(
                     CapturePhotoIntakeLink(
                         venueID: "v", uploadID: "u", url: "https://x.test/p.jpg",
-                        contentType: "image/jpeg", kind: "outlets", contributorName: nil
+                        contentType: "image/jpeg", kind: "outlets", contributorName: nil,
+                        submittedBy: "test-submitter"
                     ),
                     accessToken: "stale"
                 )

@@ -102,6 +102,7 @@ private struct MockIntake: VenueIntakeLinking {
             venueID: "venue-1",
             shots: shots,
             contributorName: "Ada L.",
+            submittedBy: "test-submitter",
             accessToken: "jwt-1"
         )
         #expect(recorder.events == [
@@ -119,7 +120,7 @@ private struct MockIntake: VenueIntakeLinking {
     @Test func presignFailureStopsBeforeAnyUpload() async {
         await #expect(throws: UploadRailError.sessionExpired) {
             try await chain(rail: { $0.presignError = .sessionExpired }).submit(
-                venueID: "venue-1", shots: shots, contributorName: nil, accessToken: "jwt-1"
+                venueID: "venue-1", shots: shots, contributorName: nil, submittedBy: "test-submitter", accessToken: "jwt-1"
             )
         }
         #expect(recorder.events == ["presign image/jpeg token=jwt-1"])
@@ -128,7 +129,7 @@ private struct MockIntake: VenueIntakeLinking {
     @Test func storageFailureSurfacesAndSkipsConfirmAndIntake() async {
         await #expect(throws: UploadRailError.storageUploadFailed(statusCode: 500)) {
             try await chain(storage: { $0.error = .storageUploadFailed(statusCode: 500) }).submit(
-                venueID: "venue-1", shots: shots, contributorName: nil, accessToken: "jwt-1"
+                venueID: "venue-1", shots: shots, contributorName: nil, submittedBy: "test-submitter", accessToken: "jwt-1"
             )
         }
         #expect(recorder.events == [
@@ -140,7 +141,7 @@ private struct MockIntake: VenueIntakeLinking {
     @Test func confirmFailureSkipsIntake() async {
         await #expect(throws: UploadRailError.uploadExpired) {
             try await chain(rail: { $0.confirmError = .uploadExpired }).submit(
-                venueID: "venue-1", shots: shots, contributorName: nil, accessToken: "jwt-1"
+                venueID: "venue-1", shots: shots, contributorName: nil, submittedBy: "test-submitter", accessToken: "jwt-1"
             )
         }
         #expect(recorder.events.count == 3, "presign, put, failed confirm — nothing after")
@@ -150,7 +151,7 @@ private struct MockIntake: VenueIntakeLinking {
     @Test func intakeFailureSurfacesAndStopsTheSecondShot() async {
         await #expect(throws: UploadRailError.http(statusCode: 500)) {
             try await chain(intake: { $0.error = .http(statusCode: 500) }).submit(
-                venueID: "venue-1", shots: shots, contributorName: nil, accessToken: "jwt-1"
+                venueID: "venue-1", shots: shots, contributorName: nil, submittedBy: "test-submitter", accessToken: "jwt-1"
             )
         }
         #expect(recorder.events.count == 4, "First shot's full chain ran; second never started")
@@ -159,7 +160,7 @@ private struct MockIntake: VenueIntakeLinking {
     @Test func oversizedShotFailsBeforeThePut() async {
         await #expect(throws: UploadRailError.self) {
             try await chain(rail: { $0.maxBytes = 10 }).submit(
-                venueID: "venue-1", shots: shots, contributorName: nil, accessToken: "jwt-1"
+                venueID: "venue-1", shots: shots, contributorName: nil, submittedBy: "test-submitter", accessToken: "jwt-1"
             )
         }
         #expect(
@@ -170,7 +171,7 @@ private struct MockIntake: VenueIntakeLinking {
 
     @Test func noShotsMeansNoNetworkAtAll() async throws {
         try await chain().submit(
-            venueID: "venue-1", shots: [], contributorName: nil, accessToken: "jwt-1"
+            venueID: "venue-1", shots: [], contributorName: nil, submittedBy: "test-submitter", accessToken: "jwt-1"
         )
         #expect(recorder.events.isEmpty, "An all-skipped submission touches nothing")
     }
