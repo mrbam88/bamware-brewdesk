@@ -66,6 +66,7 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
 
     public let baseURL: URL
     private let session: URLSession
+    private let blockStore: ContributorBlockStore
 
     /// Fail fast: a stalled engine becomes a Retry state in 15 s, not the
     /// 60 s `URLSession.shared` default. No `waitsForConnectivity` — offline
@@ -76,9 +77,14 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
         return URLSession(configuration: configuration)
     }()
 
-    public init(baseURL: URL = VenueAPI.defaultBaseURL, session: URLSession = VenueAPI.defaultSession) {
+    public init(
+        baseURL: URL = VenueAPI.defaultBaseURL,
+        session: URLSession = VenueAPI.defaultSession,
+        blockStore: ContributorBlockStore = .shared
+    ) {
         self.baseURL = baseURL
         self.session = session
+        self.blockStore = blockStore
     }
 
     public var supportsSpeedTest: Bool {
@@ -111,7 +117,10 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
             VenuePhotosResponse.self,
             from: baseURL.appendingPathComponent("/v1/venues/\(venueId)/photos")
         )
-        return response.photos.map { photo in
+        // Device-local block filter (brewdesk#48/#66): the live path filters
+        // through the same store as ScenarioVenueService, so blocking hides
+        // a contributor's photos on the next real fetch too.
+        return blockStore.filteringBlocked(response.photos.map { photo in
             VenuePhoto(
                 url: Self.absolutePhotoURL(photo.url, base: baseURL),
                 attribution: photo.attribution,
@@ -120,7 +129,7 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
                 heightPx: photo.heightPx,
                 contributorName: photo.contributorName
             )
-        }
+        })
     }
 
     /// The proxy returns same-origin paths ("/v1/venues/…/media"); resolve
