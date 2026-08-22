@@ -29,7 +29,8 @@ struct CaptureConfirmView: View {
 
                 if model.submissionFailed {
                     Label(
-                        "Couldn't send your photos. Check your connection and try again.",
+                        model.submissionErrorMessage
+                            ?? "Couldn't send your photos. Check your connection and try again.",
                         systemImage: "exclamationmark.triangle.fill"
                     )
                     .font(.subheadline)

@@ -1,10 +1,11 @@
-// Community capture prototype — submission seam (brewdesk#46).
-// This entire file compiles ONLY into Debug builds — the App Store binary
-// contains none of it (Guideline 2.3.1, same policy as DebugEnvironmentStore).
-// Networking is a later story: the real uploader will implement
-// `CaptureSubmissionService`; the prototype ships only the mock.
+// Community capture — submission seam (brewdesk#46) and the real uploader
+// (brewdesk#71). This entire file compiles ONLY into Debug builds — the App
+// Store binary contains none of it (Guideline 2.3.1, same policy as
+// DebugEnvironmentStore). `LiveCaptureSubmissionService` drives the VenueKit
+// rail: signed-in check → presign → S3 PUT → confirm → venue-engine intake.
 #if DEBUG
 import Foundation
+import VenueKit
 
 /// The three shots the guided flow asks for, in order (wide → medium → detail).
 /// Copy lives here so the spec (docs/community-capture-ux.md), the screens,
@@ -71,11 +72,84 @@ public nonisolated struct CaptureSubmission: Equatable, Sendable {
     }
 }
 
-/// The seam the real uploader will implement (multipart upload + moderation
-/// queue, later story). Default MainActor isolation — it is called from UI;
-/// a networked implementation is free to hop off-main internally.
+/// The submission seam. Live: `LiveCaptureSubmissionService` (the real
+/// rail). Deterministic (UI tests / previews): `MockCaptureSubmissionService`.
+/// Default MainActor isolation — it is called from UI; the networked
+/// implementation hops off-main inside URLSession.
 public protocol CaptureSubmissionService: AnyObject {
     func submit(_ submission: CaptureSubmission) async throws
+}
+
+/// The real uploader (brewdesk#71): requires a signed-in account
+/// (brewdesk#48 — the rail is JWT-authenticated), then walks every
+/// non-skipped shot through the VenueKit chain in order:
+/// presign → S3 PUT → confirm → venue-engine intake link.
+///
+/// Skipped slots never reach the rail — dating-service PR #19's contract is
+/// per-object; "skipped, honestly" is flow state, not an upload. The
+/// contributor byline travels to intake so approved photos render it
+/// (brewdesk#49).
+public final class LiveCaptureSubmissionService: CaptureSubmissionService {
+    private let sessionStore: AccountSessionStore
+    private let chain: CaptureUploadChain
+
+    public init(
+        sessionStore: AccountSessionStore = .shared,
+        chain: CaptureUploadChain = CaptureUploadChain(
+            rail: UploadRailAPI(),
+            storage: S3ObjectUploader(),
+            intake: VenueIntakeAPI()
+        )
+    ) {
+        self.sessionStore = sessionStore
+        self.chain = chain
+    }
+
+    public func submit(_ submission: CaptureSubmission) async throws {
+        guard let session = sessionStore.session else {
+            throw UploadRailError.signInRequired
+        }
+        let shots = submission.shots.compactMap { shot in
+            shot.imageData.map { CaptureUploadShot(kind: shot.kind.rawValue, jpegData: $0) }
+        }
+        try await chain.submit(
+            venueID: submission.venueID,
+            shots: shots,
+            contributorName: session.user.name,
+            submittedBy: session.user.userId,
+            accessToken: session.accessToken
+        )
+    }
+}
+
+/// Launch-time service resolution, same screen-side pattern as
+/// `ObservationServiceResolver` / `AccountServiceResolver` so wiring the
+/// live rail stays additive to the composition root (VenueDetailScreen
+/// still constructs the prototype mock; brewdesk#46).
+///
+/// - Normal launch: the live rail.
+/// - `-UITestScenario` launch: the injected deterministic mock — or, when
+///   `-UITestCaptureFailures <n>` is present, a mock scripted to fail the
+///   first n submits (pins the upload-failed → retry path in UI tests).
+public enum CaptureSubmissionServiceResolver {
+    public static let failuresArgument = "-UITestCaptureFailures"
+
+    public static func resolve(
+        arguments: [String] = ProcessInfo.processInfo.arguments,
+        fallback: any CaptureSubmissionService
+    ) -> any CaptureSubmissionService {
+        guard arguments.contains("-UITestScenario") else {
+            return LiveCaptureSubmissionService()
+        }
+        if let index = arguments.firstIndex(of: failuresArgument),
+            arguments.indices.contains(index + 1),
+            let failures = Int(arguments[index + 1]),
+            failures > 0
+        {
+            return MockCaptureSubmissionService(failuresRemaining: failures)
+        }
+        return fallback
+    }
 }
 
 /// In-process stand-in: configurable latency and scripted failures so the

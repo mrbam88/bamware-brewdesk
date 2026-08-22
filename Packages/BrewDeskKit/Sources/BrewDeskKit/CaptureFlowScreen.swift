@@ -15,9 +15,19 @@ public struct CaptureFlowScreen: View {
     @State private var showDiscardAlert = false
     private let venueName: String
 
+    /// `service` is the composition root's prototype-era mock (brewdesk#46,
+    /// still what VenueDetailScreen passes). Since brewdesk#71 the screen
+    /// resolves what actually runs — scenario launches keep a deterministic
+    /// mock, normal launches get the live upload rail — so the wiring stays
+    /// additive to the entry point (the `ObservationServiceResolver` pattern).
     public init(venue: Venue, service: any CaptureSubmissionService) {
         venueName = venue.name
-        _model = State(initialValue: CaptureFlowModel(venueID: venue.id, service: service))
+        _model = State(
+            initialValue: CaptureFlowModel(
+                venueID: venue.id,
+                service: CaptureSubmissionServiceResolver.resolve(fallback: service)
+            )
+        )
     }
 
     private var theme: BrewDeskTheme { BrewDeskTheme(isDarkMode: colorScheme == .dark) }
