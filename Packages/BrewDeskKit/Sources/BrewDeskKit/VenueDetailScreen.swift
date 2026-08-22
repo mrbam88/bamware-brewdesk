@@ -37,7 +37,11 @@ public struct VenueDetailScreen: View {
                 businessInfo
                 // Structured observation entry (brewdesk#47) — the section
                 // owns its sheet and service resolution; ships in Release.
-                ObservationFormEntrySection(venue: venue)
+                // Store-submission builds hide it (brewdesk#67): the form
+                // sends a per-install UUID the privacy label doesn't declare.
+                if !StoreSurface.isGated {
+                    ObservationFormEntrySection(venue: venue)
+                }
             }
             .padding(.horizontal, 18)
             .padding(.top, 14)

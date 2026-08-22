@@ -73,3 +73,30 @@ Monitor it with:
 ```bash
 gh run watch --repo mrbam88/bamware-brewdesk
 ```
+
+## Store-submission surface gate (brewdesk#67)
+
+The App Store submission binary must be an accountless app matching the
+"Data Not Collected" privacy label, so the store archive hides the Account
+entry, photo report/block actions, and the observation entry card. This is a
+build *configuration* flag, not `#if DEBUG` — TestFlight and the store both
+build Release.
+
+- Mechanism: `STORE_SURFACE_GATED` build setting (default `NO` in every
+  checked-in configuration) → `BDStoreSurfaceGated` key in the merged
+  Info.plist (`BrewDesk-Store-Info.plist`) → read at runtime by
+  `StoreSurface.isGated` in BrewDeskKit.
+- TestFlight rail: unchanged. Plain `Release` keeps every feature ON.
+- Store submission archive — the one-line flip is a build-setting override
+  on the archive command:
+
+```bash
+xcodebuild archive -project BrewDesk.xcodeproj -scheme BrewDesk \
+  -destination 'generic/platform=iOS' STORE_SURFACE_GATED=YES
+```
+
+(For a fastlane lane, the equivalent is `xcargs: "STORE_SURFACE_GATED=YES"`
+on `build_app`.) Verify before upload: the exported app's Info.plist must
+contain `BDStoreSurfaceGated = YES`, and `StoreSurfaceGateUITests` proves the
+gated surface renders none of the gated UI. The flag flips back in the first
+post-approval update by archiving without the override.
