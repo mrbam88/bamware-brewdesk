@@ -4,7 +4,6 @@ import VenueKit
 
 public struct CafeMapScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.locationDenied) private var locationDenied
     @Bindable private var model: VenuesModel
     @Bindable private var savedVenues: SavedVenuesStore
@@ -15,10 +14,17 @@ public struct CafeMapScreen: View {
     /// annotation views instead of re-evaluating this body (brewdesk#54).
     @State private var visibleRegion: MKCoordinateRegion?
     @State private var replanTask: Task<Void, Never>?
-    /// Shelf-card score tile scales with Dynamic Type instead of clipping in
-    /// a fixed 72×82 frame (ui-review-2026-08-21 finding 7).
-    @ScaledMetric(relativeTo: .title2) private var scoreTileMinWidth: CGFloat = 72
-    @ScaledMetric(relativeTo: .title2) private var scoreTileMinHeight: CGFloat = 82
+    /// The shelf's resting detent (brewdesk#76). Changes once per settled
+    /// drag — never per frame — so this body stays out of mid-gesture frames
+    /// (the brewdesk#54 invariant). Mid-drag state lives in the card itself.
+    @State private var shelfDetent: ShelfDetent = .medium
+    /// Full map height, captured once per layout for the `.full` card height.
+    @State private var mapHeight: CGFloat = 0
+    /// Dynamic Type–aware estimates of the shelf card's height per detent, so
+    /// map controls and attribution ride above the card the way detail
+    /// content clears the action dock (same safe-area mechanism).
+    @ScaledMetric(relativeTo: .caption) private var shelfChipRowHeight: CGFloat = 44
+    @ScaledMetric(relativeTo: .title2) private var shelfCardBlockHeight: CGFloat = 138
 
     public init(model: VenuesModel, savedVenues: SavedVenuesStore) {
         self.model = model
@@ -71,14 +77,43 @@ public struct CafeMapScreen: View {
             MapCompass()
             MapUserLocationButton()
         }
-        .safeAreaInset(edge: .top) { searchHeader }
-        .safeAreaInset(edge: .bottom) { discoveryShelf }
-        .overlay { loadStatus }
+        // Compass, user-location button, and attribution stay clear of the
+        // shelf card at its resting detent — scoped to the map subtree so the
+        // card overlay below doesn't inherit (and stack on) its own clearance.
+        .safeAreaPadding(.bottom, shelfClearance)
         // Frame-timing evidence seam (brewdesk#54); inert without the flag.
+        // Inside the clearance so the HUD sits above the shelf card and its
+        // taps (perf tests zero the counters by tapping it) still land.
         .overlay(alignment: .bottomTrailing) {
             if MapFrameStatsHUD.isEnabled {
                 MapFrameStatsHUD(annotationCount: plan.annotationCount)
                     .padding(.trailing, 8)
+            }
+        }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { height in
+            mapHeight = height
+        }
+        .safeAreaInset(edge: .top) { searchHeader }
+        .overlay { loadStatus }
+        // The honest bottom sheet (brewdesk#76): an in-tab overlay with real
+        // detents — bottom-aligned to the tab content's safe area, so the tab
+        // bar stays reachable at every detent (a `.sheet` would cover it).
+        .overlay(alignment: .bottom) {
+            DiscoveryShelfCard(
+                model: model,
+                detent: $shelfDetent,
+                selectedID: selected?.id,
+                fullHeight: max(320, mapHeight * 0.7)
+            ) { venue in
+                selected = venue
+                position = .region(
+                    MKCoordinateRegion(
+                        center: coordinate(of: venue),
+                        span: MKCoordinateSpan(latitudeDelta: 0.012, longitudeDelta: 0.012)
+                    )
+                )
             }
         }
         .sheet(item: $selected) { venue in
@@ -325,178 +360,17 @@ public struct CafeMapScreen: View {
         .padding(.top, 8)
     }
 
-    private var discoveryShelf: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Capsule()
-                .fill(.tertiary)
-                .frame(width: 38, height: 5)
-                .frame(maxWidth: .infinity)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    filterChip(
-                        title: "Laptop friendly",
-                        symbol: "laptopcomputer",
-                        selected: model.laptopFriendlyOnly
-                    ) {
-                        model.laptopFriendlyOnly.toggle()
-                    }
-                    filterChip(
-                        title: model.minWifi == .fast ? "Fast Wi-Fi" : "Wi-Fi",
-                        symbol: "wifi",
-                        selected: model.minWifi != nil
-                    ) {
-                        model.cycleWifiMinimum()
-                    }
-                    filterChip(
-                        title: model.minOutlets == .plenty ? "Plenty of outlets" : "Outlets",
-                        symbol: "powerplug.fill",
-                        selected: model.minOutlets != nil
-                    ) {
-                        model.cycleOutletMinimum()
-                    }
-                    filterChip(
-                        title: "Seating",
-                        symbol: "chair.lounge",
-                        selected: model.minSeating != nil
-                    ) {
-                        model.cycleSeatingMinimum()
-                    }
-                    if model.venueTypesAvailable {
-                        ForEach(VenueTypeFilter.allCases, id: \.rawValue) { type in
-                            filterChip(
-                                title: LocalizedStringKey(type.rawValue),
-                                symbol: Self.venueTypeSymbol(type),
-                                selected: model.venueType == type
-                            ) {
-                                model.venueType = model.venueType == type ? nil : type
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-
-            if model.venues.isEmpty {
-                // Only a *loaded* empty result is an empty state; while loading
-                // or failed the overlay owns the message and the shelf stays quiet.
-                if model.phase == .loaded {
-                    ContentUnavailableView {
-                        Label("No cafes in this view", systemImage: "cup.and.saucer")
-                    } description: {
-                        Text("Clear a filter or try another search.")
-                    } actions: {
-                        Button("Browse NYC") { model.browseCoverageCenter() }
-                            .buttonStyle(.borderedProminent)
-                            .accessibilityIdentifier("map-browse-nyc")
-                    }
-                    .frame(height: 170)
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("map-state-empty")
-                }
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 12) {
-                        ForEach(model.venues.prefix(12)) { venue in
-                            Button {
-                                selected = venue
-                                position = .region(
-                                    MKCoordinateRegion(
-                                        center: coordinate(of: venue),
-                                        span: MKCoordinateSpan(latitudeDelta: 0.012, longitudeDelta: 0.012)
-                                    )
-                                )
-                            } label: {
-                                venueCard(venue)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(
-                                "\(venue.name), Work Fit \(venue.workScore), \(venue.neighborhood)"
-                            )
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                }
-                // No fixed shelf height: cards reflow vertically at
-                // accessibility sizes instead of clipping (finding 7).
-                .fixedSize(horizontal: false, vertical: true)
-            }
+    /// Extra bottom safe area for the map subtree while the shelf rests at
+    /// the current detent — how compass, user-location button, and attribution
+    /// avoid the card, mirroring the detail dock's safe-area approach. Sized
+    /// from Dynamic Type–scaled estimates of the card's intrinsic parts, and
+    /// capped at the medium clearance for `.full` (the map is covered anyway).
+    private var shelfClearance: CGFloat {
+        let peek = shelfChipRowHeight + 56
+        switch shelfDetent {
+        case .peek: return peek
+        case .medium, .full: return peek + shelfCardBlockHeight + 12
         }
-        .padding(.vertical, 10)
-        .brewDeskGlass(in: UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26))
-        .shadow(color: .black.opacity(0.15), radius: 14, y: -3)
-    }
-
-    private static func venueTypeSymbol(_ type: VenueTypeFilter) -> String {
-        switch type {
-        case .cafe: "cup.and.saucer.fill"
-        case .park: "tree.fill"
-        case .library: "books.vertical.fill"
-        case .mall: "building.2.fill"
-        case .other: "mappin"
-        }
-    }
-
-    private func filterChip(
-        title: LocalizedStringKey,
-        symbol: String,
-        selected: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: symbol)
-                .font(.caption.bold())
-                .foregroundStyle(selected ? .white : .primary)
-                .padding(.horizontal, 12)
-                .frame(minHeight: 44)
-                .background(selected ? BrewDeskPalette.roast : Color.secondary.opacity(0.10), in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityValue(selected ? "On" : "Off")
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    /// Shelf card. No fixed frames on the score tile and no hard-coded 8pt
-    /// label: at accessibility sizes the old 72×82 tile clipped to "7 WOR"
-    /// (ui-review-2026-08-21 finding 7). The tile now scales with the score's
-    /// text style and the caption rides Dynamic Type via `.caption2`.
-    private func venueCard(_ venue: Venue) -> some View {
-        HStack(spacing: 12) {
-            VStack(spacing: 3) {
-                Text("\(venue.workScore)")
-                    .font(.title2.monospacedDigit().bold())
-                Text("WORK FIT")
-                    .font(.caption2.weight(.heavy))
-                    .tracking(0.5)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-            }
-            .foregroundStyle(venue.scoreTier.color)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 12)
-            .frame(minWidth: scoreTileMinWidth, minHeight: scoreTileMinHeight)
-            .background(venue.scoreTier.color.opacity(0.14), in: RoundedRectangle(cornerRadius: 14))
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(venue.name)
-                    .font(.headline)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                Text(venue.neighborhood)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HStack(spacing: 10) {
-                    Label(localizedAttributeValue(venue.attributes.wifi.value), systemImage: "wifi")
-                    Label(localizedAttributeValue(venue.attributes.outlets.value), systemImage: "powerplug")
-                }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                ProvenanceStamp(attributes: venue.attributes)
-            }
-        }
-        .padding(10)
-        .frame(width: dynamicTypeSize.isAccessibilitySize ? 330 : 285, alignment: .leading)
-        .background(BrewDeskPalette.surface, in: RoundedRectangle(cornerRadius: 20))
-        .animation(reduceMotion ? nil : .snappy, value: selected?.id)
     }
 
     /// A new plan is needed once the camera leaves what the current plan's
