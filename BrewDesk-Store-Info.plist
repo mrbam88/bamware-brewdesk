@@ -4,12 +4,5 @@
 <dict>
 	<key>BDStoreSurfaceGated</key>
 	<string>$(STORE_SURFACE_GATED)</string>
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Your location is used to find work-friendly cafes nearby.</string>
 </dict>
 </plist>

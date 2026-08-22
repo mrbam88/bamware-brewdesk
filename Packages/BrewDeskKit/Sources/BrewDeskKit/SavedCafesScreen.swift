@@ -24,13 +24,16 @@ public struct SavedCafesScreen: View {
             .toolbar {
                 // Account entry (brewdesk#48). AccountScreen resolves its own
                 // services, so this stays a single additive toolbar item.
-                ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink {
-                        AccountScreen()
-                    } label: {
-                        Label("Account", systemImage: "person.circle")
+                // Hidden in the store-submission build (brewdesk#67).
+                if !StoreSurface.isGated {
+                    ToolbarItem(placement: .topBarLeading) {
+                        NavigationLink {
+                            AccountScreen()
+                        } label: {
+                            Label("Account", systemImage: "person.circle")
+                        }
+                        .accessibilityIdentifier("account-entry")
                     }
-                    .accessibilityIdentifier("account-entry")
                 }
                 if let listing {
                     ToolbarItem(placement: .topBarTrailing) {
