@@ -4,5 +4,11 @@
 <dict>
 	<key>BDStoreSurfaceGated</key>
 	<string>$(STORE_SURFACE_GATED)</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>HankenGrotesk[wght].ttf</string>
+		<string>Manrope[wght].ttf</string>
+		<string>JetBrainsMono[wght].ttf</string>
+	</array>
 </dict>
 </plist>
