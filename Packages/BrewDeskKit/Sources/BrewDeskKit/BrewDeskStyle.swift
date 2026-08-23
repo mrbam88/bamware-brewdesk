@@ -42,6 +42,17 @@ public enum BrewDeskPalette {
         dark: Color(red: 0.21, green: 0.17, blue: 0.14)
     )
 
+    /// First-launch hero background (onboarding, location primer): the same
+    /// cream gradient as `pageGradient` in light — built from `page` and
+    /// `surface`, so it flips to a dark gradient instead of painting cream
+    /// straight over a dark system (ui-review-2026-08-22 finding: first
+    /// launch was light-only in dark mode).
+    public static let adaptivePageGradient = LinearGradient(
+        colors: [page, surface],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
     /// The package ships no asset catalog, so adaptive brand colors are built
     /// from a dynamic provider — one definition, both appearances.
     private static func adaptive(light: Color, dark: Color) -> Color {

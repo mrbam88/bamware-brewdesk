@@ -1,11 +1,19 @@
+import BrewDeskKit
 import SwiftUI
 
 struct OnboardingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.colorScheme) private var colorScheme
     let configuration: AppConfiguration
     let onComplete: () -> Void
     @State private var page = 0
+
+    // First launch was cream in every appearance (ui-review-2026-08-22):
+    // `AppBrand.pageGradient`/`.espresso`/`.muted` never adapted, so
+    // onboarding stayed light-only under system dark mode. `theme` mirrors
+    // the adaptive colors every other screen already uses.
+    private var theme: BrewDeskTheme { BrewDeskTheme(isDarkMode: colorScheme == .dark) }
 
     private let pages = [
         OnboardingPage(
@@ -30,7 +38,7 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            AppBrand.pageGradient.ignoresSafeArea()
+            AppBrand.adaptivePageGradient.ignoresSafeArea()
             VStack(spacing: 0) {
                 HStack {
                     Text(configuration.appName.uppercased())
@@ -39,7 +47,7 @@ struct OnboardingView: View {
                     Spacer()
                     Text("0\(page + 1) / 03")
                         .font(.caption.monospacedDigit())
-                        .foregroundStyle(AppBrand.muted)
+                        .foregroundStyle(theme.secondaryColor)
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
@@ -55,7 +63,7 @@ struct OnboardingView: View {
                 HStack(spacing: 8) {
                     ForEach(pages.indices, id: \.self) { index in
                         Capsule()
-                            .fill(index == page ? AppBrand.espresso : AppBrand.espresso.opacity(0.15))
+                            .fill(index == page ? theme.primaryColor : theme.primaryColor.opacity(0.15))
                             .frame(width: index == page ? 30 : 8, height: 8)
                     }
                 }
@@ -99,11 +107,11 @@ struct OnboardingView: View {
                 Text(item.title)
                     .font(.largeTitle.bold())
                     .fontDesign(.serif)
-                    .foregroundStyle(AppBrand.espresso)
+                    .foregroundStyle(theme.primaryColor)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(item.body)
                     .font(.body)
-                    .foregroundStyle(AppBrand.muted)
+                    .foregroundStyle(theme.secondaryColor)
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
             }
