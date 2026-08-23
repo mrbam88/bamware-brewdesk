@@ -116,7 +116,7 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
         comps.queryItems = query.urlQueryItems
         guard let url = comps.url else { throw VenueAPIError.badURL }
         let response = try await get(VenueListResponse.self, from: url)
-        return VenueLoadResult(venues: response.venues, coverage: .from(response.coverage))
+        return VenueLoadResult(venues: response.venues, coverage: .from(response.resolvedCoverage))
     }
 
     public func fetchHealth() async throws -> HealthResponse? {

@@ -127,12 +127,12 @@ final class ReviewerSimulationTests: XCTestCase {
         app.buttons["Use my location"].tap()
         allowLocationIfPrompted(app)
 
-        XCTAssertFalse(app.descendants(matching: .any)["coverage-banner"].waitForExistence(timeout: 3),
-                       "No coverage banner expected until ve#46 ships coverage for Cupertino")
-        XCTAssertTrue(app.staticTexts["100 work cafés"].waitForExistence(timeout: 15),
-                      "Map emptied for a Cupertino reviewer (brewdesk#1 regression)")
-        XCTAssertTrue(mapPin(app, named: "Gregorys Coffee").waitForExistence(timeout: 5),
-                      "Gregorys Coffee pin missing from the map")
+        // ve#46 shipped 2026-08-23: Cupertino is served from the OSM baseline
+        // tier, so the reviewer sees real local pins plus the honest banner.
+        XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: 15),
+                      "Map emptied for a Cupertino reviewer (brewdesk#1 / bd#108 regression)")
+        XCTAssertTrue(app.descendants(matching: .any)["coverage-banner"].waitForExistence(timeout: 5),
+                      "Baseline coverage banner missing for a Cupertino reviewer (bd#108)")
         capture("11-map-cupertino-real-viewport")
 
         // ── 7. Offline mid-browse → relaunch ──────────────────────────────

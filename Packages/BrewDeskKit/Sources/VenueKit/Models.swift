@@ -194,10 +194,19 @@ public enum ScoreTier: String, Sendable {
 public struct VenueListResponse: Codable, Sendable {
     public let count: Int
     public let venues: [Venue]
-    /// Meta field (ve#46, bd#108) for the whole queried viewport; absent on
-    /// pre-ve#46 payloads. Use `CoverageLevel.from(_:)` to decode it, which
-    /// treats absence as `.researched`.
+    /// Coverage for the whole queried viewport (ve#46, bd#108). The engine
+    /// sends it as `meta.coverage`; a top-level `coverage` is also accepted
+    /// (fixtures). Absent on pre-ve#46 payloads → `.researched` via
+    /// `CoverageLevel.from(_:)`.
     public let coverage: String?
+    public let meta: Meta?
+
+    public struct Meta: Codable, Sendable {
+        public let coverage: String?
+    }
+
+    /// `meta.coverage` wins over the legacy top-level field.
+    public var resolvedCoverage: String? { meta?.coverage ?? coverage }
 }
 
 /// One `fetchVenuesResult` answer: the venues plus what coverage the engine
