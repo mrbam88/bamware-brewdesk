@@ -15,6 +15,21 @@ struct OnboardingView: View {
     // the adaptive colors every other screen already uses.
     private var theme: BrewDeskTheme { BrewDeskTheme(isDarkMode: colorScheme == .dark) }
 
+    // AppBrand.clay measures well under 4.5:1 on the new dark page background
+    // (audit-caught: testOnboardingAccessibilityAudit, "Contrast failed" on
+    // the eyebrow label) -- brighten it for dark instead of reusing the
+    // fixed light-mode value.
+    private var eyebrowColor: Color {
+        colorScheme == .dark ? Color(red: 0.98, green: 0.62, blue: 0.46) : AppBrand.clay
+    }
+
+    // theme.secondaryColor's dark value (0.62/0.56/0.50) also measured under
+    // 4.5:1 on this page's darkest gradient corner (same audit-caught issue,
+    // body copy this time) -- a brighter body-text color for this screen only.
+    private var bodyTextColor: Color {
+        colorScheme == .dark ? Color(red: 0.82, green: 0.77, blue: 0.71) : theme.secondaryColor
+    }
+
     private let pages = [
         OnboardingPage(
             eyebrow: "WORK, WITHOUT THE GUESSWORK",
@@ -47,7 +62,7 @@ struct OnboardingView: View {
                     Spacer()
                     Text("0\(page + 1) / 03")
                         .font(.caption.monospacedDigit())
-                        .foregroundStyle(theme.secondaryColor)
+                        .foregroundStyle(bodyTextColor)
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
@@ -102,7 +117,7 @@ struct OnboardingView: View {
                 }
                 Text(item.eyebrow)
                     .font(.footnote.weight(.black))
-                    .foregroundStyle(AppBrand.clay)
+                    .foregroundStyle(eyebrowColor)
                     .lineLimit(nil)
                 Text(item.title)
                     .font(.largeTitle.bold())
@@ -111,7 +126,7 @@ struct OnboardingView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Text(item.body)
                     .font(.body)
-                    .foregroundStyle(theme.secondaryColor)
+                    .foregroundStyle(bodyTextColor)
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
             }

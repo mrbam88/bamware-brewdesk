@@ -107,7 +107,7 @@ public struct ObservationFormEntrySection: View {
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
-            .tint(theme.primaryColor)
+            .tint(BrewDeskPalette.roast)
             .accessibilityIdentifier("observation-entry")
         }
         .padding(18)
@@ -270,7 +270,7 @@ public struct ObservationFormScreen: View {
                 .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
-            .tint(theme.primaryColor)
+            .tint(BrewDeskPalette.roast)
             .disabled(!model.isComplete || model.isSubmitting)
             .accessibilityIdentifier("observation-submit")
             .accessibilityHint(
@@ -310,7 +310,7 @@ public struct ObservationFormScreen: View {
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
-            .tint(theme.primaryColor)
+            .tint(BrewDeskPalette.roast)
             .accessibilityIdentifier("observation-done")
             .padding(.top, 8)
         }
