@@ -94,7 +94,7 @@ public struct ObservationFormEntrySection: View {
         VStack(alignment: .leading, spacing: 14) {
             Label("Been here today?", systemImage: "person.2.wave.2")
                 .font(.headline)
-                .foregroundStyle(BrewDeskPalette.roast)
+                .foregroundStyle(theme.primaryColor)
             Text("Five taps, no typing. Your answers become community claims — stamped with their source, like every claim above.")
                 .font(.subheadline)
                 .observationSupportingText()
@@ -107,12 +107,12 @@ public struct ObservationFormEntrySection: View {
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
-            .tint(theme.primaryColor)
+            .tint(BrewDeskPalette.roast)
             .accessibilityIdentifier("observation-entry")
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemBackground))
+        .background(BrewDeskPalette.surface)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("observation-section")
@@ -165,6 +165,15 @@ public struct ObservationFormScreen: View {
         // Five taps are cheap to redo; only an in-flight submit must not be
         // torn down mid-request.
         .interactiveDismissDisabled(model.isSubmitting)
+        // Submit outcome haptics (brewdesk#75): a light confirmation the tap
+        // landed, distinct from the failure buzz on a friendly engine-down
+        // error. `.sensoryFeedback` already no-ops under Reduce Motion.
+        .sensoryFeedback(.success, trigger: model.phase) { _, new in
+            if case .submitted = new { true } else { false }
+        }
+        .sensoryFeedback(.error, trigger: model.phase) { _, new in
+            if case .failed = new { true } else { false }
+        }
     }
 
     private var questions: some View {
@@ -261,7 +270,7 @@ public struct ObservationFormScreen: View {
                 .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
-            .tint(theme.primaryColor)
+            .tint(BrewDeskPalette.roast)
             .disabled(!model.isComplete || model.isSubmitting)
             .accessibilityIdentifier("observation-submit")
             .accessibilityHint(
@@ -301,7 +310,7 @@ public struct ObservationFormScreen: View {
                     .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
-            .tint(theme.primaryColor)
+            .tint(BrewDeskPalette.roast)
             .accessibilityIdentifier("observation-done")
             .padding(.top, 8)
         }
@@ -327,7 +336,7 @@ struct ObservationQuestionCard<Option: ObservationAnswerOption>: View {
         VStack(alignment: .leading, spacing: 12) {
             Label(title, systemImage: systemImage)
                 .font(.headline)
-                .foregroundStyle(BrewDeskPalette.roast)
+                .foregroundStyle(theme.primaryColor)
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 8) { options }
                 VStack(spacing: 8) { options }
@@ -335,7 +344,7 @@ struct ObservationQuestionCard<Option: ObservationAnswerOption>: View {
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(uiColor: .secondarySystemBackground))
+        .background(BrewDeskPalette.surface)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("observation-question-\(questionID)")
@@ -361,7 +370,7 @@ struct ObservationQuestionCard<Option: ObservationAnswerOption>: View {
             .background(
                 isSelected
                     ? AnyShapeStyle(theme.primaryColor)
-                    : AnyShapeStyle(Color(uiColor: .tertiarySystemFill)),
+                    : AnyShapeStyle(BrewDeskPalette.surfaceSecondary),
                 in: Capsule()
             )
             .accessibilityAddTraits(isSelected ? .isSelected : [])

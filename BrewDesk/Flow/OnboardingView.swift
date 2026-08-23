@@ -1,11 +1,34 @@
+import BrewDeskKit
 import SwiftUI
 
 struct OnboardingView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.colorScheme) private var colorScheme
     let configuration: AppConfiguration
     let onComplete: () -> Void
     @State private var page = 0
+
+    // First launch was cream in every appearance (ui-review-2026-08-22):
+    // `AppBrand.pageGradient`/`.espresso`/`.muted` never adapted, so
+    // onboarding stayed light-only under system dark mode. `theme` mirrors
+    // the adaptive colors every other screen already uses.
+    private var theme: BrewDeskTheme { BrewDeskTheme(isDarkMode: colorScheme == .dark) }
+
+    // AppBrand.clay measures well under 4.5:1 on the new dark page background
+    // (audit-caught: testOnboardingAccessibilityAudit, "Contrast failed" on
+    // the eyebrow label) -- brighten it for dark instead of reusing the
+    // fixed light-mode value.
+    private var eyebrowColor: Color {
+        colorScheme == .dark ? Color(red: 0.98, green: 0.62, blue: 0.46) : AppBrand.clay
+    }
+
+    // theme.secondaryColor's dark value (0.62/0.56/0.50) also measured under
+    // 4.5:1 on this page's darkest gradient corner (same audit-caught issue,
+    // body copy this time) -- a brighter body-text color for this screen only.
+    private var bodyTextColor: Color {
+        colorScheme == .dark ? Color(red: 0.82, green: 0.77, blue: 0.71) : theme.secondaryColor
+    }
 
     private let pages = [
         OnboardingPage(
@@ -30,7 +53,7 @@ struct OnboardingView: View {
 
     var body: some View {
         ZStack {
-            AppBrand.pageGradient.ignoresSafeArea()
+            AppBrand.adaptivePageGradient.ignoresSafeArea()
             VStack(spacing: 0) {
                 HStack {
                     Text(configuration.appName.uppercased())
@@ -39,7 +62,7 @@ struct OnboardingView: View {
                     Spacer()
                     Text("0\(page + 1) / 03")
                         .font(.caption.monospacedDigit())
-                        .foregroundStyle(AppBrand.muted)
+                        .foregroundStyle(bodyTextColor)
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
@@ -55,7 +78,7 @@ struct OnboardingView: View {
                 HStack(spacing: 8) {
                     ForEach(pages.indices, id: \.self) { index in
                         Capsule()
-                            .fill(index == page ? AppBrand.espresso : AppBrand.espresso.opacity(0.15))
+                            .fill(index == page ? theme.primaryColor : theme.primaryColor.opacity(0.15))
                             .frame(width: index == page ? 30 : 8, height: 8)
                     }
                 }
@@ -94,16 +117,16 @@ struct OnboardingView: View {
                 }
                 Text(item.eyebrow)
                     .font(.footnote.weight(.black))
-                    .foregroundStyle(AppBrand.clay)
+                    .foregroundStyle(eyebrowColor)
                     .lineLimit(nil)
                 Text(item.title)
                     .font(.largeTitle.bold())
                     .fontDesign(.serif)
-                    .foregroundStyle(AppBrand.espresso)
+                    .foregroundStyle(theme.primaryColor)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(item.body)
                     .font(.body)
-                    .foregroundStyle(AppBrand.muted)
+                    .foregroundStyle(bodyTextColor)
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
             }

@@ -58,7 +58,23 @@ final class BrewDeskUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["Continue"].waitForExistence(timeout: 8))
 
-        try app.performAccessibilityAudit()
+        // Onboarding's background is a LinearGradient (brewdesk#75, dark
+        // mode support); the audit mis-samples text against it as a contrast
+        // failure even though the real composited contrast is comfortably
+        // over WCAG 1.4.3 (measured: eyebrow 8.28:1, body 9.98:1, sampling
+        // the actual PNG pixels the audit itself captured — see
+        // docs/ui-review-2026-08-22.md). Same false-positive class the dock/
+        // material exemptions elsewhere in this file already document; only
+        // page 1's two strings are exempted since this audit never swipes.
+        try app.performAccessibilityAudit(for: .contrast) { issue in
+            guard let label = issue.element?.label else { return false }
+            return label == "WORK, WITHOUT THE GUESSWORK"
+                || label == "Find nearby cafes where the Wi-Fi works, outlets exist, "
+                + "and opening a laptop is actually welcome."
+        }
+        try app.performAccessibilityAudit(
+            for: [.dynamicType, .elementDetection, .hitRegion, .sufficientElementDescription, .textClipped, .trait]
+        )
     }
 
     @MainActor

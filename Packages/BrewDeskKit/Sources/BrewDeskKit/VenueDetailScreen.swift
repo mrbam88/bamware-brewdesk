@@ -518,6 +518,7 @@ public struct VenueDetailScreen: View {
             )
         }
         .accessibilityValue(savedVenues.contains(venue.id) ? "Saved" : "Not saved")
+        .sensoryFeedback(.selection, trigger: savedVenues.contains(venue.id))
 
         ShareLink(item: shareText) {
             actionLabel("Share", systemImage: "square.and.arrow.up")
