@@ -97,7 +97,7 @@ public struct ImportSavedScreen: View {
             case .fileFailed:
                 Section {
                     Label("That file couldn't be read", systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(BrewDeskPalette.berry)
+                        .foregroundStyle(BrewDeskPalette.berryText)
                         .accessibilityIdentifier("import-state-file-failed")
                     Text("Export your Saved Places from Google Takeout and pick the CSV or GeoJSON file.")
                         .font(.subheadline)
@@ -108,7 +108,7 @@ public struct ImportSavedScreen: View {
             case .engineFailed:
                 Section {
                     Label("Cafe service unavailable", systemImage: "wifi.exclamationmark")
-                        .foregroundStyle(BrewDeskPalette.berry)
+                        .foregroundStyle(BrewDeskPalette.berryText)
                         .accessibilityIdentifier("import-state-engine-failed")
                     Text("Check your connection and try again.")
                         .font(.subheadline)
@@ -126,7 +126,7 @@ public struct ImportSavedScreen: View {
                     Section("Saved to BrewDesk") {
                         ForEach(matched) { venue in
                             Label(venue.name, systemImage: "bookmark.fill")
-                                .foregroundStyle(BrewDeskPalette.moss)
+                                .foregroundStyle(BrewDeskPalette.mossText)
                         }
                     }
                     .listRowBackground(BrewDeskPalette.surface)

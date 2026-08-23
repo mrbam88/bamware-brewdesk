@@ -68,6 +68,14 @@ struct DiscoveryRootView: View {
                 }
                 .tag(DiscoveryTab.saved)
         }
+        // Warm Utilitarian (brewdesk#98): the primary green becomes the
+        // selected-tab accent. iOS 26's floating glass tab bar already draws
+        // the selected item as a filled circle inside the glass pill from
+        // this tint — no custom pill container needed (and none was in the
+        // fence: layout/composition of the tab bar itself is untouched,
+        // only its accent color). iOS 17 falls back to a tinted icon, the
+        // same fallback shape the rest of the app already uses for glass.
+        .tint(BrewDeskPalette.roast)
         .environment(\.locationDenied, locationService.isDenied)
         // Dataset stats are independent of the venue request and the TabView
         // always exists — the strip itself cannot load them (brewdesk#34).
