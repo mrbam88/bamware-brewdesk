@@ -19,12 +19,16 @@ final class AppStoreScreenshotTests: XCTestCase {
         let findMyWorkCafe: String
         let startWhereYouAre: String
         let useUnionSquare: String
-        let hundredWorkCafes: String
         let nearbyTab: String
         let exploreTab: String
         let filters: String
         let laptopFriendlyOnly: String
         let searchField: String
+        /// Shape, not literal: the Union Square load is a real API count
+        /// from a real-viewport query (bd#108), no longer a fixed number.
+        /// bd#37's rank-independence rule applies to counts too — match
+        /// the pattern "<digits> work cafés", not a specific total.
+        let workCafeCountPattern: String
         let oneWorkCafe: String
         let detailsNav: String
         let workability: String
@@ -37,12 +41,12 @@ final class AppStoreScreenshotTests: XCTestCase {
             findMyWorkCafe: "Find my work cafe",
             startWhereYouAre: "Start where you are.",
             useUnionSquare: "Use Union Square instead",
-            hundredWorkCafes: "100 work cafés",
             nearbyTab: "Nearby",
             exploreTab: "Explore",
             filters: "Filters",
             laptopFriendlyOnly: "Laptop-friendly only",
             searchField: "Search cafes",
+            workCafeCountPattern: "^[0-9,]+ work cafés$",
             oneWorkCafe: "1 work café",
             detailsNav: "Details",
             workability: "Workability"
@@ -56,12 +60,12 @@ final class AppStoreScreenshotTests: XCTestCase {
             findMyWorkCafe: "Encontrar mi café para trabajar",
             startWhereYouAre: "Empieza donde estás.",
             useUnionSquare: "Usar Union Square",
-            hundredWorkCafes: "100 cafés para trabajar",
             nearbyTab: "Cercanos",
             exploreTab: "Explorar",
             filters: "Filtros",
             laptopFriendlyOnly: "Solo aptos para portátiles",
             searchField: "Buscar cafés",
+            workCafeCountPattern: "^[0-9,]+ cafés para trabajar$",
             oneWorkCafe: "1 café para trabajar",
             detailsNav: "Detalles",
             workability: "Aptitud para trabajar"
@@ -79,10 +83,23 @@ final class AppStoreScreenshotTests: XCTestCase {
     func testCaptureAppStoreScreens() throws {
         let locale = CaptureLocale.current()
         let app = XCUIApplication()
+        // A stale granted-location permission (left by an earlier run on the
+        // same simulator) leaks a real CoreLocation fix into this launch;
+        // bd#108 removed the >50km-from-NYC rejection, so that fix recenters
+        // the map on wherever the simulator actually is instead of Union
+        // Square, breaking the deterministic NYC dataset this capture
+        // depends on. Force a clean not-determined state so "Use Union
+        // Square instead" is the only location this run can show.
+        app.resetAuthorizationStatus(for: .location)
         app.launchArguments += [
             "-brewdesk.onboarding.complete", "NO",
             "-brewdesk.location-intro.complete", "NO",
             "-UITestNoPhotos",
+            // Store-submission builds hide the Account entry, report/block
+            // actions, and observation entry card (brewdesk#67). Marketing
+            // screenshots must match that shipped surface, not the
+            // TestFlight-only superset (brewdesk#68).
+            "-UITestStoreSurfaceGated",
             "-AppleLanguages", locale.appleLanguage,
             "-AppleLocale", locale.appleLocale,
         ]
@@ -99,7 +116,10 @@ final class AppStoreScreenshotTests: XCTestCase {
         capture("05-location-is-optional")
 
         app.buttons[locale.useUnionSquare].tap()
-        XCTAssertTrue(app.staticTexts[locale.hundredWorkCafes].waitForExistence(timeout: 15))
+        let workCafeCount = app.staticTexts.element(
+            matching: NSPredicate(format: "label MATCHES %@", locale.workCafeCountPattern)
+        )
+        XCTAssertTrue(workCafeCount.waitForExistence(timeout: 15))
         XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: 5))
         capture("03-work-fit-map")
 
