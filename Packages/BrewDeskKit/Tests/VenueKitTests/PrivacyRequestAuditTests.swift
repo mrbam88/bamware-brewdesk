@@ -10,6 +10,10 @@ import Testing
 /// - Coordinates travel ONLY as `lat`/`lng` on `GET {engine}/v1/venues`.
 /// - With location denied the app queries the public Union Square anchor
 ///   (VenuesModel.coverageCenter*), never a device coordinate.
+/// - With location granted, the app now always queries the real coordinate
+///   (bd#108 removed the out-of-coverage rejection this suite used to test
+///   at the wire level) — the coordinate still reaches only the engine, used
+///   transiently to rank one response.
 /// - Photo bytes come from a Google host, but those URLs carry no coordinates
 ///   and no identifiers; no other third-party host is ever contacted.
 @Suite(.serialized) struct PrivacyRequestAuditTests {

@@ -85,15 +85,20 @@ public final class VenuesModel {
     public private(set) var centerLng = VenuesModel.coverageCenterLng
     public let radiusM = 2500
 
-    /// True when the user's real location was rejected for being outside the
-    /// NYC coverage area — the UI shows coverage instead of an empty map.
-    public private(set) var isOutsideCoverage = false
+    /// What the engine reported for the last successfully loaded viewport
+    /// (ve#46, bd#108) — drives the coverage banner. `.researched` until the
+    /// first load answers, and whenever the engine hasn't shipped the field
+    /// yet (`VenueLoadResult`'s default), so a pre-ve#46 build shows no
+    /// banner, exactly like today.
+    public private(set) var coverage: CoverageLevel = .researched
 
-    // NYC coverage anchor (Union Square) and how far a coordinate may sit
-    // from it before we keep showing coverage instead of following the user.
+    // NYC anchor (Union Square) — the deterministic default center before a
+    // real location is known, and where "Browse NYC" snaps back to. bd#108
+    // removed the client-side rejection that used to keep every out-of-NYC
+    // coordinate pinned here: the model now always queries the real
+    // viewport it was given (brewdesk#1 fallback removed).
     nonisolated static let coverageCenterLat = 40.7359
     nonisolated static let coverageCenterLng = -73.9911
-    nonisolated static let coverageRadiusM = 50_000.0
 
     @ObservationIgnored
     private let api: any VenueListing
@@ -127,29 +132,24 @@ public final class VenuesModel {
         )
     }
 
+    /// Always accepts a real coordinate — bd#108 removed the >50km-from-NYC
+    /// rejection this used to apply. `false` only means "already centered
+    /// here," not "rejected."
     @discardableResult
     public func updateCenterIfNeeded(lat: Double, lng: Double) -> Bool {
-        guard Self.metersFromCoverageCenter(lat: lat, lng: lng) <= Self.coverageRadiusM else {
-            isOutsideCoverage = true
-            return false
-        }
-        isOutsideCoverage = false
         guard centerLat != lat || centerLng != lng else { return false }
         centerLat = lat
         centerLng = lng
         return true
     }
 
-    /// "Browse NYC": snap back to the coverage anchor and re-query.
+    /// "Browse NYC": snap back to the coverage anchor and re-query. Now a
+    /// manual affordance only (the empty/"no cafes" states offer it) — it no
+    /// longer fires automatically for a coordinate far from NYC.
     public func browseCoverageCenter() {
         centerLat = Self.coverageCenterLat
         centerLng = Self.coverageCenterLng
         requestRevision &+= 1
-    }
-
-    /// Haversine distance from the coverage anchor, in meters.
-    nonisolated static func metersFromCoverageCenter(lat: Double, lng: Double) -> Double {
-        metersBetween(lat, lng, coverageCenterLat, coverageCenterLng)
     }
 
     nonisolated static func metersBetween(
@@ -246,10 +246,11 @@ public final class VenuesModel {
             isShowingSnapshot = true
         }
         do {
-            let answer = try await api.fetchVenues(request.query)
+            let answer = try await api.fetchVenuesResult(request.query)
             try Task.checkCancellation()
             guard generation == loadGeneration else { return }
-            loadedVenues = answer
+            loadedVenues = answer.venues
+            coverage = answer.coverage
             hasReceivedLiveVenues = true
             isShowingSnapshot = false
             phase = .loaded

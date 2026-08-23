@@ -357,7 +357,7 @@ struct DiscoveryShelfCard: View {
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-                ProvenanceStamp(attributes: venue.attributes)
+                ProvenanceStamp(attributes: venue.attributes, tier: venue.tier)
             }
 
             if fillsWidth {

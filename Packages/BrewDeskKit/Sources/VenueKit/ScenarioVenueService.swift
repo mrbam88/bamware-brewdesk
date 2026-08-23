@@ -34,6 +34,18 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         /// community photo carrying `contributorName` (brewdesk#49) — pins the
         /// byline in the strip + viewer next to an unchanged Google photo.
         case communityPhotos
+        /// Cupertino-area fixture venues (ve#46 tier 0 / bd#108): every venue
+        /// carries `tier: "osm-baseline"`, claims sourced `osm`, and
+        /// `fetchVenuesResult` reports `coverage: .baseline` — pins the
+        /// honest banner + "OSM baseline · updated <date>" provenance
+        /// wording for a viewport the engine has only OSM data for.
+        case baselineCity
+        /// Venues resolve to `[]` and `fetchVenuesResult` reports
+        /// `coverage: .none` — the intentional empty state for a viewport
+        /// the engine has nothing for at all. Distinct from `emptyVenues`,
+        /// which decodes as `.researched` (the missing-field default) —
+        /// `noCoverage` pins the coverage-driven path specifically.
+        case noCoverage
     }
 
     public let scenario: Scenario
@@ -121,6 +133,19 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         }
     }()
 
+    /// Five Cupertino-area venues (ve#46 tier 0 / bd#108): real coffee-shop
+    /// names near Apple Park, OSM-sourced claims, `tier: "osm-baseline"`.
+    /// `ReviewerSimulationTests` asserts ≥5 rows/pins against this fixture —
+    /// the app-side stand-in for what the engine's OSM baseline import will
+    /// answer for any US viewport once ve#46 ships.
+    public static let baselineVenues: [Venue] = [
+        baselineVenue(id: "baseline-main-street", name: "Main Street Coffee", lat: 37.3220, lng: -122.0125, neighborhood: "Cupertino", workScore: 58),
+        baselineVenue(id: "baseline-homestead", name: "Homestead Coffee House", lat: 37.3268, lng: -122.0322, neighborhood: "Cupertino", workScore: 61),
+        baselineVenue(id: "baseline-de-anza", name: "De Anza Reading Room", lat: 37.3187, lng: -122.0453, neighborhood: "Cupertino", workScore: 55),
+        baselineVenue(id: "baseline-bandley", name: "Bandley Drive Grounds", lat: 37.3306, lng: -122.0296, neighborhood: "Cupertino", workScore: 60),
+        baselineVenue(id: "baseline-stevens-creek", name: "Stevens Creek Roasters", lat: 37.3172, lng: -122.0311, neighborhood: "Cupertino", workScore: 57),
+    ]
+
     public static let fixtureHealth = HealthResponse(
         ok: true,
         venueCount: 3,
@@ -173,6 +198,24 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             return Self.perfVenues
         case .fixtureOK, .photosEmpty, .photosFail, .communityPhotos:
             return Self.fixtureVenues
+        case .baselineCity:
+            return Self.baselineVenues
+        case .noCoverage:
+            return []
+        }
+    }
+
+    /// `fetchVenues` above stays the venues-only source of truth for every
+    /// existing scenario; only `baselineCity`/`noCoverage` need a coverage
+    /// other than the default extension's `.researched` (bd#108).
+    public func fetchVenuesResult(_ query: VenueQuery) async throws -> VenueLoadResult {
+        switch scenario {
+        case .baselineCity:
+            return VenueLoadResult(venues: Self.baselineVenues, coverage: .baseline)
+        case .noCoverage:
+            return VenueLoadResult(venues: [], coverage: .none)
+        default:
+            return VenueLoadResult(venues: try await fetchVenues(query), coverage: .researched)
         }
     }
 
@@ -187,6 +230,15 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
                 seededAt: "2026-08-01T00:00:00Z",
                 observationCount: 0
             )
+        case .baselineCity:
+            return HealthResponse(
+                ok: true,
+                venueCount: Self.baselineVenues.count,
+                seededAt: "2026-08-10T00:00:00Z",
+                observationCount: 0
+            )
+        case .noCoverage:
+            return HealthResponse(ok: true, venueCount: 0, seededAt: "2026-08-10T00:00:00Z", observationCount: 0)
         default: return Self.fixtureHealth
         }
     }
@@ -202,6 +254,13 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
                 throw VenueAPIError.http(statusCode: 404)
             }
             return venue
+        case .baselineCity:
+            guard let venue = Self.baselineVenues.first(where: { $0.id == id }) else {
+                throw VenueAPIError.http(statusCode: 404)
+            }
+            return venue
+        case .noCoverage:
+            throw VenueAPIError.http(statusCode: 404)
         default:
             guard let venue = Self.fixtureVenues.first(where: { $0.id == id }) else {
                 throw VenueAPIError.http(statusCode: 404)
@@ -216,7 +275,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         switch scenario {
         case .engineDown, .photosFail: throw Self.serverError
         case .offline: throw Self.offlineError
-        case .emptyVenues, .photosEmpty, .manyVenues: return []
+        case .emptyVenues, .photosEmpty, .manyVenues, .baselineCity, .noCoverage: return []
         case .fixtureOK, .slow, .offlineThenRecovers:
             return blockStore.filteringBlocked(Self.fixturePhotos)
         case .communityPhotos:
@@ -244,7 +303,8 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         case .offlineThenRecovers:
             if observationAttempts.next() == 1 { throw Self.offlineError }
             return Self.observedVenue(id: venueId)
-        case .fixtureOK, .emptyVenues, .photosEmpty, .photosFail, .manyVenues, .communityPhotos:
+        case .fixtureOK, .emptyVenues, .photosEmpty, .photosFail, .manyVenues, .communityPhotos,
+             .baselineCity, .noCoverage:
             return Self.observedVenue(id: venueId)
         }
     }
@@ -309,6 +369,44 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             website: website,
             phone: phone,
             email: email
+        )
+    }
+
+    /// OSM-baseline fixture venue (ve#46 tier 0 / bd#108): every claim is
+    /// `source: "osm"`, unverified confidence, and the venue carries
+    /// `tier: "osm-baseline"` — never "curated", never a human source, so
+    /// `ProvenanceStamp` renders the baseline wording, not a seal.
+    private static func baselineVenue(
+        id: String,
+        name: String,
+        lat: Double,
+        lng: Double,
+        neighborhood: String,
+        workScore: Int
+    ) -> Venue {
+        let observedAt = "2026-08-10T00:00:00Z"
+        return Venue(
+            id: id,
+            name: name,
+            lat: lat,
+            lng: lng,
+            address: nil,
+            neighborhood: neighborhood,
+            borough: "Santa Clara County",
+            hoursRaw: nil,
+            vertical: "cafe",
+            attributes: VenueAttributes(
+                wifi: Claim(value: "unknown", source: "osm", confidence: 0.4, observedAt: observedAt),
+                outlets: Claim(value: "unknown", source: "osm", confidence: 0.4, observedAt: observedAt),
+                laptopPolicy: Claim(value: "unrestricted", source: "osm", confidence: 0.4, observedAt: observedAt),
+                noise: Claim(value: "unknown", source: "osm", confidence: 0.4, observedAt: observedAt)
+            ),
+            vibeTags: [],
+            workScore: workScore,
+            lastVerified: nil,
+            distanceM: nil,
+            venueType: "cafe",
+            tier: "osm-baseline"
         )
     }
 }

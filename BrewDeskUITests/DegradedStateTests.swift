@@ -143,6 +143,29 @@ final class DegradedStateTests: XCTestCase {
         XCTAssertFalse(element(app, "map-state-loading").exists)
     }
 
+    // MARK: - Coverage (ve#46, bd#108)
+
+    /// A viewport the engine only has OSM tier-0 data for: the honest
+    /// baseline banner, never the removed "outside NYC" fallback text.
+    @MainActor
+    func testMapBaselineCityShowsBaselineBannerAndVenues() {
+        let app = launch("baselineCity")
+        XCTAssertTrue(element(app, "coverage-banner").waitForExistence(timeout: wait))
+        XCTAssertTrue(app.staticTexts["Baseline data here — not yet researched. NYC is fully researched."].exists)
+        XCTAssertFalse(element(app, "map-state-empty").exists)
+        XCTAssertFalse(element(app, "map-state-error").exists)
+    }
+
+    /// A viewport the engine has nothing for at all: the existing empty
+    /// state, no baseline banner.
+    @MainActor
+    func testMapNoCoverageShowsEmptyStateWithoutBanner() {
+        let app = launch("noCoverage")
+        XCTAssertTrue(element(app, "map-state-empty").waitForExistence(timeout: wait))
+        XCTAssertTrue(app.buttons["map-browse-nyc"].exists)
+        XCTAssertFalse(element(app, "coverage-banner").exists)
+    }
+
     @MainActor
     func testMapLocationDeniedShowsBannerAndContent() {
         let app = launch("fixtureOK", extra: ["-UITestLocationDenied"])

@@ -28,6 +28,12 @@ public enum VenueAPIError: Error, LocalizedError, Sendable, Equatable {
 
 public protocol VenueListing: Sendable {
     func fetchVenues(_ query: VenueQuery) async throws -> [Venue]
+    /// Venues plus the engine's reported coverage for the viewport (ve#46,
+    /// bd#108). Optional capability: the default extension answers
+    /// `.researched` by delegating to `fetchVenues`, so every existing
+    /// conformer (mocks, `ScenarioVenueService` scenarios that don't care)
+    /// keeps compiling and behaving exactly as before without adopting this.
+    func fetchVenuesResult(_ query: VenueQuery) async throws -> VenueLoadResult
     /// Dataset-level stats for the stat strip. Optional capability: the
     /// default returns nil and the UI renders nothing.
     func fetchHealth() async throws -> HealthResponse?
@@ -35,6 +41,9 @@ public protocol VenueListing: Sendable {
 
 extension VenueListing {
     public func fetchHealth() async throws -> HealthResponse? { nil }
+    public func fetchVenuesResult(_ query: VenueQuery) async throws -> VenueLoadResult {
+        VenueLoadResult(venues: try await fetchVenues(query), coverage: .researched)
+    }
 }
 
 public protocol VenueDetailServing: Sendable {
@@ -92,13 +101,22 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
     }
 
     public func fetchVenues(_ query: VenueQuery) async throws -> [Venue] {
+        try await fetchVenuesResult(query).venues
+    }
+
+    /// Always the real queried viewport — no client-side "outside NYC"
+    /// substitution (bd#108 removed that; `VenuesModel` now sends whatever
+    /// coordinate it was given). `coverage` on the response says whether
+    /// that viewport is researched, OSM baseline, or has nothing at all.
+    public func fetchVenuesResult(_ query: VenueQuery) async throws -> VenueLoadResult {
         var comps = URLComponents(
             url: baseURL.appendingPathComponent("/v1/venues"),
             resolvingAgainstBaseURL: false
         )!
         comps.queryItems = query.urlQueryItems
         guard let url = comps.url else { throw VenueAPIError.badURL }
-        return try await get(VenueListResponse.self, from: url).venues
+        let response = try await get(VenueListResponse.self, from: url)
+        return VenueLoadResult(venues: response.venues, coverage: .from(response.resolvedCoverage))
     }
 
     public func fetchHealth() async throws -> HealthResponse? {

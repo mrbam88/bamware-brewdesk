@@ -378,13 +378,8 @@ public struct CafeMapScreen: View {
                 SnapshotBanner(state: state) { model.retry() }
             }
 
-            if model.isOutsideCoverage {
-                Label("You're outside NYC — showing our NYC coverage.", systemImage: "mappin.slash")
-                    .font(.caption.bold())
-                    .padding(.horizontal, 12)
-                    .frame(minHeight: 32)
-                    .brewDeskGlass(in: Capsule())
-                    .accessibilityIdentifier("coverage-banner")
+            if model.coverage == .baseline {
+                CoverageBaselineBanner()
             }
 
             if locationDenied {

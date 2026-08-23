@@ -2028,6 +2028,26 @@
           }
         }
       }
+    },
+    "Baseline data here — not yet researched. NYC is fully researched.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Datos de referencia aquí — aún no investigados. NYC está totalmente investigada."
+          }
+        }
+      }
+    },
+    "OSM baseline · updated %@": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Base OSM · actualizado %@"
+          }
+        }
+      }
     }
   },
   "version": "1.1"
