@@ -53,6 +53,28 @@ public enum BrewDeskPalette {
         endPoint: .bottomTrailing
     )
 
+    // MARK: - Adaptive text tokens (brewdesk#89)
+
+    /// `clay` used as TEXT (not fill) fails contrast on `surface` dark —
+    /// 2.58:1, well under the 4.5:1 AA floor. Brightened dark value matches
+    /// the fix already proven in `OnboardingView.eyebrowColor`
+    /// (audit-caught: "Contrast failed" on the eyebrow label). Use this for
+    /// any red-family TEXT; keep `clay` itself for fills/pins, which stay as
+    /// they are.
+    public static let clayText = adaptive(
+        light: clay,
+        dark: Color(red: 0.98, green: 0.62, blue: 0.46)
+    )
+
+    /// `berry` used as TEXT fails contrast on `surface` dark — 1.60:1.
+    /// Lightened/desaturated dark value verified at 5.99:1 on `surface`
+    /// dark. Use this for any red-family TEXT; keep `berry` itself for
+    /// fills/pins, which stay as they are.
+    public static let berryText = adaptive(
+        light: berry,
+        dark: Color(red: 0.92, green: 0.50, blue: 0.55)
+    )
+
     /// The package ships no asset catalog, so adaptive brand colors are built
     /// from a dynamic provider — one definition, both appearances.
     private static func adaptive(light: Color, dark: Color) -> Color {

@@ -153,7 +153,7 @@ struct ClaimRow: View {
     private var claimValue: some View {
         Text(displayValue)
             .font(.subheadline.bold())
-            .foregroundStyle(claim.isEstimate ? BrewDeskPalette.clay : Color.primary)
+            .foregroundStyle(claim.isEstimate ? BrewDeskPalette.clayText : Color.primary)
             .fixedSize(horizontal: false, vertical: true)
     }
 
