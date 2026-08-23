@@ -147,7 +147,12 @@ final class ReviewerSimulationTests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Explore"].waitForExistence(timeout: 8),
                       "Relaunch replayed onboarding instead of restoring discovery")
         XCTAssertFalse(app.buttons["Continue"].exists)
-        XCTAssertTrue(app.staticTexts["100 work cafés"].waitForExistence(timeout: 15))
+        // Count is viewport-dependent since bd#108 (relaunch restores the
+        // last real viewport, e.g. Cupertino's 30, not NYC's 100).
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "work caf")
+        ).firstMatch.waitForExistence(timeout: 15),
+                      "Relaunch did not restore the venue-count header")
         capture("12-relaunch-restored")
     }
 
