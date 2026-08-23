@@ -18,6 +18,9 @@ public struct CafeMapScreen: View {
     /// drag — never per frame — so this body stays out of mid-gesture frames
     /// (the brewdesk#54 invariant). Mid-drag state lives in the card itself.
     @State private var shelfDetent: ShelfDetent = .medium
+    /// Backs the search field so map taps, shelf drags, Return, and the
+    /// keyboard toolbar's Done button can all resign focus (brewdesk#87).
+    @FocusState private var searchFocused: Bool
     /// Full map height, captured once per layout for the `.full` card height.
     @State private var mapHeight: CGFloat = 0
     /// Dynamic Type–aware estimates of the shelf card's height per detent, so
@@ -71,6 +74,15 @@ public struct CafeMapScreen: View {
                     TapGesture(count: 2)
                         .onEnded { scheduleReplan(proxy: proxy, size: geometry.size) }
                 )
+                // Any touch on the map — a tap or the start of a pan —
+                // resigns the search field (brewdesk#87). `minimumDistance:
+                // 0` fires on touch-down, and `simultaneousGesture` keeps it
+                // from stealing the touch from pin/cluster buttons or the
+                // other map gestures above.
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in searchFocused = false }
+                )
             }
         }
         .mapControls {
@@ -115,6 +127,16 @@ public struct CafeMapScreen: View {
                     )
                 )
             }
+            // Dragging the shelf (resize or its own scroll content) also
+            // resigns the search field (brewdesk#87). Applied at the call
+            // site rather than inside `DiscoveryShelfCard` — its own
+            // `minimumDistance: 8` resize gesture and any internal
+            // scrolling both still recognize normally alongside this one.
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in searchFocused = false }
+            )
+            .scrollDismissesKeyboard(.immediately)
         }
         .sheet(item: $selected) { venue in
             NavigationStack {
@@ -307,7 +329,20 @@ public struct CafeMapScreen: View {
                         .foregroundStyle(.secondary)
                     TextField("Search cafes", text: $model.searchQuery)
                         .submitLabel(.search)
-                        .onSubmit { model.submitSearch() }
+                        .focused($searchFocused)
+                        .onSubmit {
+                            model.submitSearch()
+                            searchFocused = false
+                        }
+                        .toolbar {
+                            ToolbarItemGroup(placement: .keyboard) {
+                                Spacer()
+                                Button("Done") {
+                                    searchFocused = false
+                                }
+                                .accessibilityIdentifier("search-done")
+                            }
+                        }
                     if !model.searchQuery.isEmpty {
                         Button {
                             model.clearSearch()
