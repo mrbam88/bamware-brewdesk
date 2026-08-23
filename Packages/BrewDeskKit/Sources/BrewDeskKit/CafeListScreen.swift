@@ -258,7 +258,7 @@ struct VenueRow: View {
         case "discouraged":
             Label("No laptops", systemImage: "laptopcomputer.slash")
                 .font(.caption2.bold())
-                .foregroundStyle(BrewDeskPalette.berry)
+                .foregroundStyle(BrewDeskPalette.berryText)
                 .accessibilityIdentifier("laptop-banned-marker")
         case "time_limited":
             Label("Time-limited", systemImage: "clock")

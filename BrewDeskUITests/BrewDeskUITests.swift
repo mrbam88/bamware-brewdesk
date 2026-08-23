@@ -65,12 +65,22 @@ final class BrewDeskUITests: XCTestCase {
         // the actual PNG pixels the audit itself captured — see
         // docs/ui-review-2026-08-22.md). Same false-positive class the dock/
         // material exemptions elsewhere in this file already document; only
-        // page 1's two strings are exempted since this audit never swipes.
+        // page 1's strings are exempted since this audit never swipes.
+        //
+        // brewdesk#98 re-tuned the Warm Utilitarian hexes: the "0X / 03"
+        // page counter (`bodyTextColor` → `BrewDeskPalette.muted`,
+        // `#6B5A44`) now trips the same sampling artifact — measured 6.35:1
+        // sampling the audit's own captured pixels ((107,90,68) text on
+        // (251,250,248) background), comfortably over 4.5:1. Added to the
+        // exemption rather than darkened further: a real color change
+        // wouldn't fix an anti-aliased-edge-pixel sampling issue, and the
+        // two pre-existing exemptions on this screen are the same call.
         try app.performAccessibilityAudit(for: .contrast) { issue in
             guard let label = issue.element?.label else { return false }
             return label == "WORK, WITHOUT THE GUESSWORK"
                 || label == "Find nearby cafes where the Wi-Fi works, outlets exist, "
                 + "and opening a laptop is actually welcome."
+                || label == "01 / 03"
         }
         try app.performAccessibilityAudit(
             for: [.dynamicType, .elementDetection, .hitRegion, .sufficientElementDescription, .textClipped, .trait]

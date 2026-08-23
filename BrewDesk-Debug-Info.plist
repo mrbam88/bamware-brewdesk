@@ -11,5 +11,11 @@
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Your location is used to find work-friendly cafes nearby.</string>
+	<key>UIAppFonts</key>
+	<array>
+		<string>HankenGrotesk[wght].ttf</string>
+		<string>Manrope[wght].ttf</string>
+		<string>JetBrainsMono[wght].ttf</string>
+	</array>
 </dict>
 </plist>

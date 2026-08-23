@@ -34,7 +34,7 @@ struct CaptureConfirmView: View {
                         systemImage: "exclamationmark.triangle.fill"
                     )
                     .font(.subheadline)
-                    .foregroundStyle(BrewDeskPalette.clay)
+                    .foregroundStyle(BrewDeskPalette.clayText)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("capture-error")
                 }

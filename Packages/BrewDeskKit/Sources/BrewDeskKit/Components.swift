@@ -3,11 +3,15 @@ import UIKit
 import VenueKit
 
 extension ScoreTier {
+    /// Warm Utilitarian re-map (brewdesk#98): tier colours now progress
+    /// green → sage → sand → destructive (was moss/ocean/clay/berry). Fill
+    /// only — these sit behind fixed white badge/pin text in both
+    /// appearances, so each value stays static rather than adaptive.
     public var color: Color {
         switch self {
-        case .great: BrewDeskPalette.moss
-        case .good: BrewDeskPalette.ocean
-        case .mixed: BrewDeskPalette.clay
+        case .great: BrewDeskPalette.roast
+        case .good: BrewDeskPalette.moss
+        case .mixed: BrewDeskPalette.sand
         case .weak: BrewDeskPalette.berry
         }
     }
@@ -18,7 +22,7 @@ struct ScoreBadge: View {
 
     var body: some View {
         Text("\(score)")
-            .font(.subheadline.monospacedDigit().bold())
+            .font(BrewDeskFont.label(.subheadline))
             .foregroundStyle(.white)
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
@@ -57,7 +61,7 @@ struct ProvenanceStamp: View {
                     : "clock.badge.checkmark")
             }
             .font(.caption2)
-            .foregroundStyle(Self.humanSources.contains(newest.source) ? BrewDeskPalette.moss : .secondary)
+            .foregroundStyle(Self.humanSources.contains(newest.source) ? BrewDeskPalette.mossText : .secondary)
             .accessibilityLabel(Text("Updated \(date, format: .dateTime.month(.wide).day()), \(Self.sourceKind(of: newest))"))
             .accessibilityIdentifier("provenance-stamp")
         }
