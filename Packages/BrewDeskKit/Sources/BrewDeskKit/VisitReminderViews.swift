@@ -4,6 +4,7 @@
 // identifiers, and — for the toggle — service resolution), so the screens
 // that host them stay one-line hooks.
 import SwiftUI
+import VenueKit
 
 /// Inline card shown once, the first time a user taps Directions and hasn't
 /// enabled reminders yet. "Not now" never asks the system for permission —
@@ -134,5 +135,5 @@ public struct VisitReminderToggleRow: View {
 /// in (like `MapFrameStatsHUD.isEnabled`) but inert outside `-UITestScenario`
 /// launches — never renders in a normal or store-submission launch.
 enum UITestVisitReminderDebug {
-    static let isEnabled = ProcessInfo.processInfo.arguments.contains("-UITestScenario")
+    static let isEnabled = LaunchEnvironment.current.scenario != nil
 }

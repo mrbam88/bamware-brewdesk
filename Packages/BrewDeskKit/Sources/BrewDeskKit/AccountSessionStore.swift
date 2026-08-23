@@ -72,14 +72,7 @@ public final class InMemorySessionStore: AuthSessionPersisting, @unchecked Senda
 /// screen; `@Observable` so signed-in/out UI flips live.
 @Observable
 public final class AccountSessionStore {
-    /// Scenario launches get in-memory persistence (fresh per process);
-    /// normal launches get the keychain.
-    public static let shared: AccountSessionStore = {
-        if ProcessInfo.processInfo.arguments.contains("-UITestScenario") {
-            return AccountSessionStore(persistence: InMemorySessionStore())
-        }
-        return AccountSessionStore(persistence: KeychainSessionStore())
-    }()
+    public static let shared = AccountSessionStore()
 
     public private(set) var session: AuthSession?
     private let persistence: any AuthSessionPersisting
@@ -87,6 +80,16 @@ public final class AccountSessionStore {
     public init(persistence: any AuthSessionPersisting) {
         self.persistence = persistence
         session = persistence.load()
+    }
+
+    /// Scenario launches get in-memory persistence (fresh per process);
+    /// normal launches get the keychain.
+    public convenience init(environment: LaunchEnvironment = .current) {
+        if environment.scenario != nil {
+            self.init(persistence: InMemorySessionStore())
+        } else {
+            self.init(persistence: KeychainSessionStore())
+        }
     }
 
     public var isSignedIn: Bool { session != nil }

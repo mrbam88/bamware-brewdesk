@@ -1,4 +1,5 @@
 import Foundation
+import VenueKit
 
 /// Store-build surface gate (brewdesk#67).
 ///
@@ -29,13 +30,13 @@ public enum StoreSurface {
     public static var isGated: Bool {
         isGated(
             infoValue: Bundle.main.infoDictionary?[infoDictionaryKey],
-            arguments: ProcessInfo.processInfo.arguments
+            storeSurfaceGatedOverride: LaunchEnvironment.current.storeSurfaceGatedOverride
         )
     }
 
     /// Pure seam for package tests.
-    public static func isGated(infoValue: Any?, arguments: [String]) -> Bool {
-        if arguments.contains(uiTestOverrideArgument) { return true }
+    public static func isGated(infoValue: Any?, storeSurfaceGatedOverride: Bool) -> Bool {
+        if storeSurfaceGatedOverride { return true }
         switch infoValue {
         case let flag as Bool:
             return flag

@@ -126,7 +126,7 @@ private final class IntakeSpy: VenueIntakeLinking, @unchecked Sendable {
 
     @Test func normalLaunchResolvesTheLiveRail() {
         let resolved = CaptureSubmissionServiceResolver.resolve(
-            arguments: [],
+            environment: LaunchEnvironment(arguments: []),
             fallback: MockCaptureSubmissionService()
         )
         #expect(resolved is LiveCaptureSubmissionService)
@@ -135,7 +135,7 @@ private final class IntakeSpy: VenueIntakeLinking, @unchecked Sendable {
     @Test func scenarioLaunchKeepsTheInjectedMock() {
         let fallback = MockCaptureSubmissionService()
         let resolved = CaptureSubmissionServiceResolver.resolve(
-            arguments: ["-UITestScenario", "fixtureOK"],
+            environment: LaunchEnvironment(arguments: ["-UITestScenario", "fixtureOK"]),
             fallback: fallback
         )
         #expect(resolved === fallback)
@@ -143,7 +143,7 @@ private final class IntakeSpy: VenueIntakeLinking, @unchecked Sendable {
 
     @Test func scenarioLaunchWithFailuresScriptsAFailingMock() {
         let resolved = CaptureSubmissionServiceResolver.resolve(
-            arguments: ["-UITestScenario", "fixtureOK", "-UITestCaptureFailures", "2"],
+            environment: LaunchEnvironment(arguments: ["-UITestScenario", "fixtureOK", "-UITestCaptureFailures", "2"]),
             fallback: MockCaptureSubmissionService()
         )
         let mock = resolved as? MockCaptureSubmissionService
@@ -153,7 +153,7 @@ private final class IntakeSpy: VenueIntakeLinking, @unchecked Sendable {
     @Test func malformedFailuresArgumentFallsBackToTheInjectedMock() {
         let fallback = MockCaptureSubmissionService()
         let resolved = CaptureSubmissionServiceResolver.resolve(
-            arguments: ["-UITestScenario", "fixtureOK", "-UITestCaptureFailures", "lots"],
+            environment: LaunchEnvironment(arguments: ["-UITestScenario", "fixtureOK", "-UITestCaptureFailures", "lots"]),
             fallback: fallback
         )
         #expect(resolved === fallback)

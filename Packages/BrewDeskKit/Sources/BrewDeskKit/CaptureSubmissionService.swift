@@ -132,20 +132,14 @@ public final class LiveCaptureSubmissionService: CaptureSubmissionService {
 ///   `-UITestCaptureFailures <n>` is present, a mock scripted to fail the
 ///   first n submits (pins the upload-failed → retry path in UI tests).
 public enum CaptureSubmissionServiceResolver {
-    public static let failuresArgument = "-UITestCaptureFailures"
-
     public static func resolve(
-        arguments: [String] = ProcessInfo.processInfo.arguments,
+        environment: LaunchEnvironment = .current,
         fallback: any CaptureSubmissionService
     ) -> any CaptureSubmissionService {
-        guard arguments.contains("-UITestScenario") else {
+        guard environment.scenario != nil else {
             return LiveCaptureSubmissionService()
         }
-        if let index = arguments.firstIndex(of: failuresArgument),
-            arguments.indices.contains(index + 1),
-            let failures = Int(arguments[index + 1]),
-            failures > 0
-        {
+        if let failures = environment.captureFailures {
             return MockCaptureSubmissionService(failuresRemaining: failures)
         }
         return fallback
