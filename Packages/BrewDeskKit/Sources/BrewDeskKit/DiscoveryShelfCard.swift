@@ -29,6 +29,28 @@ struct DiscoveryShelfCard: View {
     /// a fixed 72×82 frame (ui-review-2026-08-21 finding 7).
     @ScaledMetric(relativeTo: .title2) private var scoreTileMinWidth: CGFloat = 72
     @ScaledMetric(relativeTo: .title2) private var scoreTileMinHeight: CGFloat = 82
+    /// Last measured intrinsic height while resting at `.peek`/`.medium`
+    /// (brewdesk#88). `.frame(height:)` cannot interpolate between `nil` and
+    /// a concrete value, so it used to snap on the very first frame of every
+    /// transition into or out of `.full` — the flash. Kept fresh by
+    /// `onGeometryChange` below whenever the card isn't mid full-boundary
+    /// crossing, so it's a real number by the time one starts.
+    @State private var restingHeight: CGFloat?
+    /// True only while animating a transition where one end is `.full`. Pins
+    /// `cardHeight` to two concrete numbers (`restingHeight` and
+    /// `fullHeight`) for the duration so the frame can interpolate instead of
+    /// jumping; peek↔medium never sets this, since both ends are already
+    /// `nil` and SwiftUI's own layout interpolation handles that smoothly.
+    @State private var isCrossingFullBoundary = false
+
+    /// See `restingHeight`/`isCrossingFullBoundary` above. Outside an active
+    /// full-boundary crossing this is unchanged from before brewdesk#88:
+    /// `nil` at peek/medium (intrinsic, Dynamic Type reflows) and
+    /// `fullHeight` at full.
+    private var cardHeight: CGFloat? {
+        guard isCrossingFullBoundary else { return detent == .full ? fullHeight : nil }
+        return detent == .full ? fullHeight : (restingHeight ?? fullHeight)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -40,7 +62,13 @@ struct DiscoveryShelfCard: View {
         }
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: detent == .full ? fullHeight : nil, alignment: .top)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.height
+        } action: { newHeight in
+            guard detent != .full, !isCrossingFullBoundary else { return }
+            restingHeight = newHeight
+        }
+        .frame(height: cardHeight, alignment: .top)
         .brewDeskGlass(in: UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26))
         .shadow(color: .black.opacity(0.15), radius: 14, y: -3)
         .contentShape(Rectangle())
@@ -97,15 +125,7 @@ struct DiscoveryShelfCard: View {
                     from: detent,
                     projectedTranslation: value.predictedEndTranslation.height
                 )
-                if reduceMotion {
-                    dragOffset = 0
-                    detent = target
-                } else {
-                    withAnimation(.snappy) {
-                        dragOffset = 0
-                        detent = target
-                    }
-                }
+                setDetent(target, resettingDragOffset: true)
             }
     }
 
@@ -119,11 +139,44 @@ struct DiscoveryShelfCard: View {
         return translation * (collapsing ? 0.85 : 0.25)
     }
 
-    private func setDetent(_ target: ShelfDetent) {
-        if reduceMotion {
+    /// Settles the shelf on `target`, used by both the drag gesture's release
+    /// and the grabber's accessibility adjustable action.
+    ///
+    /// A transition that crosses the `.full` boundary pins `cardHeight` to
+    /// concrete numbers for the animation's duration (brewdesk#88 — see
+    /// `isCrossingFullBoundary`); peek↔medium never needs that, so it's left
+    /// alone and keeps its existing (already-smooth) intrinsic-size
+    /// animation.
+    private func setDetent(_ target: ShelfDetent, resettingDragOffset: Bool = false) {
+        guard !reduceMotion else {
+            if resettingDragOffset { dragOffset = 0 }
             detent = target
-        } else {
-            withAnimation(.snappy) { detent = target }
+            return
+        }
+        guard detent == .full || target == .full else {
+            withAnimation(.snappy) {
+                if resettingDragOffset { dragOffset = 0 }
+                detent = target
+            }
+            return
+        }
+        // Setting `isCrossingFullBoundary` and opening `withAnimation` in the
+        // same call lands in the *same* SwiftUI update pass — the animation
+        // would still read its "old" `cardHeight` as `nil` from the last
+        // real render, reintroducing the brewdesk#88 snap. Deferring one
+        // run-loop tick lets the flag commit on its own first, by which
+        // point `restingHeight` already equals the true current size, so the
+        // animated transaction has two concrete numbers to interpolate
+        // between. One frame (~16ms) of latency on release, well under
+        // perceptible.
+        isCrossingFullBoundary = true
+        DispatchQueue.main.async {
+            withAnimation(.snappy, completionCriteria: .logicallyComplete) {
+                if resettingDragOffset { self.dragOffset = 0 }
+                self.detent = target
+            } completion: {
+                self.isCrossingFullBoundary = false
+            }
         }
     }
 
