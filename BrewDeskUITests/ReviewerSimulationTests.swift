@@ -40,13 +40,13 @@ final class ReviewerSimulationTests: XCTestCase {
         app.buttons["Continue"].tap()
         XCTAssertTrue(app.staticTexts["Every score shows its work."].waitForExistence(timeout: 2))
         capture("02-onboarding-evidence-page")
-        app.buttons["Find my work cafe"].tap()
+        app.buttons["Find my work spot"].tap()
 
         // ── 2. Decline location → Union Square fallback, full dataset ─────
         XCTAssertTrue(app.staticTexts["Start where you are."].waitForExistence(timeout: 2))
         capture("03-location-intro")
         app.buttons["Use Union Square instead"].tap()
-        XCTAssertTrue(app.staticTexts["100 work cafés"].waitForExistence(timeout: 15),
+        XCTAssertTrue(app.staticTexts["100 work spots"].waitForExistence(timeout: 15),
                       "Map did not load the Union Square dataset without location")
         // brewdesk#37 rule: live data re-ranks/renames venues, so match the
         // pin shape, not a café name (the matcher merge of 2026-08-23 renamed
@@ -74,12 +74,12 @@ final class ReviewerSimulationTests: XCTestCase {
         capture("07-list-laptop-friendly")
 
         app.tabBars.buttons["Explore"].tap()
-        let search = app.textFields["Search cafes"]
+        let search = app.textFields["Search spots"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.tap()
         search.typeText("Housing Works")
         app.keyboards.buttons["Search"].tap()
-        XCTAssertTrue(app.staticTexts["1 work café"].waitForExistence(timeout: 15),
+        XCTAssertTrue(app.staticTexts["1 work spot"].waitForExistence(timeout: 15),
                       "Search for Housing Works did not narrow to one venue")
         capture("08-map-search-result")
 
@@ -150,7 +150,7 @@ final class ReviewerSimulationTests: XCTestCase {
         // Count is viewport-dependent since bd#108 (relaunch restores the
         // last real viewport, e.g. Cupertino's 30, not NYC's 100).
         XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "work caf")
+            NSPredicate(format: "label CONTAINS %@", "work spot")
         ).firstMatch.waitForExistence(timeout: 15),
                       "Relaunch did not restore the venue-count header")
         capture("12-relaunch-restored")

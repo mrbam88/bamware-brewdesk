@@ -107,7 +107,7 @@ public struct ImportSavedScreen: View {
                 instructions
             case .engineFailed:
                 Section {
-                    Label("Cafe service unavailable", systemImage: "wifi.exclamationmark")
+                    Label("Spot service unavailable", systemImage: "wifi.exclamationmark")
                         .foregroundStyle(BrewDeskPalette.berryText)
                         .accessibilityIdentifier("import-state-engine-failed")
                     Text("Check your connection and try again.")

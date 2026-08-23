@@ -21,12 +21,12 @@ public struct CafeListScreen: View {
                      .failed where !model.venues.isEmpty:
                     venueList
                 case .idle, .loading:
-                    ProgressView("Finding work-friendly cafes…")
+                    ProgressView("Finding work spots…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .accessibilityIdentifier("list-state-loading")
                 case .failed:
                     ContentUnavailableView {
-                        Label("Cafe service unavailable", systemImage: "wifi.exclamationmark")
+                        Label("Spot service unavailable", systemImage: "wifi.exclamationmark")
                     } description: {
                         Text("Check your connection and try again.")
                     } actions: {
@@ -39,7 +39,7 @@ public struct CafeListScreen: View {
                 case .loaded:
                     if model.venues.isEmpty {
                         ContentUnavailableView {
-                            Label("No cafes found", systemImage: "cup.and.saucer")
+                            Label("No spots found", systemImage: "cup.and.saucer")
                         } description: {
                             Text("Try widening your filters or search area.")
                         } actions: {
@@ -75,7 +75,7 @@ public struct CafeListScreen: View {
             .navigationDestination(for: Venue.self) { venue in
                 VenueDetailScreen(venue: venue, savedVenues: savedVenues)
             }
-            .searchable(text: $model.searchQuery, prompt: "Search cafés")
+            .searchable(text: $model.searchQuery, prompt: "Search spots")
             .onSubmit(of: .search) { model.submitSearch() }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

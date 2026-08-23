@@ -48,7 +48,7 @@ final class UIReviewCaptureTests: XCTestCase {
         app.buttons["Continue"].tap()
         XCTAssertTrue(app.staticTexts["Every score shows its work."].waitForExistence(timeout: 3))
         capture(app, "02-onboarding-evidence")
-        app.buttons["Find my work cafe"].tap()
+        app.buttons["Find my work spot"].tap()
 
         // ── 2. Location intro ───────────────────────────────────────────
         XCTAssertTrue(app.staticTexts["Start where you are."].waitForExistence(timeout: 3))

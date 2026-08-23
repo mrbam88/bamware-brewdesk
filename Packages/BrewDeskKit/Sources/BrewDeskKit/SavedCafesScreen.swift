@@ -55,13 +55,13 @@ public struct SavedCafesScreen: View {
                 if savedVenues.venueIDs.isEmpty {
                     emptyState
                 } else {
-                    ProgressView("Loading saved cafés…")
+                    ProgressView("Loading saved spots…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .accessibilityIdentifier("saved-state-loading")
                 }
             case .failed:
                 ContentUnavailableView {
-                    Label("Saved cafés unavailable", systemImage: "wifi.exclamationmark")
+                    Label("Saved spots unavailable", systemImage: "wifi.exclamationmark")
                 } description: {
                     Text("Check your connection and try again.")
                 } actions: {
@@ -115,7 +115,7 @@ public struct SavedCafesScreen: View {
         ContentUnavailableView {
             Label("Save your next work spot", systemImage: "bookmark")
         } description: {
-            Text("Bookmark a café from Explore or Nearby to keep it here.")
+            Text("Bookmark a spot from Explore or Nearby to keep it here.")
         } actions: {
             if let browseNearby {
                 Button("Browse Nearby") { browseNearby() }
@@ -130,7 +130,7 @@ public struct SavedCafesScreen: View {
     /// Some saved IDs failed to hydrate: show what loaded, say what didn't.
     private var partialFailureBanner: some View {
         HStack(spacing: 10) {
-            Label("Some saved cafés couldn't load.", systemImage: "exclamationmark.triangle")
+            Label("Some saved spots couldn't load.", systemImage: "exclamationmark.triangle")
             Spacer(minLength: 0)
             Button("Retry") {
                 Task { await model.load(venueIDs: savedVenues.venueIDs) }

@@ -236,7 +236,7 @@ struct DiscoveryShelfCard: View {
             // or failed the overlay owns the message and the shelf stays quiet.
             if model.phase == .loaded {
                 ContentUnavailableView {
-                    Label("No cafes in this view", systemImage: "cup.and.saucer")
+                    Label("No spots in this view", systemImage: "cup.and.saucer")
                 } description: {
                     Text("Clear a filter or try another search.")
                 } actions: {

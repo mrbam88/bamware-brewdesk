@@ -409,7 +409,7 @@ public struct VenueDetailScreen: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("business-call")
-        .accessibilityHint("Calls the cafe")
+        .accessibilityHint("Calls the venue")
     }
 
     /// Row chrome shared by website/call: ≥44 pt hit region and an explicit

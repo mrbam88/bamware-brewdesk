@@ -147,7 +147,7 @@ public struct AccountScreen: View {
         } header: {
             Text(mode == .signIn ? "Welcome back" : "Join BrewDesk")
         } footer: {
-            Text("No account needed to browse, save cafés, or share observations. An account only links future community contributions to a name you choose.")
+            Text("No account needed to browse, save spots, or share observations. An account only links future community contributions to a name you choose.")
         }
     }
 

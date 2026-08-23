@@ -27,7 +27,7 @@ final class AppStoreScreenshotTests: XCTestCase {
         /// Shape, not literal: the Union Square load is a real API count
         /// from a real-viewport query (bd#108), no longer a fixed number.
         /// bd#37's rank-independence rule applies to counts too — match
-        /// the pattern "<digits> work cafés", not a specific total.
+        /// the pattern "<digits> work spots", not a specific total.
         let workCafeCountPattern: String
         let oneWorkCafe: String
         let detailsNav: String
@@ -38,16 +38,16 @@ final class AppStoreScreenshotTests: XCTestCase {
             appleLocale: "en_US",
             continueButton: "Continue",
             honestHeadline: "Every score shows its work.",
-            findMyWorkCafe: "Find my work cafe",
+            findMyWorkCafe: "Find my work spot",
             startWhereYouAre: "Start where you are.",
             useUnionSquare: "Use Union Square instead",
             nearbyTab: "Nearby",
             exploreTab: "Explore",
             filters: "Filters",
             laptopFriendlyOnly: "Laptop-friendly only",
-            searchField: "Search cafes",
-            workCafeCountPattern: "^[0-9,]+ work cafés$",
-            oneWorkCafe: "1 work café",
+            searchField: "Search spots",
+            workCafeCountPattern: "^[0-9,]+ work spots$",
+            oneWorkCafe: "1 work spot",
             detailsNav: "Details",
             workability: "Workability"
         )
@@ -57,16 +57,16 @@ final class AppStoreScreenshotTests: XCTestCase {
             appleLocale: "es_ES",
             continueButton: "Continuar",
             honestHeadline: "Cada puntuación muestra su evidencia.",
-            findMyWorkCafe: "Encontrar mi café para trabajar",
+            findMyWorkCafe: "Encontrar mi lugar de trabajo",
             startWhereYouAre: "Empieza donde estás.",
             useUnionSquare: "Usar Union Square",
             nearbyTab: "Cercanos",
             exploreTab: "Explorar",
             filters: "Filtros",
             laptopFriendlyOnly: "Solo aptos para portátiles",
-            searchField: "Buscar cafés",
-            workCafeCountPattern: "^[0-9,]+ cafés para trabajar$",
-            oneWorkCafe: "1 café para trabajar",
+            searchField: "Buscar lugares",
+            workCafeCountPattern: "^[0-9,]+ lugares para trabajar$",
+            oneWorkCafe: "1 lugar para trabajar",
             detailsNav: "Detalles",
             workability: "Aptitud para trabajar"
         )
