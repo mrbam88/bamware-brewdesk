@@ -11,3 +11,6 @@ BrewDesk native SwiftUI app. Uses local BrewDeskKit/VenueKit plus the shared
 iOS package (`../bamware-ios`). Backend partner: `../bamware-venue-engine`.
 Distributed via TestFlight. Relevant bamware-ai skills:
 `native-ios-workspace`, `native-app-to-testflight`, `store-submission`.
+
+Domain vocabulary (LaunchEnvironment, Scenario, StoreSurface, Shelf detent,
+Claim/Provenance, Workability score): see [`CONTEXT.md`](CONTEXT.md).
