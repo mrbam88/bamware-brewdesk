@@ -242,34 +242,26 @@ private actor ControlledVenueService: VenueListing {
     }
 }
 
-@Suite @MainActor struct CoverageFallbackTests {
+/// bd#108: the client no longer rejects or re-anchors a coordinate far from
+/// NYC — it always queries the real viewport (brewdesk#1's "outside NYC"
+/// fallback removed). `CoverageStateTests` below covers the coverage-driven
+/// banner/empty-state contract that replaced it.
+@Suite @MainActor struct RealViewportTests {
     private let cupertino = (lat: 37.3230, lng: -122.0322)
 
-    @Test func rejectsCoordinatesOutsideCoverage() {
+    @Test func aCoordinateFarFromNYCIsAcceptedLikeAnyOther() {
         let model = VenuesModel(api: ControlledVenueService())
 
-        #expect(!model.updateCenterIfNeeded(lat: cupertino.lat, lng: cupertino.lng))
-        #expect(model.isOutsideCoverage)
-        // Query still targets the NYC coverage anchor, never the far coordinate.
-        #expect(model.request.query.lat == VenuesModel.coverageCenterLat)
-        #expect(model.request.query.lng == VenuesModel.coverageCenterLng)
+        #expect(model.updateCenterIfNeeded(lat: cupertino.lat, lng: cupertino.lng))
+        #expect(model.request.query.lat == cupertino.lat)
+        #expect(model.request.query.lng == cupertino.lng)
     }
 
-    @Test func acceptsCoordinatesInsideCoverage() {
+    @Test func aCoordinateInsideNYCIsAcceptedTheSameWay() {
         let model = VenuesModel(api: ControlledVenueService())
 
         #expect(model.updateCenterIfNeeded(lat: 40.6782, lng: -73.9442)) // Brooklyn
-        #expect(!model.isOutsideCoverage)
         #expect(model.request.query.lat == 40.6782)
-    }
-
-    @Test func coverageFlagClearsWhenLocationReturnsInside() {
-        let model = VenuesModel(api: ControlledVenueService())
-
-        #expect(!model.updateCenterIfNeeded(lat: cupertino.lat, lng: cupertino.lng))
-        #expect(model.isOutsideCoverage)
-        #expect(model.updateCenterIfNeeded(lat: 40.71, lng: -74.0))
-        #expect(!model.isOutsideCoverage)
     }
 
     @Test func browseCoverageCenterSnapsBackAndReQueries() {
@@ -281,6 +273,37 @@ private actor ControlledVenueService: VenueListing {
         #expect(model.request.query.lat == VenuesModel.coverageCenterLat)
         #expect(model.request.query.lng == VenuesModel.coverageCenterLng)
         #expect(model.request.revision != before)
+    }
+}
+
+/// ve#46's `coverage` field, as surfaced through `VenuesModel.coverage`
+/// (bd#108) — drives the map's baseline banner and, when `.none`, the
+/// existing empty state (no new UI for `.none`; `venues.isEmpty` already
+/// covers it).
+@Suite @MainActor struct CoverageStateTests {
+    @Test func missingCoverageDefaultsToResearched() async {
+        // ControlledVenueService only implements `fetchVenues` — the
+        // protocol's default `fetchVenuesResult` extension answers
+        // `.researched`, exactly like a pre-ve#46 engine response.
+        let model = VenuesModel(api: ControlledVenueService())
+        await model.load(model.request)
+        #expect(model.coverage == .researched)
+    }
+
+    @Test func baselineCoverageIsSurfacedWithFiveOrMoreVenues() async {
+        let model = VenuesModel(api: ScenarioVenueService(scenario: .baselineCity))
+        await model.load(model.request)
+        #expect(model.coverage == .baseline)
+        #expect(model.venues.count >= 5)
+        #expect(model.venues.allSatisfy { $0.isOSMBaseline })
+    }
+
+    @Test func noCoverageIsSurfacedAsALoadedEmptyResult() async {
+        let model = VenuesModel(api: ScenarioVenueService(scenario: .noCoverage))
+        await model.load(model.request)
+        #expect(model.coverage == .none)
+        #expect(model.venues.isEmpty)
+        #expect(model.phase == .loaded)
     }
 }
 
@@ -315,6 +338,16 @@ private actor ControlledVenueService: VenueListing {
         #expect(ProvenanceStamp.humanSources.contains("curated"))
         #expect(!ProvenanceStamp.humanSources.contains("agent"))
         #expect(!ProvenanceStamp.humanSources.contains("estimate"))
+    }
+
+    /// ve#46 / bd#108: the "OSM baseline · updated <date>" wording triggers
+    /// on either signal — a venue tiered `osm-baseline`, or a claim itself
+    /// sourced `osm` — never on curated/agent claims for a researched venue.
+    @Test func osmBaselineWordingTriggersOnTierOrClaimSource() {
+        #expect(ProvenanceStamp.isOSMBaseline(tier: "osm-baseline", source: "curated"))
+        #expect(ProvenanceStamp.isOSMBaseline(tier: nil, source: "osm"))
+        #expect(!ProvenanceStamp.isOSMBaseline(tier: nil, source: "curated"))
+        #expect(!ProvenanceStamp.isOSMBaseline(tier: "researched", source: "agent"))
     }
 }
 

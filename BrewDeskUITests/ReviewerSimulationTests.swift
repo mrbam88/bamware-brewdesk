@@ -100,7 +100,20 @@ final class ReviewerSimulationTests: XCTestCase {
                       "Methodology screen did not open from the Nearby toolbar")
         capture("10-methodology")
 
-        // ── 6. Grant location from Cupertino → banner + full NYC dataset ──
+        // ── 6. Grant location from Cupertino → real viewport query ────────
+        // bd#108 removed the client-side "outside NYC" fallback: the app now
+        // always queries the real coordinate it was given, so this step no
+        // longer forces the NYC dataset or the (removed) "outside NYC"
+        // banner. Against the LIVE production engine (this test, no
+        // `-UITestScenario`), Cupertino still resolves to the NYC dataset
+        // today — the production engine currently has no OSM baseline data
+        // and answers a Cupertino-radius query with the same top venues it
+        // always has (coverage is absent on pre-ve#46 responses, which
+        // `VenuesModel` treats as `.researched`, so no banner is expected
+        // here either). Once ve#46 ships, this assertion should be revisited
+        // — see `testReviewerCupertinoSeesBaselineCoverageOnFixture` below
+        // for the deterministic, fixture-driven proof of the new behaviour
+        // that doesn't depend on live production data.
         XCUIDevice.shared.location = XCUILocation(location: Self.cupertino)
         app.terminate()
         app.launchArguments = englishArguments + ["-brewdesk.location-intro.complete", "NO"]
@@ -111,15 +124,13 @@ final class ReviewerSimulationTests: XCTestCase {
         app.buttons["Use my location"].tap()
         allowLocationIfPrompted(app)
 
-        let banner = app.descendants(matching: .any)["coverage-banner"]
-        XCTAssertTrue(banner.waitForExistence(timeout: 15),
-                      "Out-of-coverage banner missing for a Cupertino reviewer")
-        XCTAssertTrue(app.staticTexts["You're outside NYC — showing our NYC coverage."].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["coverage-banner"].waitForExistence(timeout: 3),
+                       "No coverage banner expected until ve#46 ships coverage for Cupertino")
         XCTAssertTrue(app.staticTexts["100 work cafés"].waitForExistence(timeout: 15),
-                      "Map emptied for an out-of-coverage reviewer (brewdesk#1 regression)")
+                      "Map emptied for a Cupertino reviewer (brewdesk#1 regression)")
         XCTAssertTrue(mapPin(app, named: "Gregorys Coffee").waitForExistence(timeout: 5),
-                      "Gregorys Coffee pin missing from the Union Square map")
-        capture("11-map-outside-coverage-cupertino")
+                      "Gregorys Coffee pin missing from the map")
+        capture("11-map-cupertino-real-viewport")
 
         // ── 7. Offline mid-browse → relaunch ──────────────────────────────
         // Lands with brewdesk#27's Release-safe fixture seam
@@ -135,6 +146,37 @@ final class ReviewerSimulationTests: XCTestCase {
         XCTAssertFalse(app.buttons["Continue"].exists)
         XCTAssertTrue(app.staticTexts["100 work cafés"].waitForExistence(timeout: 15))
         capture("12-relaunch-restored")
+    }
+
+    /// bd#108, deterministic half of the Cupertino step: once ve#46 ships an
+    /// OSM tier-0 baseline, a reviewer whose viewport falls in it sees real
+    /// local venues plus the honest baseline banner — never NYC's, never the
+    /// (removed) "outside NYC" copy. Runs against the `baselineCity` fixture
+    /// rather than live production, which has no OSM baseline data yet;
+    /// `testReviewerFirstTenMinutes` above keeps proving the live run still
+    /// passes in the meantime.
+    @MainActor
+    func testReviewerCupertinoSeesBaselineCoverageOnFixture() throws {
+        let app = XCUIApplication()
+        app.launchArguments = englishArguments + [
+            "-UITestScenario", "baselineCity",
+            "-UITestSkipGates",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.tabBars.buttons["Explore"].waitForExistence(timeout: 8))
+        let banner = app.descendants(matching: .any)["coverage-banner"]
+        XCTAssertTrue(banner.waitForExistence(timeout: 15),
+                      "Baseline coverage banner missing for the baselineCity fixture")
+        XCTAssertTrue(app.staticTexts["Baseline data here — not yet researched. NYC is fully researched."].exists)
+
+        app.tabBars.buttons["Nearby"].tap()
+        XCTAssertTrue(app.navigationBars["Nearby"].waitForExistence(timeout: 5))
+        let rows = venueRows(app)
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 15),
+                      "baselineCity fixture rendered no venue rows")
+        XCTAssertGreaterThanOrEqual(rows.count, 5, "Expected at least 5 baseline venue rows near Cupertino")
+        capture("cupertino-baseline-coverage-fixture")
     }
 
     // MARK: - Helpers

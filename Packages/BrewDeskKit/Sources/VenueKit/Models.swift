@@ -98,6 +98,12 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
     public let website: String?
     public let phone: String?
     public let email: String?
+    /// "researched" | "osm-baseline" (ve#46, bd#108) — the depth behind this
+    /// venue's own claims, as opposed to `coverage` on the *response*, which
+    /// describes the whole viewport. Optional-first: absent on pre-ve#46
+    /// payloads, and absent decodes as researched (`isOSMBaseline == false`)
+    /// — backward compatible until the engine ships the field.
+    public let tier: String?
 
     public init(
         id: String,
@@ -117,7 +123,8 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         venueType: String? = nil,
         website: String? = nil,
         phone: String? = nil,
-        email: String? = nil
+        email: String? = nil,
+        tier: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -137,16 +144,37 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         self.website = website
         self.phone = phone
         self.email = email
+        self.tier = tier
     }
 
     enum CodingKeys: String, CodingKey {
         case id, name, lat, lng, address, neighborhood, borough, hoursRaw,
              vertical, attributes, vibeTags, workScore, lastVerified, venueType,
-             website, phone, email
+             website, phone, email, tier
         case distanceM = "distance_m"
     }
 
     public var scoreTier: ScoreTier { ScoreTier(score: workScore) }
+
+    /// True when this venue's own claims come from the OSM tier-0 baseline
+    /// rather than curated/researched sources (ve#46). Drives the
+    /// `ProvenanceStamp` "OSM baseline · updated <date>" wording (bd#108).
+    public var isOSMBaseline: Bool { tier == "osm-baseline" }
+}
+
+/// A response's coverage for the queried viewport (ve#46, bd#108):
+/// - `researched`: NYC-depth data — curated/agent claims, human-checked.
+/// - `baseline`: OSM tier-0 only — real venues, unverified attributes.
+/// - `none`: no data at all for this viewport; the intentional empty state.
+///
+/// Missing or unrecognized on the wire decodes as `.researched` — backward
+/// compatible with an engine that hasn't shipped `coverage` yet.
+public enum CoverageLevel: String, Codable, Sendable {
+    case researched, baseline, none
+
+    public static func from(_ raw: String?) -> CoverageLevel {
+        raw.flatMap(CoverageLevel.init(rawValue:)) ?? .researched
+    }
 }
 
 /// Coarse quality bands for badges / map pins.
@@ -166,6 +194,24 @@ public enum ScoreTier: String, Sendable {
 public struct VenueListResponse: Codable, Sendable {
     public let count: Int
     public let venues: [Venue]
+    /// Meta field (ve#46, bd#108) for the whole queried viewport; absent on
+    /// pre-ve#46 payloads. Use `CoverageLevel.from(_:)` to decode it, which
+    /// treats absence as `.researched`.
+    public let coverage: String?
+}
+
+/// One `fetchVenuesResult` answer: the venues plus what coverage the engine
+/// reported for the queried viewport (bd#108). `VenueListing.fetchVenues`
+/// stays the venues-only convenience every existing conformer/mock already
+/// implements; `fetchVenuesResult` defaults to `.researched` for any of them.
+public struct VenueLoadResult: Sendable {
+    public let venues: [Venue]
+    public let coverage: CoverageLevel
+
+    public init(venues: [Venue], coverage: CoverageLevel = .researched) {
+        self.venues = venues
+        self.coverage = coverage
+    }
 }
 
 public struct VenueDetailResponse: Codable, Sendable {

@@ -62,7 +62,6 @@ import BrewDeskKit
         let model = VenuesModel(api: NoVenues())
         #expect(model.centerLat == 40.7359)
         #expect(model.centerLng == -73.9911)
-        #expect(!model.isOutsideCoverage)
     }
 }
 

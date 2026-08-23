@@ -34,11 +34,15 @@ set changes.
 | Location state | Value sent | Why |
 | --- | --- | --- |
 | Not determined / **denied** / "Use Union Square instead" | `40.7359, -73.9911` — Union Square, the hardcoded coverage anchor (`VenuesModel.coverageCenter*`) | `LocationService.location` stays `nil`; the model never receives a device coordinate |
-| Granted, **outside NYC coverage** (e.g. App Review in California) | the anchor again | `VenuesModel.updateCenterIfNeeded` rejects coordinates > 50 km from the anchor; the device coordinate is discarded, "Browse NYC" re-queries the anchor |
-| Granted, inside coverage | the device coordinate, full precision | needed to rank by proximity; sent to the engine only, used transiently |
+| Granted, **anywhere** (e.g. App Review in California) | the device coordinate, full precision | bd#108 removed the >50km-from-anchor rejection this table used to describe — the app now always queries the real viewport it was given, so real venues near a reviewer render instead of NYC's; sent to the engine only, used transiently to rank by proximity |
 
-So a user who denies location — and every reviewer outside NYC — never has a
-device coordinate leave the phone. This is asserted, not assumed
+So a user who denies location never has a device coordinate leave the phone.
+Once granted, the coordinate is sent regardless of distance from NYC — this
+is a deliberate change from the pre-bd#108 behaviour (which used to discard
+an out-of-coverage coordinate and re-query the anchor instead) and does not
+change the **Data Not Collected** answer: the coordinate is used transiently
+to rank one response and is never stored, associated with an identity, or
+sent anywhere but the engine. This is asserted, not assumed
 (`VenuesModelPrivacyTests`, `PrivacyClaimTests.fallbackQueryTargetsUnionSquareNotTheDevice`).
 
 ### Identifier: per-install submitter id (brewdesk#47) — ⚠ re-review before next store submission
@@ -87,7 +91,7 @@ position.
 | Suite | Target | Runs | Proves |
 | --- | --- | --- | --- |
 | `PrivacyRequestAuditTests` | `VenueKitTests` | package tests (CI on every PR) | per-flow host + param audit via `RecordingURLProtocol` injected into `VenueAPI(session:)`; denied → anchor only; granted → engine only; photo URLs coordinate-free; wire vocabulary closed |
-| `VenuesModelPrivacyTests` | `BrewDeskKitTests` | package tests (CI) | anchor when no location; out-of-coverage device coordinate never sent; in-coverage coordinate is the only other value |
+| `VenuesModelPrivacyTests` | `BrewDeskKitTests` | package tests (CI) | anchor when no location; any granted coordinate (including far from NYC) is the only other value sent |
 | `ObservationSubmissionTests` | `VenueKitTests` | package tests (CI) | observation submit reaches only the engine; body is exactly `{submittedBy, answers}` with enum-string values (no free text, no coordinates under any plausible key) |
 | `PrivacyClaimTests` | `BrewDeskTests` (host app) | Release app unit tests (CI step "Release app unit tests (privacy audit)") | shipped `PrivacyInfo.xcprivacy` = no tracking / no collected data / UserDefaults CA92.1 only; When-In-Use location only; Release endpoint is HTTPS production with no ATS exception; fallback query = Union Square |
 

@@ -238,7 +238,7 @@ struct VenueRow: View {
                     }
                     laptopPolicyMarker
                 }
-                ProvenanceStamp(attributes: venue.attributes)
+                ProvenanceStamp(attributes: venue.attributes, tier: venue.tier)
             }
         }
         .padding(.vertical, 6)

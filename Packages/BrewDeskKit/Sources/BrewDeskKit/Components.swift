@@ -47,14 +47,23 @@ struct AttributeGlyph: View {
 /// "Updated Aug 15 · curated" — the newest observation date across a venue's
 /// claims plus its source kind. Says "updated", never "verified": data is
 /// AI-researched unless a human source stands behind the claim (seal icon).
+/// A venue whose tier is `osm-baseline`, or whose newest claim is
+/// `source: "osm"`, renders "OSM baseline · updated <date>" instead (ve#46,
+/// bd#108) — the OSM tier-0 import is real venues with unverified
+/// attributes, never "curated".
 struct ProvenanceStamp: View {
     let attributes: VenueAttributes
+    var tier: String?
 
     var body: some View {
         if let newest = Self.newestClaim(in: attributes),
            let date = Self.observationDate(of: newest) {
             Label {
-                Text("Updated \(date, format: .dateTime.month(.abbreviated).day()) · \(Self.sourceKind(of: newest))")
+                if Self.isOSMBaseline(tier: tier, source: newest.source) {
+                    Text("OSM baseline · updated \(date, format: .dateTime.month(.abbreviated).day())")
+                } else {
+                    Text("Updated \(date, format: .dateTime.month(.abbreviated).day()) · \(Self.sourceKind(of: newest))")
+                }
             } icon: {
                 Image(systemName: Self.humanSources.contains(newest.source)
                     ? "checkmark.seal.fill"
@@ -62,9 +71,17 @@ struct ProvenanceStamp: View {
             }
             .font(.caption2)
             .foregroundStyle(Self.humanSources.contains(newest.source) ? BrewDeskPalette.mossText : .secondary)
-            .accessibilityLabel(Text("Updated \(date, format: .dateTime.month(.wide).day()), \(Self.sourceKind(of: newest))"))
+            .accessibilityLabel(
+                Self.isOSMBaseline(tier: tier, source: newest.source)
+                    ? Text("OSM baseline · updated \(date, format: .dateTime.month(.wide).day())")
+                    : Text("Updated \(date, format: .dateTime.month(.wide).day()), \(Self.sourceKind(of: newest))")
+            )
             .accessibilityIdentifier("provenance-stamp")
         }
+    }
+
+    static func isOSMBaseline(tier: String?, source: String) -> Bool {
+        tier == "osm-baseline" || source == "osm"
     }
 
     static func newestClaim(in attributes: VenueAttributes) -> Claim? {
@@ -248,6 +265,35 @@ struct LocationDeniedBanner: View {
         .brewDeskGlass(in: Capsule())
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("location-denied-banner")
+    }
+}
+
+/// Honest banner for a viewport the engine only has OSM tier-0 data for
+/// (ve#46, bd#108) — shown whenever `VenuesModel.coverage == .baseline`.
+/// Never claims "verified"; the methodology link explains what "baseline"
+/// means. Replaces brewdesk#1's "You're outside NYC" fallback banner, which
+/// used to substitute the NYC dataset for any far-away viewport instead of
+/// querying it for real.
+struct CoverageBaselineBanner: View {
+    @State private var showMethodology = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Label("Baseline data here — not yet researched. NYC is fully researched.", systemImage: "map")
+                .font(.caption.bold())
+            Spacer(minLength: 0)
+            Button("How scoring works") { showMethodology = true }
+                .font(.caption.bold())
+                .accessibilityIdentifier("methodology-link")
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 32)
+        .brewDeskGlass(in: Capsule())
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("coverage-banner")
+        .sheet(isPresented: $showMethodology) {
+            NavigationStack { MethodologyScreen() }
+        }
     }
 }
 
