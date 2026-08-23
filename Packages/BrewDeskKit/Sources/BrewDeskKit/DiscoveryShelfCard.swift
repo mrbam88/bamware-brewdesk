@@ -50,6 +50,14 @@ struct DiscoveryShelfCard: View {
         .accessibilityIdentifier("map-discovery-shelf")
         .onAppear { detent = ShelfDetentMemory.session.last }
         .onChange(of: detent) { ShelfDetentMemory.session.last = detent }
+        // A light tick when the shelf settles into a detent, or a filter
+        // chip is toggled (brewdesk#75) — `.sensoryFeedback` already no-ops
+        // under Reduce Motion.
+        .sensoryFeedback(.selection, trigger: detent)
+        .sensoryFeedback(.selection, trigger: model.laptopFriendlyOnly)
+        .sensoryFeedback(.selection, trigger: model.minWifi)
+        .sensoryFeedback(.selection, trigger: model.minOutlets)
+        .sensoryFeedback(.selection, trigger: model.minSeating)
     }
 
     // MARK: - Resize

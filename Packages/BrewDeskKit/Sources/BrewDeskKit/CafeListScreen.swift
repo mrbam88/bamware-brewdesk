@@ -174,6 +174,15 @@ public struct CafeListScreen: View {
                 ? "line.3.horizontal.decrease.circle.fill"
                 : "line.3.horizontal.decrease.circle")
         }
+        // One light tick per dimension change — covers apply AND reset,
+        // since reset is only enabled when a dimension is active, so it
+        // always flips at least one of these (brewdesk#75). `.sensoryFeedback`
+        // already no-ops under Reduce Motion.
+        .sensoryFeedback(.selection, trigger: model.laptopFriendlyOnly)
+        .sensoryFeedback(.selection, trigger: model.minWifi)
+        .sensoryFeedback(.selection, trigger: model.minOutlets)
+        .sensoryFeedback(.selection, trigger: model.minSeating)
+        .sensoryFeedback(.selection, trigger: model.venueType)
     }
 
     private func resetFilters() {
