@@ -48,8 +48,11 @@ final class ReviewerSimulationTests: XCTestCase {
         app.buttons["Use Union Square instead"].tap()
         XCTAssertTrue(app.staticTexts["100 work cafés"].waitForExistence(timeout: 15),
                       "Map did not load the Union Square dataset without location")
-        XCTAssertTrue(mapPin(app, named: "Gregorys Coffee").waitForExistence(timeout: 5),
-                      "Gregorys Coffee pin missing from the Union Square map")
+        // brewdesk#37 rule: live data re-ranks/renames venues, so match the
+        // pin shape, not a café name (the matcher merge of 2026-08-23 renamed
+        // "Gregorys Coffee" to its OSM record "Gregory's coffee").
+        XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: 5),
+                      "No venue pins on the Union Square map")
         capture("04-map-union-square-fallback")
 
         // ── 3. Browse: list, filters, search ──────────────────────────────
