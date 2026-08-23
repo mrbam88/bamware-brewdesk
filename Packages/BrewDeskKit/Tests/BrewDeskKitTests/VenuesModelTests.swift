@@ -281,12 +281,19 @@ private actor ControlledVenueService: VenueListing {
 /// existing empty state (no new UI for `.none`; `venues.isEmpty` already
 /// covers it).
 @Suite @MainActor struct CoverageStateTests {
-    @Test func missingCoverageDefaultsToResearched() async {
+    @Test func missingCoverageDefaultsToResearched() async throws {
         // ControlledVenueService only implements `fetchVenues` — the
         // protocol's default `fetchVenuesResult` extension answers
         // `.researched`, exactly like a pre-ve#46 engine response.
-        let model = VenuesModel(api: ControlledVenueService())
-        await model.load(model.request)
+        // (It blocks until the test resumes it — drive it like its siblings,
+        // otherwise the test hangs the whole package run.)
+        let api = ControlledVenueService()
+        let model = VenuesModel(api: api)
+        let request = model.request
+        let load = Task { await model.load(request) }
+        try await api.waitForRequest(key: "any")
+        await api.succeed(key: "any")
+        await load.value
         #expect(model.coverage == .researched)
     }
 
