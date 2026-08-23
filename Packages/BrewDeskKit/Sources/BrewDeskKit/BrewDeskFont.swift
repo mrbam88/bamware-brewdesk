@@ -16,26 +16,30 @@ import UIKit
 public enum BrewDeskFont {
     /// Headline face: Hanken Grotesk.
     public static func headline(_ style: Font.TextStyle, weight: Font.Weight = .bold) -> Font {
-        custom("HankenGrotesk-Regular", fallbackDesign: .default, weight: weight, style: style)
+        custom("HankenGrotesk-Regular", loaded: hankenGroteskLoaded, fallbackDesign: .default, weight: weight, style: style)
     }
 
     /// Body face: Manrope.
     public static func body(_ style: Font.TextStyle, weight: Font.Weight = .regular) -> Font {
-        custom("Manrope-Regular", fallbackDesign: .default, weight: weight, style: style)
+        custom("Manrope-Regular", loaded: manropeLoaded, fallbackDesign: .default, weight: weight, style: style)
     }
 
     /// Label/eyebrow/numeric face: JetBrains Mono — e.g. the "WORK FIT"
     /// eyebrow and score digits.
     public static func label(_ style: Font.TextStyle, weight: Font.Weight = .semibold) -> Font {
-        custom("JetBrainsMono-Regular", fallbackDesign: .monospaced, weight: weight, style: style)
+        custom("JetBrainsMono-Regular", loaded: jetBrainsMonoLoaded, fallbackDesign: .monospaced, weight: weight, style: style)
     }
 
     /// Whether each bundled family actually registered — read by
     /// `BrewDeskFontTests` so a bundling regression fails a test instead of
-    /// silently falling back app-wide.
-    public static var hankenGroteskLoaded: Bool { resolves("HankenGrotesk-Regular") }
-    public static var manropeLoaded: Bool { resolves("Manrope-Regular") }
-    public static var jetBrainsMonoLoaded: Bool { resolves("JetBrainsMono-Regular") }
+    /// silently falling back app-wide. `UIFont(name:size:)` does real font
+    /// matching, so each is resolved once and cached (`static let`) rather
+    /// than on every SwiftUI body evaluation — `headline`/`body`/`label`
+    /// are called from view bodies, which can re-run many times a second
+    /// during a transition/animation.
+    public static let hankenGroteskLoaded = resolves("HankenGrotesk-Regular")
+    public static let manropeLoaded = resolves("Manrope-Regular")
+    public static let jetBrainsMonoLoaded = resolves("JetBrainsMono-Regular")
 
     private static func resolves(_ postScriptName: String) -> Bool {
         UIFont(name: postScriptName, size: 12) != nil
@@ -43,11 +47,12 @@ public enum BrewDeskFont {
 
     private static func custom(
         _ name: String,
+        loaded: Bool,
         fallbackDesign: Font.Design,
         weight: Font.Weight,
         style: Font.TextStyle
     ) -> Font {
-        guard resolves(name) else {
+        guard loaded else {
             return .system(style, design: fallbackDesign).weight(weight)
         }
         return .custom(name, size: baseSize(for: style), relativeTo: style).weight(weight)

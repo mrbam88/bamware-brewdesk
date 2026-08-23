@@ -135,14 +135,23 @@ public enum BrewDeskPalette {
     /// itself stays a fixed dark green because it also fills badges/pins
     /// behind fixed white text, but a fixed dark green reads at only 2.1:1
     /// on dark `page`. Lifted to the ticket's "primary-on-dark lifted sage"
-    /// value for dark. Backs `BrewDeskTheme.primaryColor`.
+    /// value for dark.
+    ///
+    /// NOT used by `BrewDeskTheme.primaryColor` — that needs a value safe to
+    /// ANIMATE (the onboarding page-dot indicator interpolates its opacity),
+    /// and this adaptive token crashed there: iOS 26's async render path can
+    /// invoke a dynamic `UIColor` provider off the main thread, which trips
+    /// a Swift 6 isolation check (`dispatch_assert_queue_fail`). Safe for
+    /// static (non-animated) text/tint use; `BrewDeskTheme` resolves the
+    /// same two hexes as concrete per-mode `Color`s instead.
     public static let primaryText = adaptive(
         light: roast,
         dark: hex("#8FB3A5")
     )
 
     /// Secondary/body text — "sand becomes text-secondary" in dark mode.
-    /// Backs `BrewDeskTheme.secondaryColor`.
+    /// Same animation caveat as `primaryText` above; not used by
+    /// `BrewDeskTheme.secondaryColor`.
     public static let secondaryText = adaptive(
         light: muted,
         dark: hex("#D8CCA9")
@@ -150,9 +159,22 @@ public enum BrewDeskPalette {
 
     /// The package ships no asset catalog, so adaptive brand colors are built
     /// from a dynamic provider — one definition, both appearances.
+    ///
+    /// The `Color` → `UIColor` bridge is done ONCE here, not inside the
+    /// trait-resolution closure. SwiftUI's async render path (iOS 26) can
+    /// invoke a dynamic `UIColor` provider's closure from a background
+    /// render thread — doing the Color→UIColor conversion there crashed
+    /// (`dispatch_assert_queue_fail` inside `UIDynamicProviderColor
+    /// _resolvedColorWithTraitCollection:`, reproduced by animating
+    /// `BrewDeskTheme.primaryColor`'s opacity on the onboarding page-dot
+    /// indicator once it became adaptive). Pre-resolving both UIColors here
+    /// means the closure itself only ever picks between two already-built
+    /// values — no conversion work happens on the resolution thread.
     private static func adaptive(light: Color, dark: Color) -> Color {
-        Color(uiColor: UIColor { traits in
-            traits.userInterfaceStyle == .dark ? UIColor(dark) : UIColor(light)
+        let lightColor = UIColor(light)
+        let darkColor = UIColor(dark)
+        return Color(uiColor: UIColor { traits in
+            traits.userInterfaceStyle == .dark ? darkColor : lightColor
         })
     }
 

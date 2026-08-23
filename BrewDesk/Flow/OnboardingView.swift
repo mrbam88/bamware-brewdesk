@@ -24,9 +24,11 @@ struct OnboardingView: View {
     // dark value here would have drifted out of sync).
     private var eyebrowColor: Color { AppBrand.clayText }
 
-    // theme.secondaryColor is now `BrewDeskPalette.secondaryText`, already
-    // adaptive and verified ≥4.5:1 on dark `page`/`surface` (brewdesk#98) —
-    // the manual dark-mode override this screen carried is no longer needed.
+    // theme.secondaryColor resolves its own dark-mode value (concrete, not
+    // the adaptive `BrewDeskPalette.secondaryText` — animating that token
+    // crashed; see BrewDeskTheme.swift) and is verified ≥4.5:1 on dark
+    // `page`/`surface` (brewdesk#98) — the manual override this screen
+    // carried is no longer needed.
     private var bodyTextColor: Color { theme.secondaryColor }
 
     private let pages = [
