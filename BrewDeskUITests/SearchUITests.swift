@@ -115,7 +115,7 @@ final class SearchUITests: XCTestCase {
 
         field.tap()
         XCTAssertEqual(app.keyboards.count, 1, "keyboard did not return on refocus")
-        let doneButton = app.descendants(matching: .any)["search-done"]
+        let doneButton = app.descendants(matching: .any)["search-done"].firstMatch
         XCTAssertTrue(doneButton.waitForExistence(timeout: wait), "keyboard Done button missing")
         doneButton.tap()
         XCTAssertEqual(app.keyboards.count, 0, "Done button did not dismiss the keyboard")
