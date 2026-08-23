@@ -96,6 +96,10 @@ public struct SavedCafesScreen: View {
         }
         // Cream page treatment for brand cohesion (finding 3).
         .background(BrewDeskPalette.page.ignoresSafeArea())
+        // Visit reminders toggle (brewdesk#93) — the only other place
+        // (besides the Directions-tap prompt) that ever asks for
+        // notification permission. Self-contained; see VisitReminderViews.
+        .safeAreaInset(edge: .top) { VisitReminderToggleRow() }
         .navigationTitle("saved_tab_title")
         .navigationDestination(for: Venue.self) { venue in
             VenueDetailScreen(venue: venue, savedVenues: savedVenues)

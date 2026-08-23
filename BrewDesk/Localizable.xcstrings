@@ -147,6 +147,22 @@
         }
       }
     },
+    "Browse Nearby": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browse Nearby"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver cercanos"
+          }
+        }
+      }
+    },
     "Cafe service unavailable": {
       "extractionState": "stale",
       "localizations": {
@@ -326,6 +342,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Descarga la exportación y descomprímela"
+          }
+        }
+      }
+    },
+    "Enable in Settings": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable in Settings"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Habilitar en Ajustes"
           }
         }
       }
@@ -551,6 +583,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cómo exportar desde Google Maps"
+          }
+        }
+      }
+    },
+    "How was %@?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How was %@?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Cómo estuvo %@?"
           }
         }
       }
@@ -782,6 +830,22 @@
         }
       }
     },
+    "Not now": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not now"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ahora no"
+          }
+        }
+      }
+    },
     "Not saved": {
       "extractionState": "stale",
       "localizations": {
@@ -832,6 +896,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "Activado"
+          }
+        }
+      }
+    },
+    "One local reminder about two hours after you get directions to a café. Nothing is sent anywhere — turning this off cancels every pending reminder.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One local reminder about two hours after you get directions to a café. Nothing is sent anywhere — turning this off cancels every pending reminder."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un recordatorio local unas dos horas después de pedir direcciones a un café. No se envía nada — desactivarlo cancela todos los recordatorios pendientes."
+          }
+        }
+      }
+    },
+    "One local reminder about two hours from now — no account, nothing sent anywhere.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One local reminder about two hours from now — no account, nothing sent anywhere."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un recordatorio local en unas dos horas — sin cuenta, no se envía nada."
           }
         }
       }
@@ -1004,6 +1100,70 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tranquilo"
+          }
+        }
+      }
+    },
+    "Rate your visit to help other remote workers.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rate your visit to help other remote workers."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Califica tu visita para ayudar a otros trabajadores remotos."
+          }
+        }
+      }
+    },
+    "Remind me to rate this visit?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remind me to rate this visit?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Te recuerdo calificar esta visita?"
+          }
+        }
+      }
+    },
+    "Remind me to rate visits": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remind me to rate visits"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recuérdame calificar visitas"
+          }
+        }
+      }
+    },
+    "Reset all filters": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reset all filters"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restablecer todos los filtros"
           }
         }
       }
@@ -1419,6 +1579,22 @@
         }
       }
     },
+    "Visit reminders": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visit reminders"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recordatorios de visita"
+          }
+        }
+      }
+    },
     "WORK FIT": {
       "extractionState": "stale",
       "localizations": {
@@ -1491,6 +1667,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Aptitud para trabajar"
+          }
+        }
+      }
+    },
+    "Yes, remind me": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yes, remind me"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sí, recuérdame"
           }
         }
       }
@@ -1817,38 +2009,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "investigación web"
-          }
-        }
-      }
-    },
-    "Browse Nearby": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Browse Nearby"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ver cercanos"
-          }
-        }
-      }
-    },
-    "Reset all filters": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Reset all filters"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Restablecer todos los filtros"
           }
         }
       }

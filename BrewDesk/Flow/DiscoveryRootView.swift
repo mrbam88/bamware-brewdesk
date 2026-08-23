@@ -17,6 +17,12 @@ struct DiscoveryRootView: View {
     @State private var savedVenues = SavedVenuesStore()
     @State private var connectivity = ConnectivityMonitor()
     @State private var selectedTab: DiscoveryTab = .explore
+    // Visit-reminder deep link (brewdesk#93): a tapped reminder routes to
+    // the Saved tab's stack, the same place a saved venue already opens
+    // from. `deepLinkRouter` is process-shared (set by the notification
+    // delegate registered in BrewDeskApp); this view only consumes it.
+    @State private var savedPath = NavigationPath()
+    @State private var deepLinkRouter = VisitReminderDeepLinkRouter.shared
     #if DEBUG
     @State private var envTapCount = 0
     @State private var showEnvPicker = false
@@ -84,6 +90,11 @@ struct DiscoveryRootView: View {
             guard let coordinate = location?.coordinate else { return }
             model.updateCenterIfNeeded(lat: coordinate.latitude, lng: coordinate.longitude)
         }
+        // brewdesk#93: handles both a warm tap (app already running — the
+        // `pendingVenueID` change fires) and a cold launch (the delegate
+        // already set it before this view's first render — the initial
+        // `.task` run catches that case).
+        .task(id: deepLinkRouter.pendingVenueID) { await routePendingVisitReminder() }
         #if DEBUG
         .overlay(alignment: .top) {
             if DebugEnvironmentStore.shared.current != .production {
@@ -99,8 +110,21 @@ struct DiscoveryRootView: View {
         #endif
     }
 
+    /// brewdesk#93 deep link: consumes the pending venue id (if any),
+    /// switches to Saved, and pushes the fetched venue onto its stack — the
+    /// same navigation the tab already performs when a saved row is tapped.
+    /// A fetch failure (offline, deleted venue) just leaves the user on
+    /// Saved rather than pushing a broken destination.
+    private func routePendingVisitReminder() async {
+        guard let venueID = deepLinkRouter.pendingVenueID else { return }
+        deepLinkRouter.consume()
+        selectedTab = .saved
+        guard let venue = try? await venueDetails.fetchVenue(id: venueID) else { return }
+        savedPath.append(venue)
+    }
+
     private var savedTab: some View {
-        NavigationStack {
+        NavigationStack(path: $savedPath) {
             SavedCafesScreen(
                 savedVenues: savedVenues,
                 venueDetails: venueDetails,
