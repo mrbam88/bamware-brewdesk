@@ -2012,6 +2012,22 @@
           }
         }
       }
+    },
+    "Done": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hecho"
+          }
+        }
+      }
     }
   },
   "version": "1.1"

@@ -28,6 +28,19 @@ final class SearchUITests: XCTestCase {
         return field
     }
 
+    /// The map tab (Explore) — its search card uses a plain `TextField`,
+    /// found by placeholder like `ReviewerSimulationTests` does.
+    @MainActor
+    private func launchExplore() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-UITestSkipGates", "-UITestScenario", "fixtureOK"]
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Explore"].waitForExistence(timeout: wait))
+        app.tabBars.buttons["Explore"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["map-header-card"].waitForExistence(timeout: wait))
+        return app
+    }
+
     @MainActor
     func testResultsUpdateWhileTypingWithoutSubmit() throws {
         let app = launchNearby()
@@ -77,5 +90,35 @@ final class SearchUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Fixture Roasters"].waitForExistence(timeout: wait),
                       "Clearing the search did not restore the list")
         XCTAssertTrue(app.staticTexts["Fixture Reading Room"].exists)
+    }
+
+    /// brewdesk#87 — the map search field had no way to resign focus. A map
+    /// tap must dismiss the keyboard without losing what was typed, and the
+    /// keyboard's Done button must do the same after refocusing.
+    @MainActor
+    func testSearchKeyboardDismissesOnMapTapAndDone() throws {
+        let app = launchExplore()
+
+        let field = app.textFields["Search cafes"]
+        XCTAssertTrue(field.waitForExistence(timeout: wait), "Map search field missing")
+        field.tap()
+        field.typeText("Gre")
+        XCTAssertEqual(app.keyboards.count, 1, "keyboard did not appear after typing")
+
+        // A point inside the map, clear of the header card (top) and the
+        // shelf card (bottom half at its default medium detent).
+        app.windows.firstMatch
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+            .tap()
+        XCTAssertEqual(app.keyboards.count, 0, "tapping the map did not dismiss the keyboard")
+        XCTAssertEqual(field.value as? String, "Gre", "map-tap dismiss must keep the typed text")
+
+        field.tap()
+        XCTAssertEqual(app.keyboards.count, 1, "keyboard did not return on refocus")
+        let doneButton = app.descendants(matching: .any)["search-done"].firstMatch
+        XCTAssertTrue(doneButton.waitForExistence(timeout: wait), "keyboard Done button missing")
+        doneButton.tap()
+        XCTAssertEqual(app.keyboards.count, 0, "Done button did not dismiss the keyboard")
+        XCTAssertEqual(field.value as? String, "Gre", "Done dismiss must keep the typed text")
     }
 }
