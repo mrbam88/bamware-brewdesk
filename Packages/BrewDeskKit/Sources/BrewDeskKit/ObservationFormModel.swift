@@ -186,11 +186,9 @@ extension EnvironmentValues {
 /// argument scan at form-open time.
 public enum ObservationServiceResolver {
     public static func resolve(
-        arguments: [String] = ProcessInfo.processInfo.arguments
+        environment: LaunchEnvironment = .current
     ) -> any VenueObservationSubmitting {
-        if let index = arguments.firstIndex(of: "-UITestScenario"),
-           arguments.indices.contains(index + 1),
-           let scenario = ScenarioVenueService.Scenario(rawValue: arguments[index + 1]) {
+        if let scenario = environment.scenario {
             return ScenarioVenueService(scenario: scenario)
         }
         return VenueAPI()

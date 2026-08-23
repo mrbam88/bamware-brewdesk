@@ -1,32 +1,11 @@
 import Foundation
 import VenueKit
 
-/// Launch-argument seam for UI tests. Inert in normal launches: one argument
-/// lookup at view construction, nothing else. Precedent: `-UITestSkipGates`.
-///
-///   -UITestScenario <ScenarioVenueService.Scenario.rawValue>
-///   -UITestLocationDenied
-///   -UITestSeedSnapshot   (scenario launches only: also load the bundled snapshot)
+/// Test-fixture file helper for UI-test scenario launches. The launch-flag
+/// parsing this file used to own (`-UITestScenario`, `-UITestLocationDenied`,
+/// `-UITestSeedSnapshot`) now lives in `LaunchEnvironment` (bd#101) — see
+/// `RootView.init` and `LocationService.init(environment:)`.
 enum UITestScenario {
-    static let scenarioArgument = "-UITestScenario"
-    static let locationDeniedArgument = "-UITestLocationDenied"
-    static let seedSnapshotArgument = "-UITestSeedSnapshot"
-
-    static func current(_ arguments: [String] = ProcessInfo.processInfo.arguments) -> ScenarioVenueService.Scenario? {
-        guard let index = arguments.firstIndex(of: scenarioArgument),
-              arguments.indices.contains(index + 1)
-        else { return nil }
-        return ScenarioVenueService.Scenario(rawValue: arguments[index + 1])
-    }
-
-    static func isLocationDenied(_ arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
-        arguments.contains(locationDeniedArgument)
-    }
-
-    static func seedsSnapshot(_ arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
-        arguments.contains(seedSnapshotArgument)
-    }
-
     /// A one-row Takeout CSV that matches the first fixture venue by name, so
     /// UI tests can exercise the import flow without the system file picker.
     static func takeoutFixtureURL() -> URL? {

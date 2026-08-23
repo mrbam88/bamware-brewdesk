@@ -16,12 +16,7 @@ import Foundation
 public final class ContributorBlockStore: @unchecked Sendable {
     public static let defaultsKey = "brewdesk.blocked-contributors"
 
-    public static let shared: ContributorBlockStore = {
-        if ProcessInfo.processInfo.arguments.contains("-UITestScenario") {
-            return ContributorBlockStore(defaults: nil)
-        }
-        return ContributorBlockStore(defaults: .standard)
-    }()
+    public static let shared = ContributorBlockStore()
 
     private let lock = NSLock()
     private let defaults: UserDefaults?
@@ -31,6 +26,12 @@ public final class ContributorBlockStore: @unchecked Sendable {
     public init(defaults: UserDefaults?) {
         self.defaults = defaults
         names = Set(defaults?.stringArray(forKey: Self.defaultsKey) ?? [])
+    }
+
+    /// Scenario launches get an in-memory backing so UI test runs never
+    /// accumulate blocks in the simulator's persisted defaults.
+    public convenience init(environment: LaunchEnvironment = .current) {
+        self.init(defaults: environment.scenario != nil ? nil : .standard)
     }
 
     public var blockedNames: [String] {

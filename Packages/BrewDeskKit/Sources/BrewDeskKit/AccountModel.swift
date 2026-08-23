@@ -149,11 +149,9 @@ extension EnvironmentValues {
 /// in-process `AuthScenarioService`, every normal launch gets `AuthAPI`.
 public enum AccountServiceResolver {
     public static func resolve(
-        arguments: [String] = ProcessInfo.processInfo.arguments
+        environment: LaunchEnvironment = .current
     ) -> any AccountAuthServing {
-        if let index = arguments.firstIndex(of: "-UITestScenario"),
-           arguments.indices.contains(index + 1),
-           ScenarioVenueService.Scenario(rawValue: arguments[index + 1]) != nil {
+        if environment.scenario != nil {
             return AuthScenarioService.shared
         }
         return AuthAPI()

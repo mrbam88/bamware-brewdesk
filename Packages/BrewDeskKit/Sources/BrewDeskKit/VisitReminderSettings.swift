@@ -5,6 +5,7 @@
 // hook lines that read it (see those files' diffs).
 import Foundation
 import Observation
+import VenueKit
 
 /// Where the on/off preference is kept between launches. Same shape as
 /// `SavedVenuePersisting` — a protocol so tests don't touch real
@@ -66,16 +67,21 @@ public struct VisitReminderPromptTarget: Equatable, Sendable {
 @MainActor
 @Observable
 public final class VisitReminderSettings {
-    public static let shared: VisitReminderSettings = {
-        let isUITestScenario = ProcessInfo.processInfo.arguments.contains("-UITestScenario")
+    public static let shared = VisitReminderSettings()
+
+    /// Real `UNUserNotificationCenter` rail normally, the deterministic
+    /// fake under `-UITestScenario` — same switch `AccountSessionStore
+    /// .shared` makes for its persistence.
+    public convenience init(environment: LaunchEnvironment = .current) {
+        let isUITestScenario = environment.scenario != nil
         let reminders: any VisitReminderScheduling = isUITestScenario
             ? FakeVisitReminders.shared
             : UserNotificationVisitReminders.shared
         let persistence: any VisitReminderPreferencesPersisting = isUITestScenario
             ? InMemoryVisitReminderPreferences()
             : UserDefaultsVisitReminderPreferences()
-        return VisitReminderSettings(reminders: reminders, persistence: persistence)
-    }()
+        self.init(reminders: reminders, persistence: persistence)
+    }
 
     public private(set) var isEnabled: Bool
     /// Non-nil while the inline Directions-tap prompt should be visible.

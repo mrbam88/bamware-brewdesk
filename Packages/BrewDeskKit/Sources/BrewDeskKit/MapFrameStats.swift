@@ -1,6 +1,7 @@
 import Observation
 import SwiftUI
 import UIKit
+import VenueKit
 
 /// On-simulator frame-timing evidence for the map (brewdesk#54).
 ///
@@ -77,7 +78,7 @@ final class FrameStatsRecorder {
 /// Tiny monospaced readout in the map's corner. Tap to zero the counters.
 struct MapFrameStatsHUD: View {
     /// Computed once; normal launches never construct the HUD.
-    static let isEnabled = ProcessInfo.processInfo.arguments.contains("-UITestFrameStats")
+    static let isEnabled = LaunchEnvironment.current.frameStats
 
     let annotationCount: Int
     @State private var recorder = FrameStatsRecorder()

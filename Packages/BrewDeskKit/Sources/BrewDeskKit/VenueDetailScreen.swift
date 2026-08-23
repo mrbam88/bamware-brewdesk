@@ -8,6 +8,7 @@ public struct VenueDetailScreen: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.venuePhotoService) private var photoService
     @Environment(\.openURL) private var openURL
+    @Environment(\.launchEnvironment) private var launchEnvironment
     private let venue: Venue
     @Bindable private var savedVenues: SavedVenuesStore
     // Directions-tap reminder prompt (brewdesk#93) — settings own the
@@ -476,17 +477,11 @@ public struct VenueDetailScreen: View {
     }
 
     /// The clock the open-now badge is judged against. UI tests pin it with
-    /// `-brewdesk.uitest-fixed-now yyyy-MM-dd'T'HH:mm` (local wall time) so
-    /// open/closed assertions are deterministic; inert in normal launches —
-    /// same policy as `-brewdesk.saved-venue-ids`.
+    /// `-brewdesk.uitest-fixed-now yyyy-MM-dd'T'HH:mm` (local wall time, via
+    /// `LaunchEnvironment.fixedNow`) so open/closed assertions are
+    /// deterministic; inert in normal launches.
     private var referenceNow: Date {
-        if let fixed = UserDefaults.standard.string(forKey: "brewdesk.uitest-fixed-now") {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
-            if let date = formatter.date(from: fixed) { return date }
-        }
-        return Date()
+        launchEnvironment.fixedNow ?? Date()
     }
 
     private func informationCard<Content: View>(
@@ -575,12 +570,27 @@ public struct VenueDetailScreen: View {
         // this screen follows the same convention (`-UITestNoPhotos`, etc.).
         // The reminder hook below still fires — this only skips the actual
         // hand-off to Maps.
-        guard !ProcessInfo.processInfo.arguments.contains("-UITestScenario") else { return }
+        guard launchEnvironment.scenario == nil else { return }
         let placemark = MKPlacemark(
             coordinate: CLLocationCoordinate2D(latitude: venue.lat, longitude: venue.lng)
         )
         let item = MKMapItem(placemark: placemark)
         item.name = venue.name
         item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
+    }
+}
+
+/// The launch's `LaunchEnvironment` (bd#101), injected once at `RootView`
+/// and read wherever a view needs a UI-test seam. Defaults to `.production`
+/// (every flag off) so a view rendered outside that tree — a preview, a
+/// package test — behaves like a normal launch.
+private struct LaunchEnvironmentKey: EnvironmentKey {
+    static let defaultValue = LaunchEnvironment.production
+}
+
+extension EnvironmentValues {
+    public var launchEnvironment: LaunchEnvironment {
+        get { self[LaunchEnvironmentKey.self] }
+        set { self[LaunchEnvironmentKey.self] = newValue }
     }
 }

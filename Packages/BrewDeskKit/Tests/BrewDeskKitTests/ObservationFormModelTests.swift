@@ -1,7 +1,7 @@
 import Foundation
 import Testing
-import VenueKit
 @testable import BrewDeskKit
+@testable import VenueKit
 
 /// Form state machine (brewdesk#47): gating, payload, failure → Retry, and
 /// the per-install submitter identity.
@@ -171,17 +171,24 @@ import VenueKit
 
     @Test func resolverHonoursTheScenarioLaunchArgument() {
         let resolved = ObservationServiceResolver.resolve(
-            arguments: ["-UITestScenario", "engineDown"]
+            environment: LaunchEnvironment(arguments: ["-UITestScenario", "engineDown"])
         )
         let scenario = resolved as? ScenarioVenueService
         #expect(scenario?.scenario == .engineDown)
     }
 
     @Test func resolverFallsBackToVenueAPIOnNormalLaunches() {
-        #expect(ObservationServiceResolver.resolve(arguments: []) is VenueAPI)
+        #expect(ObservationServiceResolver.resolve(environment: LaunchEnvironment(arguments: [])) is VenueAPI)
         #expect(
-            ObservationServiceResolver.resolve(arguments: ["-UITestScenario", "not-a-scenario"])
-                is VenueAPI
+            ObservationServiceResolver.resolve(
+                // Non-asserting init: an unknown scenario name would
+                // `assertionFailure` via the public init (Debug only —
+                // see `LaunchEnvironmentTests`).
+                environment: LaunchEnvironment(
+                    arguments: ["-UITestScenario", "not-a-scenario"],
+                    assertOnUnknownScenario: false
+                )
+            ) is VenueAPI
         )
     }
 }

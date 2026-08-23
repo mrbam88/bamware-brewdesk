@@ -9,33 +9,33 @@ import Testing
 @Suite struct StoreSurfaceTests {
     @Test func defaultIsUngated() {
         // No plist key, no argument — TestFlight/dev behavior: everything ON.
-        #expect(StoreSurface.isGated(infoValue: nil, arguments: []) == false)
+        #expect(StoreSurface.isGated(infoValue: nil, storeSurfaceGatedOverride: false) == false)
     }
 
     @Test func buildSettingYESGates() {
         // STORE_SURFACE_GATED=YES lands in the plist as the string "YES".
-        #expect(StoreSurface.isGated(infoValue: "YES", arguments: []))
+        #expect(StoreSurface.isGated(infoValue: "YES", storeSurfaceGatedOverride: false))
     }
 
     @Test func buildSettingNOStaysUngated() {
         // The checked-in default: STORE_SURFACE_GATED = NO in both configs.
-        #expect(StoreSurface.isGated(infoValue: "NO", arguments: []) == false)
+        #expect(StoreSurface.isGated(infoValue: "NO", storeSurfaceGatedOverride: false) == false)
     }
 
     @Test func emptySubstitutionStaysUngated() {
         // An undefined build setting substitutes to "" — must not gate.
-        #expect(StoreSurface.isGated(infoValue: "", arguments: []) == false)
+        #expect(StoreSurface.isGated(infoValue: "", storeSurfaceGatedOverride: false) == false)
     }
 
     @Test func booleanPlistValuesAreHonored() {
-        #expect(StoreSurface.isGated(infoValue: true, arguments: []))
-        #expect(StoreSurface.isGated(infoValue: false, arguments: []) == false)
+        #expect(StoreSurface.isGated(infoValue: true, storeSurfaceGatedOverride: false))
+        #expect(StoreSurface.isGated(infoValue: false, storeSurfaceGatedOverride: false) == false)
     }
 
     @Test func uiTestArgumentForcesGateOn() {
         #expect(StoreSurface.isGated(
             infoValue: "NO",
-            arguments: [StoreSurface.uiTestOverrideArgument]
+            storeSurfaceGatedOverride: true
         ))
     }
 
@@ -44,7 +44,7 @@ import Testing
         // un-gated at runtime.
         #expect(StoreSurface.isGated(
             infoValue: "YES",
-            arguments: ["-SomeOtherArgument"]
+            storeSurfaceGatedOverride: false
         ))
     }
 

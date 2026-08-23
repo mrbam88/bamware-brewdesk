@@ -1,5 +1,6 @@
 import CoreLocation
 import Observation
+import VenueKit
 
 @MainActor
 @Observable
@@ -19,9 +20,9 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
         authorizationStatus == .denied || authorizationStatus == .restricted
     }
 
-    override init() {
+    init(environment: LaunchEnvironment = .current) {
         let manager = CLLocationManager()
-        let forcedDenied = UITestScenario.isLocationDenied()
+        let forcedDenied = environment.locationDenied
         self.manager = manager
         self.forcedDenied = forcedDenied
         self.authorizationStatus = forcedDenied ? .denied : manager.authorizationStatus

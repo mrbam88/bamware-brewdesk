@@ -6,15 +6,17 @@ struct RootView: View {
     private let configuration = AppConfiguration.brewDesk
     private let venueListing: any VenueListing
     private let venueDetails: any VenueDetailServing
-    // UI-test fixture seam (`-UITestScenario <name>`); nil in every normal launch.
-    private let uiTestScenario: ScenarioVenueService.Scenario?
+    // Parsed once here — the app's single ProcessInfo.arguments read
+    // (bd#101). Every UI-test seam below consults this value instead of
+    // re-scanning arguments itself.
+    private let environment: LaunchEnvironment
     private let uiTestTakeoutURL: URL?
     // Bundled first-paint venues (brewdesk#28). Decoded once here; scenario
     // launches opt in with `-UITestSeedSnapshot` so degraded-state tests that
     // pin the no-snapshot states keep their meaning.
     private let snapshot: [Venue]
     @State private var flow: AppFlowStore
-    @State private var locationService = LocationService()
+    @State private var locationService: LocationService
 
     init(
         venueListing: any VenueListing = VenueAPI(),
@@ -22,16 +24,17 @@ struct RootView: View {
     ) {
         self.venueListing = venueListing
         self.venueDetails = venueDetails
-        let scenario = UITestScenario.current()
-        self.uiTestScenario = scenario
-        self.uiTestTakeoutURL = scenario == nil ? nil : UITestScenario.takeoutFixtureURL()
-        self.snapshot = (scenario == nil || UITestScenario.seedsSnapshot()) ? VenueSnapshot.load() : []
+        let environment = LaunchEnvironment.current
+        self.environment = environment
+        self.uiTestTakeoutURL = environment.scenario == nil ? nil : UITestScenario.takeoutFixtureURL()
+        self.snapshot = (environment.scenario == nil || environment.seedSnapshot) ? VenueSnapshot.load() : []
         _flow = State(initialValue: AppFlowStore())
+        _locationService = State(initialValue: LocationService(environment: environment))
     }
 
     var body: some View {
         Group {
-            if ProcessInfo.processInfo.arguments.contains("-UITestSkipGates") {
+            if environment.skipGates {
                 discovery
             } else if !flow.onboardingComplete {
                 OnboardingView(configuration: configuration) { flow.finishOnboarding() }
@@ -43,11 +46,12 @@ struct RootView: View {
                 }
             }
         }
+        .environment(\.launchEnvironment, environment)
     }
 
     @ViewBuilder
     private var discovery: some View {
-        if let uiTestScenario {
+        if let uiTestScenario = environment.scenario {
             // Deterministic fixtures for degraded-state UI tests. No network.
             let service = ScenarioVenueService(scenario: uiTestScenario)
             DiscoveryRootView(
@@ -94,7 +98,7 @@ struct RootView: View {
     private func uiTestPhotoService(
         _ service: (any VenuePhotoServing)?
     ) -> (any VenuePhotoServing)? {
-        ProcessInfo.processInfo.arguments.contains("-UITestNoPhotos") ? nil : service
+        environment.noPhotos ? nil : service
     }
 }
 
