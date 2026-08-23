@@ -33,7 +33,7 @@ struct LocationPermissionView: View {
                             .font(.largeTitle.bold())
                             .fontDesign(.serif)
                             .foregroundStyle(theme.primaryColor)
-                        Text("Your location finds cafés nearby. It is never included in a public report.")
+                        Text("Your location finds spots nearby. It is never included in a public report.")
                             .font(.title3)
                             .foregroundStyle(theme.secondaryColor)
                             .multilineTextAlignment(.center)

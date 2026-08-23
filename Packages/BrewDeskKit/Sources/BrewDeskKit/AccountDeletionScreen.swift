@@ -53,7 +53,7 @@ public struct AccountDeletionScreen: View {
                 bullet("You will be signed out on this device")
             }
         } footer: {
-            Text("Kept where legally required: safety records (e.g. reports filed against content). Saved cafés live only on this device and are not affected.")
+            Text("Kept where legally required: safety records (e.g. reports filed against content). Saved spots live only on this device and are not affected.")
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("account-delete-explain")

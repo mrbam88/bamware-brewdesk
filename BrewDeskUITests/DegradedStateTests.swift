@@ -96,7 +96,7 @@ final class DegradedStateTests: XCTestCase {
         let app = launch("slow", extra: ["-UITestSeedSnapshot"])
         XCTAssertTrue(element(app, "snapshot-banner-loading").waitForExistence(timeout: 2))
         XCTAssertFalse(element(app, "map-state-loading").exists, "spinner shown over snapshot rows")
-        XCTAssertTrue(app.staticTexts["3 work cafés"].waitForExistence(timeout: 20),
+        XCTAssertTrue(app.staticTexts["3 work spots"].waitForExistence(timeout: 20),
                       "live fixtures never replaced the snapshot")
         XCTAssertFalse(element(app, "snapshot-banner-loading").exists)
     }
@@ -108,7 +108,7 @@ final class DegradedStateTests: XCTestCase {
         let app = launch("offlineThenRecovers", extra: ["-UITestSeedSnapshot"])
         XCTAssertTrue(element(app, "snapshot-banner-offline").waitForExistence(timeout: wait))
         app.buttons["snapshot-retry"].tap()
-        XCTAssertTrue(app.staticTexts["3 work cafés"].waitForExistence(timeout: wait),
+        XCTAssertTrue(app.staticTexts["3 work spots"].waitForExistence(timeout: wait),
                       "retry did not bring live data")
         XCTAssertFalse(element(app, "snapshot-banner-offline").exists)
         XCTAssertFalse(element(app, "snapshot-banner-loading").exists)
@@ -139,7 +139,7 @@ final class DegradedStateTests: XCTestCase {
     func testMapSlowShowsLoadingThenContent() {
         let app = launch("slow")
         XCTAssertTrue(element(app, "map-state-loading").waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["3 work cafés"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["3 work spots"].waitForExistence(timeout: 20))
         XCTAssertFalse(element(app, "map-state-loading").exists)
     }
 
@@ -172,7 +172,7 @@ final class DegradedStateTests: XCTestCase {
         XCTAssertTrue(element(app, "location-denied-banner").waitForExistence(timeout: wait))
         XCTAssertTrue(app.buttons["location-open-settings"].exists)
         // Content still renders: denied location is a banner, not a wall.
-        XCTAssertTrue(app.staticTexts["3 work cafés"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.staticTexts["3 work spots"].waitForExistence(timeout: wait))
     }
 
     // MARK: - List

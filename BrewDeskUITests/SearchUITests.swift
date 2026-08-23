@@ -99,7 +99,7 @@ final class SearchUITests: XCTestCase {
     func testSearchKeyboardDismissesOnMapTapAndDone() throws {
         let app = launchExplore()
 
-        let field = app.textFields["Search cafes"]
+        let field = app.textFields["Search spots"]
         XCTAssertTrue(field.waitForExistence(timeout: wait), "Map search field missing")
         field.tap()
         field.typeText("Gre")

@@ -9,7 +9,7 @@ struct AppConfiguration: Sendable {
 
     static let brewDesk = AppConfiguration(
         appName: "BrewDesk",
-        tagline: "Find a cafe where the Wi-Fi works and laptops are welcome.",
+        tagline: "Find a spot where the Wi-Fi works and laptops are welcome.",
         termsURL: URL(string: "https://bamware.io/brewdesk/terms")!,
         privacyURL: URL(string: "https://bamware.io/brewdesk/privacy")!,
         supportURL: URL(string: "https://bamware.io/brewdesk/support")!

@@ -102,7 +102,7 @@ public struct VisitReminderToggleRow: View {
                 .tint(BrewDeskPalette.roast)
                 .accessibilityIdentifier("visit-reminder-toggle")
             }
-            Text("One local reminder about two hours after you get directions to a café. Nothing is sent anywhere — turning this off cancels every pending reminder.")
+            Text("One local reminder about two hours after you get directions to a spot. Nothing is sent anywhere — turning this off cancels every pending reminder.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)

@@ -35,7 +35,7 @@ struct OnboardingView: View {
         OnboardingPage(
             eyebrow: "WORK, WITHOUT THE GUESSWORK",
             title: "Your next desk might serve espresso.",
-            body: "Find nearby cafes where the Wi-Fi works, outlets exist, and opening a laptop is actually welcome.",
+            body: "Find nearby spots where the Wi-Fi works, outlets exist, and opening a laptop is actually welcome.",
             symbol: "cup.and.saucer.fill"
         ),
         OnboardingPage(
@@ -86,7 +86,7 @@ struct OnboardingView: View {
                 .animation(reduceMotion ? nil : .snappy, value: page)
                 .accessibilityHidden(true)
 
-                Button(page == pages.count - 1 ? "Find my work cafe" : "Continue") {
+                Button(page == pages.count - 1 ? "Find my work spot" : "Continue") {
                     if page == pages.count - 1 {
                         onComplete()
                     } else {

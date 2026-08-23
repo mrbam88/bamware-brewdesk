@@ -293,14 +293,14 @@ public struct CafeMapScreen: View {
         // `.idle` with nothing loaded (first paint, or a cancelled load) is
         // shown as loading — never a bare map with no explanation.
         case .idle where model.venues.isEmpty, .loading where model.venues.isEmpty:
-            ProgressView("Finding work-friendly cafes…")
+            ProgressView("Finding work spots…")
                 .padding()
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
                 .accessibilityIdentifier("map-state-loading")
         // With snapshot rows on the map, failure is a banner in the header.
         case .failed where model.venues.isEmpty:
             ContentUnavailableView {
-                Label("Cafe service unavailable", systemImage: "wifi.exclamationmark")
+                Label("Spot service unavailable", systemImage: "wifi.exclamationmark")
             } description: {
                 Text("Check your connection and try again.")
             } actions: {
@@ -327,7 +327,7 @@ public struct CafeMapScreen: View {
                 HStack(spacing: 10) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
-                    TextField("Search cafes", text: $model.searchQuery)
+                    TextField("Search spots", text: $model.searchQuery)
                         .submitLabel(.search)
                         .focused($searchFocused)
                         .onSubmit {
@@ -357,7 +357,7 @@ public struct CafeMapScreen: View {
                 .background(.thinMaterial, in: Capsule())
 
                 HStack {
-                    Text(localizedWorkCafeCount(model.venues.count))
+                    Text(localizedWorkSpotCount(model.venues.count))
                         .font(.caption.bold())
                     Spacer()
                     Text("Scores show Work Fit")

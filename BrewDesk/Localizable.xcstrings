@@ -12,46 +12,46 @@
         }
       }
     },
-    "%1$lld cafés · %2$lld observations · updated %3$@": {
+    "%1$lld spots · %2$lld observations · updated %3$@": {
       "extractionState": "stale",
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$lld cafés · %2$lld observaciones · actualizado %3$@"
+            "value": "%1$lld lugares · %2$lld observaciones · actualizado %3$@"
           }
         }
       }
     },
-    "%1$lld cafés · updated %2$@": {
+    "%1$lld spots · updated %2$@": {
       "extractionState": "stale",
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "%1$lld cafés · actualizado %2$@"
+            "value": "%1$lld lugares · actualizado %2$@"
           }
         }
       }
     },
-    "%@ work cafés": {
+    "%@ work spots": {
       "extractionState": "stale",
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ cafés para trabajar"
+            "value": "%@ lugares para trabajar"
           }
         }
       }
     },
-    "%lld cafés": {
+    "%lld spots": {
       "extractionState": "stale",
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "%lld cafés"
+            "value": "%lld lugares"
           }
         }
       }
@@ -125,13 +125,13 @@
         }
       }
     },
-    "Bookmark a café from Explore or Nearby to keep it here.": {
+    "Bookmark a spot from Explore or Nearby to keep it here.": {
       "extractionState": "stale",
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Guarda un café desde Explorar o Cercanos para tenerlo aquí."
+            "value": "Guarda un lugar desde Explorar o Cercanos para tenerlo aquí."
           }
         }
       }
@@ -163,13 +163,13 @@
         }
       }
     },
-    "Cafe service unavailable": {
+    "Spot service unavailable": {
       "extractionState": "stale",
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Servicio de cafés no disponible"
+            "value": "Servicio de lugares no disponible"
           }
         }
       }
@@ -185,13 +185,13 @@
         }
       }
     },
-    "Calls the cafe": {
+    "Calls the venue": {
       "extractionState": "stale",
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Llama al café"
+            "value": "Llama al lugar"
           }
         }
       }
@@ -448,44 +448,44 @@
         }
       }
     },
-    "Find a cafe where the Wi-Fi works and laptops are welcome.": {
+    "Find a spot where the Wi-Fi works and laptops are welcome.": {
       "extractionState": "stale",
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Encuentra un café con buen Wi-Fi donde acepten portátiles."
+            "value": "Encuentra un lugar con buen Wi-Fi donde acepten portátiles."
           }
         }
       }
     },
-    "Find my work cafe": {
+    "Find my work spot": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Encontrar mi café para trabajar"
+            "value": "Encontrar mi lugar de trabajo"
           }
         }
       }
     },
-    "Find nearby cafes where the Wi-Fi works, outlets exist, and opening a laptop is actually welcome.": {
+    "Find nearby spots where the Wi-Fi works, outlets exist, and opening a laptop is actually welcome.": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Encuentra cafés cercanos con buen Wi-Fi, enchufes y espacio para abrir el portátil."
+            "value": "Encuentra lugares cercanos con buen Wi-Fi, enchufes y espacio para abrir el portátil."
           }
         }
       }
     },
-    "Finding work-friendly cafes…": {
+    "Finding work spots…": {
       "extractionState": "stale",
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Buscando cafés para trabajar…"
+            "value": "Buscando lugares para trabajar…"
           }
         }
       }
@@ -689,13 +689,13 @@
         }
       }
     },
-    "Loading saved cafés…": {
+    "Loading saved spots…": {
       "extractionState": "stale",
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cargando cafés guardados…"
+            "value": "Cargando lugares guardados…"
           }
         }
       }
@@ -753,24 +753,24 @@
         }
       }
     },
-    "No cafes found": {
+    "No spots found": {
       "extractionState": "stale",
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "No se encontraron cafés"
+            "value": "No se encontraron lugares"
           }
         }
       }
     },
-    "No cafes in this view": {
+    "No spots in this view": {
       "extractionState": "stale",
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "No hay cafés en esta vista"
+            "value": "No hay lugares en esta vista"
           }
         }
       }
@@ -900,18 +900,18 @@
         }
       }
     },
-    "One local reminder about two hours after you get directions to a café. Nothing is sent anywhere — turning this off cancels every pending reminder.": {
+    "One local reminder about two hours after you get directions to a spot. Nothing is sent anywhere — turning this off cancels every pending reminder.": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "One local reminder about two hours after you get directions to a café. Nothing is sent anywhere — turning this off cancels every pending reminder."
+            "value": "One local reminder about two hours after you get directions to a spot. Nothing is sent anywhere — turning this off cancels every pending reminder."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Un recordatorio local unas dos horas después de pedir direcciones a un café. No se envía nada — desactivarlo cancela todos los recordatorios pendientes."
+            "value": "Un recordatorio local unas dos horas después de pedir direcciones a un lugar. No se envía nada — desactivarlo cancela todos los recordatorios pendientes."
           }
         }
       }
@@ -1212,13 +1212,13 @@
         }
       }
     },
-    "Saved cafés unavailable": {
+    "Saved spots unavailable": {
       "extractionState": "stale",
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Cafés guardados no disponibles"
+            "value": "Lugares guardados no disponibles"
           }
         }
       }
@@ -1256,24 +1256,13 @@
         }
       }
     },
-    "Search cafes": {
+    "Search spots": {
       "extractionState": "stale",
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Buscar cafés"
-          }
-        }
-      }
-    },
-    "Search cafés": {
-      "extractionState": "stale",
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Buscar cafés"
+            "value": "Buscar lugares"
           }
         }
       }
@@ -1344,13 +1333,13 @@
         }
       }
     },
-    "Some saved cafés couldn't load.": {
+    "Some saved spots couldn't load.": {
       "extractionState": "manual",
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Algunos cafés guardados no se pudieron cargar."
+            "value": "Algunos lugares guardados no se pudieron cargar."
           }
         }
       }
@@ -1698,12 +1687,12 @@
         }
       }
     },
-    "Your location finds cafés nearby. It is never included in a public report.": {
+    "Your location finds spots nearby. It is never included in a public report.": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tu ubicación encuentra cafés cercanos. Nunca se incluye en un informe público."
+            "value": "Tu ubicación encuentra lugares cercanos. Nunca se incluye en un informe público."
           }
         }
       }
@@ -1891,19 +1880,19 @@
         }
       }
     },
-    "one_work_cafe_count": {
+    "one_work_spot_count": {
       "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "1 work café"
+            "value": "1 work spot"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "1 café para trabajar"
+            "value": "1 lugar para trabajar"
           }
         }
       }
@@ -2045,6 +2034,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Base OSM · actualizado %@"
+          }
+        }
+      }
+    },
+    "Photos and observations must be about the venue as a workspace.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las fotos y observaciones deben ser sobre el lugar como espacio de trabajo."
+          }
+        }
+      }
+    },
+    "No account needed to browse, save spots, or share observations. An account only links future community contributions to a name you choose.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No hace falta cuenta para explorar, guardar lugares o compartir observaciones. Una cuenta solo vincula futuras contribuciones de la comunidad a un nombre que elijas."
+          }
+        }
+      }
+    },
+    "Kept where legally required: safety records (e.g. reports filed against content). Saved spots live only on this device and are not affected.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se conserva donde la ley lo exige: registros de seguridad (por ejemplo, reportes presentados sobre contenido). Los lugares guardados existen solo en este dispositivo y no se ven afectados."
           }
         }
       }

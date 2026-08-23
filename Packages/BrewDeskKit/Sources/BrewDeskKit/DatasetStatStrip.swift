@@ -1,7 +1,7 @@
 import SwiftUI
 import VenueKit
 
-/// One line of dataset-level provenance: "127 cafés · 480 observations ·
+/// One line of dataset-level provenance: "127 spots · 480 observations ·
 /// updated Aug 15". Renders what the health payload provides and nothing
 /// when it is absent — the screens must not shift when the strip hides.
 struct DatasetStatStrip: View {
@@ -28,7 +28,7 @@ struct DatasetStatStrip: View {
         switch (health.observationCount, updated) {
         case let (.some(observations), .some(date)):
             return String(
-                format: String(localized: "%1$lld cafés · %2$lld observations · updated %3$@"),
+                format: String(localized: "%1$lld spots · %2$lld observations · updated %3$@"),
                 locale: .current,
                 health.venueCount,
                 observations,
@@ -36,14 +36,14 @@ struct DatasetStatStrip: View {
             )
         case let (nil, .some(date)):
             return String(
-                format: String(localized: "%1$lld cafés · updated %2$@"),
+                format: String(localized: "%1$lld spots · updated %2$@"),
                 locale: .current,
                 health.venueCount,
                 date.formatted(.dateTime.month(.abbreviated).day())
             )
         default:
             return String(
-                format: String(localized: "%lld cafés"),
+                format: String(localized: "%lld spots"),
                 locale: .current,
                 health.venueCount
             )

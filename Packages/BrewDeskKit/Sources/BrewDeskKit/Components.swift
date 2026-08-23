@@ -230,12 +230,12 @@ func localizedAttributeValue(_ value: String) -> String {
     }
 }
 
-func localizedWorkCafeCount(_ count: Int) -> String {
+func localizedWorkSpotCount(_ count: Int) -> String {
     if count == 1 {
-        return String(localized: "one_work_cafe_count")
+        return String(localized: "one_work_spot_count")
     }
     return String(
-        format: String(localized: "%@ work cafés"),
+        format: String(localized: "%@ work spots"),
         locale: .current,
         count.formatted()
     )

@@ -78,7 +78,7 @@ final class BrewDeskUITests: XCTestCase {
         try app.performAccessibilityAudit(for: .contrast) { issue in
             guard let label = issue.element?.label else { return false }
             return label == "WORK, WITHOUT THE GUESSWORK"
-                || label == "Find nearby cafes where the Wi-Fi works, outlets exist, "
+                || label == "Find nearby spots where the Wi-Fi works, outlets exist, "
                 + "and opening a laptop is actually welcome."
                 || label == "01 / 03"
         }

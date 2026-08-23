@@ -40,7 +40,7 @@ public struct AccountPoliciesScreen: View {
 
     private var rulesSection: some View {
         Section {
-            rule("Photos and observations must be about the café as a workspace.")
+            rule("Photos and observations must be about the venue as a workspace.")
             rule("No offensive, harassing, or discriminatory content.")
             rule("No personal information about other people.")
             rule("No spam, ads, or misleading content.")
