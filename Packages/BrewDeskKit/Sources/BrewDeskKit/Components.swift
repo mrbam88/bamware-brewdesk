@@ -126,6 +126,19 @@ struct ClaimRow: View {
     let title: String
     let systemImage: String
     let claim: Claim
+    /// The Workability card's single provenance stamp claim (brewdesk#119):
+    /// when this row's own source/confidence/date match it exactly, the row
+    /// stays quiet — the card-level stamp already said it once. Only a
+    /// claim that disagrees with the stamp prints its own provenance line.
+    /// `nil` (no stamp computed) always shows the row's own line.
+    var cardStampClaim: Claim?
+
+    private var agreesWithCardStamp: Bool {
+        guard let cardStampClaim else { return false }
+        return claim.source == cardStampClaim.source
+            && claim.confidencePercent == cardStampClaim.confidencePercent
+            && claim.observedAt.prefix(10) == cardStampClaim.observedAt.prefix(10)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -140,9 +153,11 @@ struct ClaimRow: View {
                     claimValue
                 }
             }
-            Text(evidenceSummary)
-                .font(.caption2)
-                .foregroundStyle(.primary)
+            if !agreesWithCardStamp {
+                Text(evidenceSummary)
+                    .font(.caption2)
+                    .foregroundStyle(.primary)
+            }
             if let detail = claim.detail, !claim.isEstimate, detail != claim.sourceLabel {
                 Text(detail)
                     .font(.caption)
@@ -187,23 +202,29 @@ struct ClaimRow: View {
         return localizedAttributeValue(claim.value)
     }
 
-    private var sourceLabel: String {
-        switch claim.source {
+    private var sourceLabel: String { Self.sourceLabel(for: claim.source) }
+
+    private var evidenceSummary: String { Self.provenanceLine(for: claim) }
+
+    static func sourceLabel(for source: String) -> String {
+        switch source {
         case "curated": String(localized: "Curated")
         case "osm": String(localized: "OpenStreetMap")
         case "estimate": String(localized: "Unverified estimate")
         case "speed_test": String(localized: "Measured in app")
         case "user_report": String(localized: "User report")
         case "field_visit": String(localized: "Field verified")
-        default: claim.source
+        default: source
         }
     }
 
-    private var evidenceSummary: String {
+    /// "Curated · 75% confidence · 2026-08-01" — shared by the per-row line
+    /// and the Workability card's single card-level stamp (brewdesk#119).
+    static func provenanceLine(for claim: Claim) -> String {
         String(
             format: String(localized: "%1$@ · %2$lld%% confidence · %3$@"),
             locale: .current,
-            sourceLabel,
+            sourceLabel(for: claim.source),
             claim.confidencePercent,
             String(claim.observedAt.prefix(10))
         )

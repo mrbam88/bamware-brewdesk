@@ -99,20 +99,25 @@ extension XCUIApplication {
     /// single `swipeDown()` from `.large` only steps the sheet down to
     /// `.medium` — sheets step through detents on drag, they don't jump
     /// straight to dismiss — so getting back to Spots (and its now-covered
-    /// tab bar) needs another swipe. Repeats until "Details" is actually
+    /// tab bar) needs another swipe. Repeats until the sheet is actually
     /// gone rather than assuming a fixed count.
+    ///
+    /// brewdesk#119: keys off the "detail-close" button rather than the nav
+    /// title — the title is now the venue's own name (dynamic, and
+    /// rank-independent per bd#37), so it can't be matched by a literal
+    /// string here.
     @discardableResult
     func dismissDetailSheet(timeout: TimeInterval = 5) -> Bool {
-        guard navigationBars["Details"].exists else { return true }
+        let close = buttons["detail-close"]
+        guard close.exists else { return true }
         // `.presentationContentInteraction(.scrolls)` routes swipes to the
         // detail scroll view, so gestures can't reliably dismiss the sheet —
         // use its explicit Close button (brewdesk#117), swipe as fallback.
-        let close = buttons["detail-close"]
         if close.waitForExistence(timeout: 2), close.isHittable {
             close.tap()
         } else {
             swipeDown()
         }
-        return navigationBars["Details"].waitForNonExistence(timeout: timeout)
+        return close.waitForNonExistence(timeout: timeout)
     }
 }

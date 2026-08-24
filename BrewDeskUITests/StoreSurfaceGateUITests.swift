@@ -70,7 +70,7 @@ final class StoreSurfaceGateUITests: XCTestCase {
         let pin = app.mapPin(named: "Fixture Roasters")
         XCTAssertTrue(pin.waitForExistence(timeout: wait))
         pin.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
     }
 
     /// Same fixture contract as ReportBlockUITests: photo 1 is the community
@@ -163,7 +163,7 @@ final class StoreSurfaceGateUITests: XCTestCase {
         openCommunityViewer(app)
         XCTAssertTrue(element(app, "photo-moderation-menu").waitForExistence(timeout: wait))
         app.buttons["Close"].firstMatch.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
 
         swipeToDetailBottom(app)
         XCTAssertTrue(

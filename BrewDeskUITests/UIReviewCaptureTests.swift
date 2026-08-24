@@ -66,7 +66,7 @@ final class UIReviewCaptureTests: XCTestCase {
         let pin = app.mapPin(named: "Fixture Roasters")
         XCTAssertTrue(pin.waitForExistence(timeout: 10))
         pin.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Workability"].waitForExistence(timeout: 3))
         capture(app, "05-venue-detail")
 
@@ -87,7 +87,7 @@ final class UIReviewCaptureTests: XCTestCase {
         XCTAssertTrue(cancel.waitForExistence(timeout: 8))
         cancel.tap()
 
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 10))
         // Sheet, not a push (brewdesk#117) — swipe down to dismiss back to Spots.
         app.dismissDetailSheet()
         XCTAssertTrue(app.descendants(matching: .any)["map-discovery-shelf"].waitForExistence(timeout: 10))

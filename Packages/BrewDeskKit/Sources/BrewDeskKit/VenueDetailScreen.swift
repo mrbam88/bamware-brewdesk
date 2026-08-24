@@ -52,9 +52,13 @@ public struct VenueDetailScreen: View {
             // double-padded short ones (ui-review-2026-08-21 finding 6).
             .padding(.bottom, 24)
         }
+        .accessibilityIdentifier("venue-detail-screen")
         .background(theme.backgroundColor.ignoresSafeArea())
         .safeAreaInset(edge: .bottom) { actionDock }
-        .navigationTitle("Details")
+        // brewdesk#119: the nav title is the venue's own name, not the
+        // generic "Details" — tests must key off the venue-detail-screen
+        // identifier or the sheet's detail-close button, never this title.
+        .navigationTitle(venue.name)
         .navigationBarTitleDisplayMode(.inline)
         #if DEBUG
             // Community capture prototype entry (brewdesk#46). Debug-only:
@@ -256,21 +260,75 @@ public struct VenueDetailScreen: View {
     }
 
     private var workability: some View {
-        informationCard(title: "Workability", systemImage: "checkmark.seal") {
+        let cardStamp = workabilityCardStamp
+        return informationCard(
+            title: "Workability",
+            systemImage: "checkmark.seal",
+            subtitle: ClaimRow.provenanceLine(for: cardStamp)
+        ) {
             VStack(spacing: 14) {
-                ClaimRow(title: "Wi-Fi", systemImage: "wifi", claim: venue.attributes.wifi)
+                ClaimRow(title: "Wi-Fi", systemImage: "wifi", claim: venue.attributes.wifi, cardStampClaim: cardStamp)
                 Divider()
-                ClaimRow(title: "Outlets", systemImage: "powerplug", claim: venue.attributes.outlets)
+                ClaimRow(
+                    title: "Outlets",
+                    systemImage: "powerplug",
+                    claim: venue.attributes.outlets,
+                    cardStampClaim: cardStamp
+                )
                 Divider()
                 ClaimRow(
                     title: "Laptop policy",
                     systemImage: "laptopcomputer",
-                    claim: venue.attributes.laptopPolicy
+                    claim: venue.attributes.laptopPolicy,
+                    cardStampClaim: cardStamp
                 )
                 Divider()
-                ClaimRow(title: "Noise", systemImage: "speaker.wave.2", claim: venue.attributes.noise)
+                ClaimRow(
+                    title: "Noise",
+                    systemImage: "speaker.wave.2",
+                    claim: venue.attributes.noise,
+                    cardStampClaim: cardStamp
+                )
             }
         }
+    }
+
+    /// The Workability card's single provenance stamp (brewdesk#119): the
+    /// claim value (source, confidence, date) shared by the most rows —
+    /// ties break toward Wi-Fi's order (wifi, outlets, laptop policy,
+    /// noise), the same order the rows render in. A row whose own claim
+    /// doesn't match this becomes the "disagrees" case and prints its own
+    /// provenance line (`ClaimRow.agreesWithCardStamp`).
+    private var workabilityCardStamp: Claim {
+        let claims = [
+            venue.attributes.wifi,
+            venue.attributes.outlets,
+            venue.attributes.laptopPolicy,
+            venue.attributes.noise,
+        ]
+        struct ProvenanceKey: Hashable {
+            let source: String
+            let confidencePercent: Int
+            let date: Substring
+        }
+        func key(for claim: Claim) -> ProvenanceKey {
+            ProvenanceKey(
+                source: claim.source,
+                confidencePercent: claim.confidencePercent,
+                date: claim.observedAt.prefix(10)
+            )
+        }
+        var counts: [ProvenanceKey: Int] = [:]
+        var order: [ProvenanceKey] = []
+        for claim in claims {
+            let claimKey = key(for: claim)
+            if counts[claimKey] == nil { order.append(claimKey) }
+            counts[claimKey, default: 0] += 1
+        }
+        // `max(by:)` keeps the first of equal elements, so a tie resolves
+        // to whichever key `order` saw first — i.e. Wi-Fi's row order.
+        let modeKey = order.max { counts[$0, default: 0] < counts[$1, default: 0] } ?? order[0]
+        return claims.first { key(for: $0) == modeKey } ?? claims[0]
     }
 
     // MARK: - Business info (brewdesk#50)
@@ -471,15 +529,27 @@ public struct VenueDetailScreen: View {
         launchEnvironment.fixedNow ?? Date()
     }
 
+    /// `subtitle` is the Workability card's one-time provenance stamp
+    /// (brewdesk#119) — nil for every other card, which keeps their own
+    /// title row unchanged.
     private func informationCard<Content: View>(
         title: LocalizedStringKey,
         systemImage: String,
+        subtitle: String? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label(title, systemImage: systemImage)
-                .font(.headline)
-                .foregroundStyle(theme.primaryColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Label(title, systemImage: systemImage)
+                    .font(.headline)
+                    .foregroundStyle(theme.primaryColor)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("workability-provenance-stamp")
+                }
+            }
             content()
         }
         .padding(18)

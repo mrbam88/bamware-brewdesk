@@ -41,7 +41,7 @@ final class ReportBlockUITests: XCTestCase {
         let pin = app.mapPin(named: "Fixture Roasters")
         XCTAssertTrue(pin.waitForExistence(timeout: wait))
         pin.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
     }
 
     @MainActor
@@ -126,7 +126,7 @@ final class ReportBlockUITests: XCTestCase {
         let confirmBlock = app.buttons["Block"].firstMatch
         XCTAssertTrue(confirmBlock.waitForExistence(timeout: wait))
         confirmBlock.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
 
         // Re-enter the detail screen: the fresh photo fetch filters through
         // the block list — community photo gone, Google photo untouched.
@@ -142,7 +142,7 @@ final class ReportBlockUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: wait), "Fixture Roasters row not in shelf")
         row.waitUntilHittable()
         row.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
 
         XCTAssertTrue(element(app, "venue-photo-strip").waitForExistence(timeout: wait))
         XCTAssertTrue(googleThumb(app).waitForExistence(timeout: wait))

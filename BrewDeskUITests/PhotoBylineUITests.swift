@@ -41,7 +41,7 @@ final class PhotoBylineUITests: XCTestCase {
         let pin = app.mapPin(named: "Fixture Roasters")
         XCTAssertTrue(pin.waitForExistence(timeout: wait))
         pin.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
     }
 
     /// The community thumbnail: its combined accessibility label carries the

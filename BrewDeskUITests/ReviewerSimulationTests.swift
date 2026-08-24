@@ -82,7 +82,7 @@ final class ReviewerSimulationTests: XCTestCase {
         let housingWorks = app.mapPin(named: "Housing Works Bookstore Cafe")
         XCTAssertTrue(housingWorks.waitForExistence(timeout: 5))
         housingWorks.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Workability"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Directions"].exists)
         XCTAssertTrue(app.buttons["Save"].exists)
