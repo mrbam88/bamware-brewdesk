@@ -12,4 +12,4 @@ WHAT DISTINGUISHES THIS APP — claim-level evidence, not crowd ratings:
 
 Work-specific data no general-purpose map shows: explicit laptop policy including time-limited/weekend/discouraged venues shown openly, seating availability, and honest "unknown" states — we never guess. Users can import their Google Maps saved places; the file is parsed on-device and never uploaded.
 
-The production service is https://venuekit-ashen.vercel.app. Privacy, terms, support, and OpenStreetMap attribution are linked from the About tab.
+The production service is https://venuekit-ashen.vercel.app (health check: https://venuekit-ashen.vercel.app/v1/health — JSON; the bare site root is not a product URL). Privacy, terms, support, and OpenStreetMap attribution are linked from the About tab.
