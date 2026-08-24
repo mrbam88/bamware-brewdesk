@@ -1,12 +1,15 @@
 import XCTest
 
 /// Deterministic screen-by-screen capture for the round-2 UI review (#75).
-/// Walks onboarding -> map/shelf -> nearby -> detail -> rate-visit -> saved ->
-/// import -> methodology against the `fixtureOK` scenario (no live API, no
-/// network flakiness) and attaches one named screenshot per screen. Detail is
-/// opened from the Nearby list (a `NavigationLink` push with a real back
-/// button) rather than the map shelf's modal `.sheet`, which has no toolbar
-/// dismiss control in Release and only drag-dismisses.
+/// Walks onboarding -> map/shelf -> detail -> rate-visit -> saved -> import
+/// -> methodology against the `fixtureOK` scenario (no live API, no network
+/// flakiness) and attaches one named screenshot per screen.
+///
+/// brewdesk#117 (UI3 tab restructure): detail now opens from the Spots
+/// map/shelf as a sheet (no more Nearby-list push with a real back button —
+/// Nearby is gone), so this walkthrough dismisses it with a swipe instead
+/// of a nav-bar back button, and Methodology is reached from the You tab
+/// instead of the (removed) Nearby toolbar.
 ///
 /// Runs twice — once per appearance — via the `TEST_RUNNER_UIREVIEW_DARK`
 /// environment variable (`1` forces `-AppleInterfaceStyle Dark`; unset/`0`
@@ -59,22 +62,15 @@ final class UIReviewCaptureTests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["map-discovery-shelf"].waitForExistence(timeout: 15))
         capture(app, "04-map-shelf")
 
-        // ── 4. Nearby list ──────────────────────────────────────────────
-        XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: 5))
-        app.tabBars.buttons["Nearby"].tap()
-        XCTAssertTrue(app.navigationBars["Nearby"].waitForExistence(timeout: 5))
-        XCTAssertTrue(venueRows(app).firstMatch.waitForExistence(timeout: 10))
-        capture(app, "05-nearby-list")
-
-        // ── 5. Venue detail (pushed — real back button) ─────────────────
-        let row = app.staticTexts["Fixture Roasters"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 5))
-        row.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 5))
+        // ── 4. Venue detail (a sheet from the Spots map/shelf) ──────────
+        let pin = app.mapPin(named: "Fixture Roasters")
+        XCTAssertTrue(pin.waitForExistence(timeout: 10))
+        pin.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Workability"].waitForExistence(timeout: 3))
-        capture(app, "06-venue-detail")
+        capture(app, "05-venue-detail")
 
-        // ── 6. Rate this visit ──────────────────────────────────────────
+        // ── 5. Rate this visit ──────────────────────────────────────────
         // The entry card sits at the bottom of the detail scroll view; swipe
         // until it is hittable (count depends on Dynamic Type / device).
         let rateEntry = app.descendants(matching: .any)["observation-entry"]
@@ -86,45 +82,42 @@ final class UIReviewCaptureTests: XCTestCase {
         XCTAssertTrue(rateEntry.isHittable, "Rate this visit entry not reachable on the detail screen")
         rateEntry.tap()
         XCTAssertTrue(app.navigationBars["Rate this visit"].waitForExistence(timeout: 5))
-        capture(app, "07-rate-this-visit")
+        capture(app, "06-rate-this-visit")
         let cancel = app.buttons.matching(identifier: "observation-cancel").firstMatch
         XCTAssertTrue(cancel.waitForExistence(timeout: 8))
         cancel.tap()
 
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 10))
-        let detailBack = app.navigationBars["Details"].buttons.firstMatch
-        XCTAssertTrue(detailBack.waitForExistence(timeout: 10))
-        detailBack.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 10))
+        // Sheet, not a push (brewdesk#117) — swipe down to dismiss back to Spots.
+        app.dismissDetailSheet()
+        XCTAssertTrue(app.descendants(matching: .any)["map-discovery-shelf"].waitForExistence(timeout: 10))
 
-        // ── 7. Saved (empty state — launched with no saved ids) ────────
-        XCTAssertTrue(app.tabBars.buttons["Saved"].waitForExistence(timeout: 5))
-        app.tabBars.buttons["Saved"].tap()
+        // ── 6. Saved (empty state — launched with no saved ids) ────────
+        let savedTab = app.tabBars.buttons["tab-saved"]
+        XCTAssertTrue(savedTab.waitForExistence(timeout: 5))
+        savedTab.waitUntilHittable()
+        savedTab.tap()
         XCTAssertTrue(app.descendants(matching: .any)["saved-state-empty"].waitForExistence(timeout: 5))
-        capture(app, "08-saved-empty")
+        capture(app, "07-saved-empty")
 
-        // ── 8. Import saved places ──────────────────────────────────────
+        // ── 7. Import saved places ──────────────────────────────────────
         let importEntry = app.descendants(matching: .any)["import-saved-entry"]
         XCTAssertTrue(importEntry.waitForExistence(timeout: 5))
         importEntry.tap()
         XCTAssertTrue(app.navigationBars["Import saved places"].waitForExistence(timeout: 5))
-        capture(app, "09-import-saved")
+        capture(app, "08-import-saved")
         app.navigationBars["Import saved places"].buttons.firstMatch.tap()
 
-        // ── 9. Methodology ──────────────────────────────────────────────
-        XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: 5))
-        app.tabBars.buttons["Nearby"].tap()
-        XCTAssertTrue(app.navigationBars["Nearby"].waitForExistence(timeout: 5))
-        app.buttons["How scoring works"].tap()
+        // ── 8. Methodology (reached from the You tab — Nearby's toolbar
+        // entry is gone with the tab) ────────────────────────────────────
+        XCTAssertTrue(app.tabBars.buttons["tab-you"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["tab-you"].tap()
+        app.descendants(matching: .any)["methodology-link"].tap()
         XCTAssertTrue(app.navigationBars["How Work Fit works"].waitForExistence(timeout: 5))
-        capture(app, "10-methodology")
+        capture(app, "09-methodology")
     }
 
     // MARK: - Helpers
-
-    @MainActor
-    private func venueRows(_ app: XCUIApplication) -> XCUIElementQuery {
-        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", ", Wi-Fi "))
-    }
 
     @MainActor
     private func capture(_ app: XCUIApplication, _ name: String) {

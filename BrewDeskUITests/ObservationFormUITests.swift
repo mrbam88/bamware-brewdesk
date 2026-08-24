@@ -30,19 +30,21 @@ final class ObservationFormUITests: XCTestCase {
         app.descendants(matching: .any)[identifier]
     }
 
+    // brewdesk#117: Nearby is gone — Spots (map/shelf) is the only tab
+    // that opens venue detail now (a sheet, not a list push).
     @MainActor
-    private func openNearby(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["Nearby"].tap()
+    private func openSpots(_ app: XCUIApplication) {
+        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
+        app.tabBars.buttons["tab-spots"].tap()
     }
 
     @MainActor
     private func openFixtureRoastersDetail(_ app: XCUIApplication) {
-        openNearby(app)
-        let row = app.staticTexts["Fixture Roasters"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: wait))
-        row.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        openSpots(app)
+        let pin = app.mapPin(named: "Fixture Roasters")
+        XCTAssertTrue(pin.waitForExistence(timeout: wait))
+        pin.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
     }
 
     /// The entry card sits at the bottom of the detail scroll view; swipe
@@ -124,7 +126,7 @@ final class ObservationFormUITests: XCTestCase {
         XCTAssertTrue(element(app, "observation-thanks").waitForExistence(timeout: wait),
                       "Thank-you state missing after submit")
         element(app, "observation-done").tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait),
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait),
                       "Done should land back on the venue detail")
     }
 
@@ -136,12 +138,11 @@ final class ObservationFormUITests: XCTestCase {
     @MainActor
     func testEngineDownShowsFriendlyErrorWithRetry() {
         let app = launch("engineDown", extra: ["-UITestSeedSnapshot"])
-        openNearby(app)
-        guard let (row, _) = app.firstVenueRow(timeout: wait) else {
-            return XCTFail("No snapshot venue row to open")
-        }
-        row.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        openSpots(app)
+        let pin = app.mapPins.firstMatch
+        XCTAssertTrue(pin.waitForExistence(timeout: wait), "No snapshot venue pin to open")
+        pin.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
         openObservationForm(app)
 
         answerAllFive(app)

@@ -25,7 +25,7 @@ final class CaptureUploadRetryUITests: XCTestCase {
         let row = app.staticTexts["Fixture Roasters"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 8), "Fixture venue row should appear")
         row.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 8))
         let entry = app.buttons["capture-entry"]
         XCTAssertTrue(entry.waitForExistence(timeout: 4), "DEBUG capture entry should be in the toolbar")
         entry.tap()
@@ -67,6 +67,6 @@ final class CaptureUploadRetryUITests: XCTestCase {
             "Retry must land on the thank-you state"
         )
         app.buttons["capture-done"].tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 4))
     }
 }

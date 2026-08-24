@@ -8,6 +8,9 @@ public struct CafeMapScreen: View {
     @Bindable private var model: VenuesModel
     @Bindable private var savedVenues: SavedVenuesStore
     @State private var selected: Venue?
+    /// brewdesk#117: forces the detail sheet to open at `.large` — see the
+    /// `.sheet` modifier below for why.
+    @State private var detailDetent: PresentationDetent = .large
     @State private var position: MapCameraPosition
     /// Camera region recovered after a gesture settles (see `scheduleReplan`).
     /// Mid-gesture frames never touch state, so a pan composites existing
@@ -117,7 +120,8 @@ public struct CafeMapScreen: View {
                 model: model,
                 detent: $shelfDetent,
                 selectedID: selected?.id,
-                fullHeight: max(320, mapHeight * 0.7)
+                fullHeight: max(320, mapHeight * 0.7),
+                isSearchFocused: searchFocused
             ) { venue in
                 selected = venue
                 position = .region(
@@ -141,14 +145,44 @@ public struct CafeMapScreen: View {
         .sheet(item: $selected) { venue in
             NavigationStack {
                 VenueDetailScreen(venue: venue, savedVenues: savedVenues)
+                    // brewdesk#117: `.presentationContentInteraction(.scrolls)`
+                    // means swipes scroll the detail content — the drag
+                    // indicator is the only gesture path out, so the sheet
+                    // gets an explicit Close affordance too (and tests use it).
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button {
+                                selected = nil
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .accessibilityLabel("Close")
+                            .accessibilityIdentifier("detail-close")
+                        }
+                    }
             }
-            .presentationDetents([.medium, .large])
+            // brewdesk#117: defaults to `.large` (an explicit `selection`,
+            // not just detent order — SwiftUI opens at the first detent in
+            // the set otherwise, i.e. `.medium`). Detail was never laid out
+            // for half the screen: it was always a full push before this
+            // ticket made the map/shelf sheet its only route from Spots, and
+            // `.medium` crowded real content into real a11y-audit failures
+            // (clipped text, sub-44pt hit targets) that a full push never
+            // hit. `.medium` stays reachable by dragging down — this only
+            // changes where the sheet opens.
+            .presentationDetents([.medium, .large], selection: $detailDetent)
             .presentationDragIndicator(.visible)
             // At medium detent a scroll gesture must scroll the detail content
             // (clearing the action dock) rather than resize the sheet first —
             // the dock occluded the photo strip with no way to scroll it into
             // view (ui-review-2026-08-21 finding 6).
             .presentationContentInteraction(.scrolls)
+        }
+        // brewdesk#117: each fresh selection opens full-height, regardless
+        // of whatever detent a previous venue's sheet was left at.
+        .onChange(of: selected) { _, newValue in
+            if newValue != nil { detailDetent = .large }
         }
         .onChange(of: model.centerLat) {
             position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
@@ -317,47 +351,59 @@ public struct CafeMapScreen: View {
         }
     }
 
-    /// One glass card for search + count + hint + stat strip: bare text
-    /// painted on the map collided with map labels in light mode and vanished
-    /// dark-on-dark (ui-review-2026-08-21 finding 2). Banners dock directly
-    /// beneath the card as sibling rows (finding 15's grouping).
+    /// One glass card for search + filters + the single count line
+    /// (ui-review-2026-08-21 finding 2). Banners dock directly beneath the
+    /// card as sibling rows (finding 15's grouping).
+    ///
+    /// UI3 (brewdesk#118): the field's trailing control and the count line
+    /// below it are the whole header now — the old chip rail moved into
+    /// `WorkFitFilterMenu`, and `DatasetStatStrip`'s separate row folded into
+    /// the one count line (both numbers dynamic; never hardcoded).
     private var searchHeader: some View {
         VStack(spacing: 8) {
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField("Search spots", text: $model.searchQuery)
-                        .submitLabel(.search)
-                        .focused($searchFocused)
-                        .onSubmit {
-                            model.submitSearch()
-                            searchFocused = false
-                        }
-                        .toolbar {
-                            ToolbarItemGroup(placement: .keyboard) {
-                                Spacer()
-                                Button("Done") {
-                                    searchFocused = false
-                                }
-                                .accessibilityIdentifier("search-done")
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search spots", text: $model.searchQuery)
+                            .submitLabel(.search)
+                            .focused($searchFocused)
+                            .onSubmit {
+                                model.submitSearch()
+                                searchFocused = false
+                            }
+                        if !model.searchQuery.isEmpty {
+                            Button {
+                                model.clearSearch()
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
                             }
                         }
-                    if !model.searchQuery.isEmpty {
-                        Button {
-                            model.clearSearch()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 44)
+                    .background(.thinMaterial, in: Capsule())
+
+                    // Trailing control: the filter badge normally, Cancel
+                    // while the field has focus — dismisses the keyboard and
+                    // clears focus (brewdesk#87's cannot-dismiss-keyboard fix).
+                    // Retired the floating keyboard-toolbar Done button that
+                    // used to draw over the venue card.
+                    if searchFocused {
+                        Button("Cancel") {
+                            searchFocused = false
                         }
+                        .font(.subheadline.bold())
+                        .accessibilityIdentifier("search-cancel")
+                    } else {
+                        WorkFitFilterButton(model: model)
                     }
                 }
-                .padding(.horizontal, 14)
-                .frame(minHeight: 44)
-                .background(.thinMaterial, in: Capsule())
 
                 HStack {
-                    Text(localizedWorkSpotCount(model.venues.count))
+                    Text(countLine)
                         .font(.caption.bold())
                     Spacer()
                     Text("Scores show Work Fit")
@@ -365,8 +411,7 @@ public struct CafeMapScreen: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 6)
-
-                DatasetStatStrip(model: model)
+                .accessibilityIdentifier("map-count-line")
             }
             .padding(10)
             .brewDeskGlass(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -388,6 +433,24 @@ public struct CafeMapScreen: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
+    }
+
+    /// "N of M spots" — the two competing counts (a plain venue count and
+    /// `DatasetStatStrip`'s dataset total) collapsed into one line
+    /// (brewdesk#118). Both numbers stay dynamic: `N` is the live, filtered
+    /// `model.venues.count`; `M` is the dataset total from `model.health`
+    /// once it loads, and falls back to the plain count (never a hardcoded
+    /// figure) before health answers.
+    private var countLine: String {
+        guard let total = model.health?.venueCount else {
+            return localizedWorkSpotCount(model.venues.count)
+        }
+        return String(
+            format: String(localized: "%1$lld of %2$lld spots"),
+            locale: .current,
+            model.venues.count,
+            total
+        )
     }
 
     /// Extra bottom safe area for the map subtree while the shelf rests at

@@ -123,15 +123,13 @@ final class AppStoreScreenshotTests: XCTestCase {
         XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: 5))
         capture("03-work-fit-map")
 
-        app.tabBars.buttons[locale.nearbyTab].tap()
-        XCTAssertTrue(app.navigationBars[locale.nearbyTab].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.venueRows.firstMatch.waitForExistence(timeout: 5))
-        app.buttons[locale.filters].tap()
-        XCTAssertTrue(app.descendants(matching: .any)[locale.laptopFriendlyOnly].waitForExistence(timeout: 2))
-        capture("02-work-filters")
-        app.descendants(matching: .any)[locale.laptopFriendlyOnly].tap()
-
-        app.tabBars.buttons[locale.exploreTab].tap()
+        // UI3: filter surface moves to WorkFitFilterMenu — un-skip in #118.
+        // brewdesk#117 collapsed Explore + Nearby into one Spots tab; the
+        // "02-work-filters" capture (Nearby's list Filters menu) has no
+        // home until #118 ports filters onto Spots. Re-shooting a full,
+        // filters-included marketing set is also its own follow-up ticket
+        // per the #116 epic ("screenshot re-shoot") — this flow keeps
+        // proving the rest of the store-submission surface end to end.
 
         let search = app.textFields[locale.searchField]
         search.tap()
@@ -140,10 +138,13 @@ final class AppStoreScreenshotTests: XCTestCase {
         search.typeText("Housing Works\n")
         XCTAssertTrue(app.staticTexts[locale.oneWorkCafe].waitForExistence(timeout: 15))
 
-        app.tabBars.buttons[locale.nearbyTab].tap()
-        XCTAssertTrue(app.staticTexts["Housing Works Bookstore Cafe"].waitForExistence(timeout: 5))
-        app.staticTexts["Housing Works Bookstore Cafe"].tap()
-        XCTAssertTrue(app.navigationBars[locale.detailsNav].waitForExistence(timeout: 5))
+        let housingWorks = app.mapPin(named: "Housing Works Bookstore Cafe")
+        XCTAssertTrue(housingWorks.waitForExistence(timeout: 5))
+        housingWorks.tap()
+        // brewdesk#119: the nav title is now the venue's own name (not a
+        // localized "Details"/"Detalles" constant), so this keys off the
+        // detail root's identifier instead — locale-independent.
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts[locale.workability].waitForExistence(timeout: 2))
         // Ticket rule: no Google Places photos prominent in marketing shots.
         // -UITestNoPhotos nils the photo service, so no thumbnail may exist.

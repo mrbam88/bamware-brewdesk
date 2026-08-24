@@ -31,14 +31,13 @@ final class AccountFlowUITests: XCTestCase {
         app.descendants(matching: .any)[identifier]
     }
 
+    // brewdesk#117: AccountScreen is now the You tab's root — no more
+    // Saved-toolbar "Account entry" push.
     @MainActor
     private func openAccount(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["Saved"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["Saved"].tap()
-        let entry = element(app, "account-entry")
-        XCTAssertTrue(entry.waitForExistence(timeout: wait))
-        entry.tap()
-        XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.tabBars.buttons["tab-you"].waitForExistence(timeout: wait))
+        app.tabBars.buttons["tab-you"].tap()
+        XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: wait))
     }
 
     @MainActor
@@ -64,15 +63,17 @@ final class AccountFlowUITests: XCTestCase {
         let app = launch()
 
         // Browse venues — no sign-in, no gate.
-        XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["Nearby"].tap()
-        XCTAssertTrue(app.staticTexts["Fixture Roasters"].firstMatch.waitForExistence(timeout: wait))
+        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
+        app.tabBars.buttons["tab-spots"].tap()
+        XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitForExistence(timeout: wait))
 
-        // Saved tab renders (empty state) and offers — but does not force —
-        // the account entry.
-        app.tabBars.buttons["Saved"].tap()
+        // Saved tab renders (empty state) without forcing an account.
+        app.tabBars.buttons["tab-saved"].tap()
         XCTAssertTrue(element(app, "saved-state-empty").waitForExistence(timeout: wait))
-        XCTAssertTrue(element(app, "account-entry").exists)
+
+        // You tab is there too — offered, never forced.
+        app.tabBars.buttons["tab-you"].tap()
+        XCTAssertTrue(element(app, "account-mode-toggle").waitForExistence(timeout: wait))
     }
 
     // MARK: - Sign up → sign out → sign in

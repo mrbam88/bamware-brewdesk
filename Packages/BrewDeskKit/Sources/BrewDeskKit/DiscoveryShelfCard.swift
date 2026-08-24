@@ -22,6 +22,12 @@ struct DiscoveryShelfCard: View {
     let selectedID: String?
     /// Card height at `.full`, chosen by the map screen from its own geometry.
     let fullHeight: CGFloat
+    /// UI3 (brewdesk#118): true while the map's search field has focus. The
+    /// shelf promotes to a vertical result list at `fullHeight` regardless of
+    /// `detent` — the old horizontal rail hid six of seven matches. Read-only
+    /// here; the search header (not the shelf) owns focus and its Cancel
+    /// control clears it.
+    var isSearchFocused = false
     let onVenueTap: (Venue) -> Void
 
     @State private var dragOffset: CGFloat = 0
@@ -48,6 +54,7 @@ struct DiscoveryShelfCard: View {
     /// `nil` at peek/medium (intrinsic, Dynamic Type reflows) and
     /// `fullHeight` at full.
     private var cardHeight: CGFloat? {
+        guard !isSearchFocused else { return fullHeight }
         guard isCrossingFullBoundary else { return detent == .full ? fullHeight : nil }
         return detent == .full ? fullHeight : (restingHeight ?? fullHeight)
     }
@@ -55,8 +62,7 @@ struct DiscoveryShelfCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             grabber
-            chipRail
-            if detent != .peek {
+            if isSearchFocused || detent != .peek {
                 venueContent
             }
         }
@@ -65,7 +71,7 @@ struct DiscoveryShelfCard: View {
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.height
         } action: { newHeight in
-            guard detent != .full, !isCrossingFullBoundary else { return }
+            guard detent != .full, !isCrossingFullBoundary, !isSearchFocused else { return }
             restingHeight = newHeight
         }
         .frame(height: cardHeight, alignment: .top)
@@ -78,14 +84,11 @@ struct DiscoveryShelfCard: View {
         .accessibilityIdentifier("map-discovery-shelf")
         .onAppear { detent = ShelfDetentMemory.session.last }
         .onChange(of: detent) { ShelfDetentMemory.session.last = detent }
-        // A light tick when the shelf settles into a detent, or a filter
-        // chip is toggled (brewdesk#75) — `.sensoryFeedback` already no-ops
+        // A light tick when the shelf settles into a detent (brewdesk#75) —
+        // filter feedback now lives on `WorkFitFilterButton`, the filters'
+        // only remaining control surface. `.sensoryFeedback` already no-ops
         // under Reduce Motion.
         .sensoryFeedback(.selection, trigger: detent)
-        .sensoryFeedback(.selection, trigger: model.laptopFriendlyOnly)
-        .sensoryFeedback(.selection, trigger: model.minWifi)
-        .sensoryFeedback(.selection, trigger: model.minOutlets)
-        .sensoryFeedback(.selection, trigger: model.minSeating)
     }
 
     // MARK: - Resize
@@ -182,53 +185,6 @@ struct DiscoveryShelfCard: View {
 
     // MARK: - Content
 
-    private var chipRail: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                filterChip(
-                    title: "Laptop friendly",
-                    symbol: "laptopcomputer",
-                    selected: model.laptopFriendlyOnly
-                ) {
-                    model.laptopFriendlyOnly.toggle()
-                }
-                filterChip(
-                    title: model.minWifi == .fast ? "Fast Wi-Fi" : "Wi-Fi",
-                    symbol: "wifi",
-                    selected: model.minWifi != nil
-                ) {
-                    model.cycleWifiMinimum()
-                }
-                filterChip(
-                    title: model.minOutlets == .plenty ? "Plenty of outlets" : "Outlets",
-                    symbol: "powerplug.fill",
-                    selected: model.minOutlets != nil
-                ) {
-                    model.cycleOutletMinimum()
-                }
-                filterChip(
-                    title: "Seating",
-                    symbol: "chair.lounge",
-                    selected: model.minSeating != nil
-                ) {
-                    model.cycleSeatingMinimum()
-                }
-                if model.venueTypesAvailable {
-                    ForEach(VenueTypeFilter.allCases, id: \.rawValue) { type in
-                        filterChip(
-                            title: LocalizedStringKey(type.rawValue),
-                            symbol: Self.venueTypeSymbol(type),
-                            selected: model.venueType == type
-                        ) {
-                            model.venueType = model.venueType == type ? nil : type
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-
     @ViewBuilder
     private var venueContent: some View {
         if model.venues.isEmpty {
@@ -248,7 +204,7 @@ struct DiscoveryShelfCard: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("map-state-empty")
             }
-        } else if detent == .full {
+        } else if isSearchFocused || detent == .full {
             fullList
         } else {
             horizontalRail
@@ -292,35 +248,6 @@ struct DiscoveryShelfCard: View {
         .accessibilityLabel(
             "\(venue.name), Work Fit \(venue.workScore), \(venue.neighborhood)"
         )
-    }
-
-    private static func venueTypeSymbol(_ type: VenueTypeFilter) -> String {
-        switch type {
-        case .cafe: "cup.and.saucer.fill"
-        case .park: "tree.fill"
-        case .library: "books.vertical.fill"
-        case .mall: "building.2.fill"
-        case .other: "mappin"
-        }
-    }
-
-    private func filterChip(
-        title: LocalizedStringKey,
-        symbol: String,
-        selected: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: symbol)
-                .font(.caption.bold())
-                .foregroundStyle(selected ? .white : .primary)
-                .padding(.horizontal, 12)
-                .frame(minHeight: 44)
-                .background(selected ? BrewDeskPalette.roast : Color.secondary.opacity(0.10), in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityValue(selected ? "On" : "Off")
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     /// Shelf card. No fixed frames on the score tile and no hard-coded 8pt

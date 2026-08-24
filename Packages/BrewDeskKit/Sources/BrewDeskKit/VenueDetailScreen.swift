@@ -11,9 +11,6 @@ public struct VenueDetailScreen: View {
     @Environment(\.launchEnvironment) private var launchEnvironment
     private let venue: Venue
     @Bindable private var savedVenues: SavedVenuesStore
-    // Directions-tap reminder prompt (brewdesk#93) — settings own the
-    // one-time-per-session prompt state; this screen only reads it.
-    @State private var reminderSettings: VisitReminderSettings
     @State private var photos: [VenuePhoto] = []
     @State private var expandedPhoto: VenuePhoto?
     @State private var photoLoad: PhotoLoad = .loading
@@ -25,10 +22,9 @@ public struct VenueDetailScreen: View {
 
     private enum PhotoLoad { case loading, loaded, failed }
 
-    public init(venue: Venue, savedVenues: SavedVenuesStore, reminderSettings: VisitReminderSettings = .shared) {
+    public init(venue: Venue, savedVenues: SavedVenuesStore) {
         self.venue = venue
         self.savedVenues = savedVenues
-        _reminderSettings = State(initialValue: reminderSettings)
     }
 
     private var theme: BrewDeskTheme { BrewDeskTheme(isDarkMode: colorScheme == .dark) }
@@ -56,24 +52,13 @@ public struct VenueDetailScreen: View {
             // double-padded short ones (ui-review-2026-08-21 finding 6).
             .padding(.bottom, 24)
         }
+        .accessibilityIdentifier("venue-detail-screen")
         .background(theme.backgroundColor.ignoresSafeArea())
         .safeAreaInset(edge: .bottom) { actionDock }
-        // One-time inline permission ask (brewdesk#93) — never on launch,
-        // only right after a Directions tap; see `directionsTapped`. An
-        // overlay above the dock (not scroll content — this is a
-        // `LazyVStack`, and a card at the bottom of it may never
-        // materialize without scrolling) so it's visible the instant it
-        // appears. `reminderSettings` is process-shared, so this also
-        // guards against showing the prompt on a venue other than the one
-        // that triggered it (fast navigation away before responding).
-        .overlay(alignment: .bottom) {
-            if let promptTarget = reminderSettings.promptTarget, promptTarget.venueId == venue.id {
-                VisitReminderPromptCard(target: promptTarget, settings: reminderSettings)
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 110)
-            }
-        }
-        .navigationTitle("Details")
+        // brewdesk#119: the nav title is the venue's own name, not the
+        // generic "Details" — tests must key off the venue-detail-screen
+        // identifier or the sheet's detail-close button, never this title.
+        .navigationTitle(venue.name)
         .navigationBarTitleDisplayMode(.inline)
         #if DEBUG
             // Community capture prototype entry (brewdesk#46). Debug-only:
@@ -126,11 +111,17 @@ public struct VenueDetailScreen: View {
     private var photoStripError: some View {
         HStack(spacing: 10) {
             Label("Photos unavailable", systemImage: "photo")
+                .font(.footnote)
             Spacer(minLength: 0)
+            // 44pt minimum touch target + footnote type: the caption-sized
+            // text button failed the accessibility audit (hit region + text
+            // size) once detail began presenting as a sheet (brewdesk#117).
             Button("Retry") { photoAttempt += 1 }
+                .font(.footnote.weight(.semibold))
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
                 .accessibilityIdentifier("photos-retry")
         }
-        .font(.caption)
         .foregroundStyle(.secondary)
         .padding(.horizontal, 4)
         .accessibilityElement(children: .contain)
@@ -269,21 +260,75 @@ public struct VenueDetailScreen: View {
     }
 
     private var workability: some View {
-        informationCard(title: "Workability", systemImage: "checkmark.seal") {
+        let cardStamp = workabilityCardStamp
+        return informationCard(
+            title: "Workability",
+            systemImage: "checkmark.seal",
+            subtitle: ClaimRow.provenanceLine(for: cardStamp)
+        ) {
             VStack(spacing: 14) {
-                ClaimRow(title: "Wi-Fi", systemImage: "wifi", claim: venue.attributes.wifi)
+                ClaimRow(title: "Wi-Fi", systemImage: "wifi", claim: venue.attributes.wifi, cardStampClaim: cardStamp)
                 Divider()
-                ClaimRow(title: "Outlets", systemImage: "powerplug", claim: venue.attributes.outlets)
+                ClaimRow(
+                    title: "Outlets",
+                    systemImage: "powerplug",
+                    claim: venue.attributes.outlets,
+                    cardStampClaim: cardStamp
+                )
                 Divider()
                 ClaimRow(
                     title: "Laptop policy",
                     systemImage: "laptopcomputer",
-                    claim: venue.attributes.laptopPolicy
+                    claim: venue.attributes.laptopPolicy,
+                    cardStampClaim: cardStamp
                 )
                 Divider()
-                ClaimRow(title: "Noise", systemImage: "speaker.wave.2", claim: venue.attributes.noise)
+                ClaimRow(
+                    title: "Noise",
+                    systemImage: "speaker.wave.2",
+                    claim: venue.attributes.noise,
+                    cardStampClaim: cardStamp
+                )
             }
         }
+    }
+
+    /// The Workability card's single provenance stamp (brewdesk#119): the
+    /// claim value (source, confidence, date) shared by the most rows —
+    /// ties break toward Wi-Fi's order (wifi, outlets, laptop policy,
+    /// noise), the same order the rows render in. A row whose own claim
+    /// doesn't match this becomes the "disagrees" case and prints its own
+    /// provenance line (`ClaimRow.agreesWithCardStamp`).
+    private var workabilityCardStamp: Claim {
+        let claims = [
+            venue.attributes.wifi,
+            venue.attributes.outlets,
+            venue.attributes.laptopPolicy,
+            venue.attributes.noise,
+        ]
+        struct ProvenanceKey: Hashable {
+            let source: String
+            let confidencePercent: Int
+            let date: Substring
+        }
+        func key(for claim: Claim) -> ProvenanceKey {
+            ProvenanceKey(
+                source: claim.source,
+                confidencePercent: claim.confidencePercent,
+                date: claim.observedAt.prefix(10)
+            )
+        }
+        var counts: [ProvenanceKey: Int] = [:]
+        var order: [ProvenanceKey] = []
+        for claim in claims {
+            let claimKey = key(for: claim)
+            if counts[claimKey] == nil { order.append(claimKey) }
+            counts[claimKey, default: 0] += 1
+        }
+        // `max(by:)` keeps the first of equal elements, so a tie resolves
+        // to whichever key `order` saw first — i.e. Wi-Fi's row order.
+        let modeKey = order.max { counts[$0, default: 0] < counts[$1, default: 0] } ?? order[0]
+        return claims.first { key(for: $0) == modeKey } ?? claims[0]
     }
 
     // MARK: - Business info (brewdesk#50)
@@ -484,15 +529,27 @@ public struct VenueDetailScreen: View {
         launchEnvironment.fixedNow ?? Date()
     }
 
+    /// `subtitle` is the Workability card's one-time provenance stamp
+    /// (brewdesk#119) — nil for every other card, which keeps their own
+    /// title row unchanged.
     private func informationCard<Content: View>(
         title: LocalizedStringKey,
         systemImage: String,
+        subtitle: String? = nil,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Label(title, systemImage: systemImage)
-                .font(.headline)
-                .foregroundStyle(theme.primaryColor)
+            VStack(alignment: .leading, spacing: 2) {
+                Label(title, systemImage: systemImage)
+                    .font(.headline)
+                    .foregroundStyle(theme.primaryColor)
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("workability-provenance-stamp")
+                }
+            }
             content()
         }
         .padding(18)
@@ -518,9 +575,6 @@ public struct VenueDetailScreen: View {
     private var actionButtons: some View {
         Button {
             openDirections()
-            // brewdesk#93: the only launch point (with the Saved toggle)
-            // that may ever ask for notification permission.
-            Task { await reminderSettings.directionsTapped(venueId: venue.id, name: venue.name) }
         } label: {
             actionLabel("Directions", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
         }

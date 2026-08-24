@@ -1,14 +1,23 @@
 import XCTest
 
 /// Store-build surface gate (brewdesk#67). The App Store submission binary
-/// is an accountless app matching "Data Not Collected": no Account entry,
-/// no report/block actions, no observation entry card. The gate is the
+/// is an accountless app matching "Data Not Collected": no account card, no
+/// report/block actions, no observation entry card. The gate is the
 /// `STORE_SURFACE_GATED` build setting → `BDStoreSurfaceGated` Info.plist
 /// key; these tests force it ON via the one-directional
 /// `-UITestStoreSurfaceGated` launch argument (the same code path
 /// `StoreSurface.isGated` reads) and prove the surface disappears, then run
 /// the identical navigation ungated to prove the recipe finds the surface
 /// when it should (so the negative assertions cannot pass vacuously).
+///
+/// brewdesk#117: the account card moved from a Saved-toolbar push into the
+/// You tab (`AccountScreen` is now that tab's root), and the gating moved
+/// with it — from hiding the entry link to hiding the card itself inside
+/// the screen. `testGatedBuildHidesAccountCard` is the concrete proof of
+/// the ticket's acceptance criterion that the gated You tab still reads as
+/// a deliberate About surface (How scoring works, Contact & Content Rules,
+/// Support/Privacy/Terms/credits/version all present) rather than
+/// half-empty.
 final class StoreSurfaceGateUITests: XCTestCase {
     private let wait: TimeInterval = 10
 
@@ -40,19 +49,28 @@ final class StoreSurfaceGateUITests: XCTestCase {
 
     @MainActor
     private func openSavedTab(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["Saved"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["Saved"].tap()
+        XCTAssertTrue(app.tabBars.buttons["tab-saved"].waitForExistence(timeout: wait))
+        app.tabBars.buttons["tab-saved"].tap()
         XCTAssertTrue(element(app, "saved-state-empty").waitForExistence(timeout: wait))
     }
 
     @MainActor
+    private func openYouTab(_ app: XCUIApplication) {
+        XCTAssertTrue(app.tabBars.buttons["tab-you"].waitForExistence(timeout: wait))
+        app.tabBars.buttons["tab-you"].tap()
+        XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: wait))
+    }
+
+    // brewdesk#117: detail now opens from the Spots tab's map/shelf (a
+    // sheet), not a Nearby-list push — Nearby no longer exists.
+    @MainActor
     private func openFixtureRoastersDetail(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["Nearby"].tap()
-        let row = app.staticTexts["Fixture Roasters"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: wait))
-        row.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
+        app.tabBars.buttons["tab-spots"].tap()
+        let pin = app.mapPin(named: "Fixture Roasters")
+        XCTAssertTrue(pin.waitForExistence(timeout: wait))
+        pin.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
     }
 
     /// Same fixture contract as ReportBlockUITests: photo 1 is the community
@@ -83,14 +101,29 @@ final class StoreSurfaceGateUITests: XCTestCase {
     // MARK: - Gated: none of the store-gated UI exists
 
     @MainActor
-    func testGatedBuildHidesAccountEntry() {
+    func testGatedBuildHidesAccountCard() {
         let app = launch(gated: true)
-        openSavedTab(app)
+        openYouTab(app)
 
-        // The toolbar itself still renders — Import survives the gate —
-        // so the missing Account entry is not a missing toolbar.
-        XCTAssertTrue(element(app, "import-saved-entry").waitForExistence(timeout: wait))
-        XCTAssertFalse(element(app, "account-entry").exists)
+        // The account card / sign-in form is gone...
+        XCTAssertFalse(element(app, "account-mode-toggle").exists)
+        XCTAssertFalse(element(app, "account-submit").exists)
+        XCTAssertFalse(element(app, "account-signed-in").exists)
+
+        // ...but the tab still reads as a deliberate About surface, not
+        // half-empty (brewdesk#117 acceptance criterion): how-this-works +
+        // legal/credits rows all survive the gate.
+        XCTAssertTrue(element(app, "methodology-link").exists)
+        XCTAssertTrue(element(app, "account-policies-entry").exists)
+        XCTAssertTrue(app.staticTexts["BrewDesk"].exists)
+
+        let osmCredit = element(app, "OpenStreetMap contributors")
+        var swipes = 0
+        while !osmCredit.exists, swipes < 8 {
+            app.swipeUp()
+            swipes += 1
+        }
+        XCTAssertTrue(osmCredit.exists)
     }
 
     @MainActor
@@ -123,13 +156,14 @@ final class StoreSurfaceGateUITests: XCTestCase {
         let app = launch(gated: false)
 
         openSavedTab(app)
-        XCTAssertTrue(element(app, "account-entry").waitForExistence(timeout: wait))
+        openYouTab(app)
+        XCTAssertTrue(element(app, "account-mode-toggle").waitForExistence(timeout: wait))
 
         openFixtureRoastersDetail(app)
         openCommunityViewer(app)
         XCTAssertTrue(element(app, "photo-moderation-menu").waitForExistence(timeout: wait))
         app.buttons["Close"].firstMatch.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
 
         swipeToDetailBottom(app)
         XCTAssertTrue(

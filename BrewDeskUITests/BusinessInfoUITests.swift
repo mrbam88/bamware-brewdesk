@@ -38,14 +38,16 @@ final class BusinessInfoUITests: XCTestCase {
         app.descendants(matching: .any)[identifier]
     }
 
+    // brewdesk#117: detail now opens from the Spots tab's map/shelf (a
+    // sheet), not a Nearby-list push — Nearby no longer exists.
     @MainActor
     private func openDetail(_ app: XCUIApplication, venueName: String) {
-        XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["Nearby"].tap()
-        let row = app.staticTexts[venueName].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: wait))
-        row.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
+        app.tabBars.buttons["tab-spots"].tap()
+        let pin = app.mapPin(named: venueName)
+        XCTAssertTrue(pin.waitForExistence(timeout: wait))
+        pin.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
     }
 
     /// The card sits below Workability in a scroll view; one swipe brings it

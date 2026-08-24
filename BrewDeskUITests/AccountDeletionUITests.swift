@@ -23,10 +23,11 @@ final class AccountDeletionUITests: XCTestCase {
         ]
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["Saved"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["Saved"].tap()
-        element(app, "account-entry").tap()
-        XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: wait))
+        // brewdesk#117: AccountScreen is now the You tab's root — no more
+        // Saved-toolbar "Account entry" push.
+        XCTAssertTrue(app.tabBars.buttons["tab-you"].waitForExistence(timeout: wait))
+        app.tabBars.buttons["tab-you"].tap()
+        XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: wait))
 
         type(app, into: "account-email-field", text: "tester@bamware.com")
         type(app, into: "account-password-field", text: "BrewDesk1!")

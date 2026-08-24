@@ -32,14 +32,16 @@ final class ReportBlockUITests: XCTestCase {
         app.descendants(matching: .any)[identifier]
     }
 
+    // brewdesk#117: detail now opens from the Spots tab's map/shelf (a
+    // sheet), not a Nearby-list push — Nearby no longer exists.
     @MainActor
     private func openFixtureRoastersDetail(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["Nearby"].tap()
-        let row = app.staticTexts["Fixture Roasters"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: wait))
-        row.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
+        app.tabBars.buttons["tab-spots"].tap()
+        let pin = app.mapPin(named: "Fixture Roasters")
+        XCTAssertTrue(pin.waitForExistence(timeout: wait))
+        pin.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
     }
 
     @MainActor
@@ -124,15 +126,23 @@ final class ReportBlockUITests: XCTestCase {
         let confirmBlock = app.buttons["Block"].firstMatch
         XCTAssertTrue(confirmBlock.waitForExistence(timeout: wait))
         confirmBlock.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
 
         // Re-enter the detail screen: the fresh photo fetch filters through
         // the block list — community photo gone, Google photo untouched.
-        app.navigationBars["Details"].buttons.firstMatch.tap()
-        let row = app.staticTexts["Fixture Roasters"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: wait))
+        // Detail is a sheet from Spots (brewdesk#117) — swipe down to
+        // dismiss it (no back button) and wait for Spots to actually be
+        // back before reopening it.
+        app.dismissDetailSheet()
+        // Re-enter via the shelf row, not the map pin — the resting shelf
+        // sits over the fixture's pin, and the row is the designed path.
+        let row = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Fixture Roasters")
+        ).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: wait), "Fixture Roasters row not in shelf")
+        row.waitUntilHittable()
         row.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
 
         XCTAssertTrue(element(app, "venue-photo-strip").waitForExistence(timeout: wait))
         XCTAssertTrue(googleThumb(app).waitForExistence(timeout: wait))

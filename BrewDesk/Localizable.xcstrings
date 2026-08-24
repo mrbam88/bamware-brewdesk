@@ -1212,6 +1212,26 @@
         }
       }
     },
+    "Spots": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lugares"
+          }
+        }
+      }
+    },
+    "You": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tú"
+          }
+        }
+      }
+    },
     "Saved spots unavailable": {
       "extractionState": "stale",
       "localizations": {

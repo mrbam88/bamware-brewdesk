@@ -4,9 +4,11 @@ import VenueKit
 
 struct DiscoveryRootView: View {
     /// Tab selection is programmable so empty states can route the user
-    /// (Saved's "Browse Nearby" CTA — ui-review-2026-08-21 finding 5).
+    /// (Saved's "Browse Spots" CTA — ui-review-2026-08-21 finding 5).
+    /// brewdesk#117: Explore + Nearby collapsed into one Spots surface, and
+    /// Account became its own You tab — exactly three tabs now.
     enum DiscoveryTab: Hashable {
-        case explore, nearby, saved
+        case spots, saved, you
     }
 
     let configuration: AppConfiguration
@@ -16,17 +18,7 @@ struct DiscoveryRootView: View {
     @State private var model: VenuesModel
     @State private var savedVenues = SavedVenuesStore()
     @State private var connectivity = ConnectivityMonitor()
-    @State private var selectedTab: DiscoveryTab = .explore
-    // Visit-reminder deep link (brewdesk#93): a tapped reminder routes to
-    // the Saved tab's stack, the same place a saved venue already opens
-    // from. `deepLinkRouter` is process-shared (set by the notification
-    // delegate registered in BrewDeskApp); this view only consumes it.
-    @State private var savedPath = NavigationPath()
-    @State private var deepLinkRouter = VisitReminderDeepLinkRouter.shared
-    #if DEBUG
-    @State private var envTapCount = 0
-    @State private var showEnvPicker = false
-    #endif
+    @State private var selectedTab: DiscoveryTab = .spots
 
     init(
         configuration: AppConfiguration,
@@ -47,16 +39,11 @@ struct DiscoveryRootView: View {
 
         TabView(selection: $selectedTab) {
             CafeMapScreen(model: model, savedVenues: savedVenues)
-                .tabItem { Label("Explore", systemImage: "map.fill") }
-                .tag(DiscoveryTab.explore)
-
-            CafeListScreen(model: model, savedVenues: savedVenues)
-                // `list.bullet`, not the cup: the cup glyph was carrying three
-                // meanings at once (tab, pin, empty state). The Nearby tab is
-                // a list; the cup stays reserved for cafe-venue-type semantics
-                // (ui-review-2026-08-21 finding 4).
-                .tabItem { Label("Nearby", systemImage: "list.bullet") }
-                .tag(DiscoveryTab.nearby)
+                .tabItem {
+                    Label("Spots", systemImage: "map.fill")
+                        .accessibilityIdentifier("tab-spots")
+                }
+                .tag(DiscoveryTab.spots)
 
             savedTab
                 .tabItem {
@@ -65,8 +52,16 @@ struct DiscoveryRootView: View {
                     } icon: {
                         Image(systemName: "bookmark.fill")
                     }
+                    .accessibilityIdentifier("tab-saved")
                 }
                 .tag(DiscoveryTab.saved)
+
+            youTab
+                .tabItem {
+                    Label("You", systemImage: "person.circle")
+                        .accessibilityIdentifier("tab-you")
+                }
+                .tag(DiscoveryTab.you)
         }
         // Warm Utilitarian (brewdesk#98): the primary green becomes the
         // selected-tab accent. iOS 26's floating glass tab bar already draws
@@ -77,6 +72,18 @@ struct DiscoveryRootView: View {
         // same fallback shape the rest of the app already uses for glass.
         .tint(BrewDeskPalette.roast)
         .environment(\.locationDenied, locationService.isDenied)
+        // brewdesk#117: the You tab's About section reads its copy/URLs from
+        // here instead of hardcoding them a second time.
+        .environment(
+            \.accountAboutInfo,
+            AccountAboutInfo(
+                appName: configuration.appName,
+                tagline: configuration.tagline,
+                supportURL: configuration.supportURL,
+                privacyURL: configuration.privacyURL,
+                termsURL: configuration.termsURL
+            )
+        )
         // Dataset stats are independent of the venue request and the TabView
         // always exists — the strip itself cannot load them (brewdesk#34).
         .task { await model.loadHealthIfNeeded() }
@@ -98,11 +105,6 @@ struct DiscoveryRootView: View {
             guard let coordinate = location?.coordinate else { return }
             model.updateCenterIfNeeded(lat: coordinate.latitude, lng: coordinate.longitude)
         }
-        // brewdesk#93: handles both a warm tap (app already running — the
-        // `pendingVenueID` change fires) and a cold launch (the delegate
-        // already set it before this view's first render — the initial
-        // `.task` run catches that case).
-        .task(id: deepLinkRouter.pendingVenueID) { await routePendingVisitReminder() }
         #if DEBUG
         .overlay(alignment: .top) {
             if DebugEnvironmentStore.shared.current != .production {
@@ -118,118 +120,20 @@ struct DiscoveryRootView: View {
         #endif
     }
 
-    /// brewdesk#93 deep link: consumes the pending venue id (if any),
-    /// switches to Saved, and pushes the fetched venue onto its stack — the
-    /// same navigation the tab already performs when a saved row is tapped.
-    /// A fetch failure (offline, deleted venue) just leaves the user on
-    /// Saved rather than pushing a broken destination.
-    private func routePendingVisitReminder() async {
-        guard let venueID = deepLinkRouter.pendingVenueID else { return }
-        deepLinkRouter.consume()
-        selectedTab = .saved
-        guard let venue = try? await venueDetails.fetchVenue(id: venueID) else { return }
-        savedPath.append(venue)
-    }
-
     private var savedTab: some View {
-        NavigationStack(path: $savedPath) {
+        NavigationStack {
             SavedCafesScreen(
                 savedVenues: savedVenues,
                 venueDetails: venueDetails,
                 listing: venueListing,
-                browseNearby: { selectedTab = .nearby }
+                browseSpots: { selectedTab = .spots }
             )
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        NavigationLink {
-                            about
-                        } label: {
-                            Label("About", systemImage: "info.circle")
-                        }
-                    }
-                }
         }
     }
 
-    private var about: some View {
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(configuration.appName)
-                        .font(.title2.bold())
-                    Text(LocalizedStringKey(configuration.tagline))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.vertical, 4)
-            }
-
-            Section("Help & legal") {
-                Link("Support", destination: configuration.supportURL)
-                Link("Privacy Policy", destination: configuration.privacyURL)
-                Link("Terms of Use", destination: configuration.termsURL)
-            }
-
-            Section("Data sources") {
-                Link("OpenStreetMap contributors", destination: URL(string: "https://www.openstreetmap.org/copyright")!)
-            }
-
-            Section {
-                HStack {
-                    Text("Version")
-                    Spacer()
-                    Text(Self.marketingVersion)
-                        .foregroundStyle(.secondary)
-                }
-                .contentShape(Rectangle())
-                #if DEBUG
-                .onTapGesture {
-                    envTapCount += 1
-                    if envTapCount >= 5 {
-                        envTapCount = 0
-                        showEnvPicker = true
-                    }
-                }
-                #endif
-            }
-        }
-        .navigationTitle("About")
-        #if DEBUG
-        .sheet(isPresented: $showEnvPicker) { environmentPicker }
-        #endif
-    }
-
-    private static var marketingVersion: String {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
-        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
-        return "\(version) (\(build))"
-    }
-
-    #if DEBUG
-    private var environmentPicker: some View {
+    private var youTab: some View {
         NavigationStack {
-            List(DebugEnvironment.allCases) { env in
-                Button {
-                    DebugEnvironmentStore.shared.current = env
-                } label: {
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(env.label)
-                            Text(env.baseURL.absoluteString)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if DebugEnvironmentStore.shared.current == env {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-                .foregroundStyle(.primary)
-            }
-            .navigationTitle("Environment")
-            .navigationBarTitleDisplayMode(.inline)
+            AccountScreen()
         }
-        .presentationDetents([.medium])
     }
-    #endif
 }
