@@ -34,24 +34,28 @@ final class DegradedStateTests: XCTestCase {
         app.descendants(matching: .any)[identifier]
     }
 
+    // brewdesk#117: Explore + Nearby collapsed into one Spots tab; Saved
+    // and You are the other two. Detail now opens from Spots' map/shelf (a
+    // sheet), not a Nearby-list push.
     @MainActor
-    private func openNearby(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["Nearby"].tap()
+    private func openSaved(_ app: XCUIApplication) {
+        XCTAssertTrue(app.tabBars.buttons["tab-saved"].waitForExistence(timeout: wait))
+        app.tabBars.buttons["tab-saved"].tap()
     }
 
     @MainActor
-    private func openSaved(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["Saved"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["Saved"].tap()
+    private func openYou(_ app: XCUIApplication) {
+        XCTAssertTrue(app.tabBars.buttons["tab-you"].waitForExistence(timeout: wait))
+        app.tabBars.buttons["tab-you"].tap()
     }
 
     @MainActor
     private func openFixtureRoastersDetail(_ app: XCUIApplication) {
-        openNearby(app)
-        let row = app.staticTexts["Fixture Roasters"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: wait))
-        row.tap()
+        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
+        app.tabBars.buttons["tab-spots"].tap()
+        let pin = app.mapPin(named: "Fixture Roasters")
+        XCTAssertTrue(pin.waitForExistence(timeout: wait))
+        pin.tap()
         XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
     }
 
@@ -61,13 +65,10 @@ final class DegradedStateTests: XCTestCase {
     /// engine reports health. It never did before #34: the strip's own
     /// `.task` hung off a view that did not exist while health was nil.
     @MainActor
-    func testStatStripRendersOnExploreAndNearby() {
+    func testStatStripRendersOnSpots() {
         let app = launch("fixtureOK")
         XCTAssertTrue(element(app, "dataset-stat-strip").waitForExistence(timeout: wait),
-                      "Dataset stat strip missing from Explore")
-        openNearby(app)
-        XCTAssertTrue(element(app, "dataset-stat-strip").waitForExistence(timeout: wait),
-                      "Dataset stat strip missing from Nearby")
+                      "Dataset stat strip missing from Spots")
     }
 
     // MARK: - Cold start (brewdesk#28)
@@ -83,10 +84,7 @@ final class DegradedStateTests: XCTestCase {
         XCTAssertTrue(app.buttons["snapshot-retry"].exists)
         XCTAssertFalse(element(app, "map-state-error").exists, "full-screen error shown over snapshot rows")
         XCTAssertFalse(element(app, "map-state-loading").exists)
-        openNearby(app)
-        XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: wait), "Nearby shows no snapshot rows")
-        XCTAssertTrue(element(app, "snapshot-banner-offline").exists)
-        XCTAssertFalse(element(app, "list-state-error").exists)
+        XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: wait), "Spots shows no snapshot rows")
     }
 
     /// Slow network: snapshot rows first, a quiet "updating" banner, then the
@@ -175,48 +173,26 @@ final class DegradedStateTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["3 work spots"].waitForExistence(timeout: wait))
     }
 
-    // MARK: - List
+    // MARK: - List (brewdesk#117: Nearby's list surface is gone — most of
+    // this coverage is now identical to "MARK: - Map" above via the Spots
+    // tab's `map-state-*` identifiers, so the exact-duplicate tests were
+    // removed rather than ported. What's kept below is what the list
+    // surface tested that Map didn't: provenance staying visible with
+    // location denied, and a Spanish-locale error state.)
 
     @MainActor
-    func testListEngineDownShowsRetry() {
-        let app = launch("engineDown")
-        openNearby(app)
-        XCTAssertTrue(element(app, "list-state-error").waitForExistence(timeout: wait))
-        XCTAssertTrue(app.buttons["list-retry"].exists)
-    }
-
-    @MainActor
-    func testListOfflineShowsTheSameRetryState() {
-        let app = launch("offline")
-        openNearby(app)
-        XCTAssertTrue(element(app, "list-state-error").waitForExistence(timeout: wait))
-        XCTAssertTrue(app.buttons["list-retry"].exists)
-    }
-
-    @MainActor
-    func testListEmptyVenuesOffersBrowseNYC() {
-        let app = launch("emptyVenues")
-        openNearby(app)
-        XCTAssertTrue(element(app, "list-state-empty").waitForExistence(timeout: wait))
-        XCTAssertTrue(app.buttons["list-browse-nyc"].exists)
-    }
-
-    @MainActor
-    func testListLocationDeniedBannerKeepsProvenanceVisible() {
+    func testSpotsLocationDeniedBannerKeepsProvenanceVisible() {
         let app = launch("fixtureOK", extra: ["-UITestLocationDenied"])
-        openNearby(app)
         XCTAssertTrue(element(app, "location-denied-banner").waitForExistence(timeout: wait))
-        XCTAssertTrue(app.staticTexts["Fixture Roasters"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitForExistence(timeout: wait))
         // 4.3(b): the differentiator (provenance) is still on screen.
         XCTAssertTrue(element(app, "provenance-stamp").firstMatch.exists)
     }
 
     @MainActor
-    func testListEngineDownInSpanish() {
+    func testMapEngineDownInSpanish() {
         let app = launch("engineDown", extra: ["-AppleLanguages", "(es)", "-AppleLocale", "es_US"])
-        XCTAssertTrue(app.tabBars.buttons["Cercanos"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["Cercanos"].tap()
-        XCTAssertTrue(element(app, "list-state-error").waitForExistence(timeout: wait))
+        XCTAssertTrue(element(app, "map-state-error").waitForExistence(timeout: wait))
         XCTAssertTrue(app.buttons["Reintentar"].exists)
     }
 
@@ -310,12 +286,18 @@ final class DegradedStateTests: XCTestCase {
 
     // MARK: - Methodology
 
+    // brewdesk#117: the list toolbar's "How scoring works" entry is gone
+    // with Nearby; Methodology is reachable from the You tab regardless of
+    // engine health (it doesn't depend on venue data), which is the
+    // meaningful part of this test — Spots itself still shows its own
+    // honest error state under the same engine-down condition.
     @MainActor
     func testMethodologyReachableWhenEngineDown() {
         let app = launch("engineDown")
-        openNearby(app)
-        XCTAssertTrue(element(app, "list-state-error").waitForExistence(timeout: wait))
-        let link = app.buttons["How scoring works"]
+        XCTAssertTrue(element(app, "map-state-error").waitForExistence(timeout: wait))
+
+        openYou(app)
+        let link = element(app, "methodology-link")
         XCTAssertTrue(link.waitForExistence(timeout: wait))
         link.tap()
         XCTAssertTrue(app.navigationBars["How Work Fit works"].waitForExistence(timeout: wait))

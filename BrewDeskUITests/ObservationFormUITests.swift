@@ -30,18 +30,20 @@ final class ObservationFormUITests: XCTestCase {
         app.descendants(matching: .any)[identifier]
     }
 
+    // brewdesk#117: Nearby is gone — Spots (map/shelf) is the only tab
+    // that opens venue detail now (a sheet, not a list push).
     @MainActor
-    private func openNearby(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["Nearby"].tap()
+    private func openSpots(_ app: XCUIApplication) {
+        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
+        app.tabBars.buttons["tab-spots"].tap()
     }
 
     @MainActor
     private func openFixtureRoastersDetail(_ app: XCUIApplication) {
-        openNearby(app)
-        let row = app.staticTexts["Fixture Roasters"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: wait))
-        row.tap()
+        openSpots(app)
+        let pin = app.mapPin(named: "Fixture Roasters")
+        XCTAssertTrue(pin.waitForExistence(timeout: wait))
+        pin.tap()
         XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
     }
 
@@ -136,11 +138,10 @@ final class ObservationFormUITests: XCTestCase {
     @MainActor
     func testEngineDownShowsFriendlyErrorWithRetry() {
         let app = launch("engineDown", extra: ["-UITestSeedSnapshot"])
-        openNearby(app)
-        guard let (row, _) = app.firstVenueRow(timeout: wait) else {
-            return XCTFail("No snapshot venue row to open")
-        }
-        row.tap()
+        openSpots(app)
+        let pin = app.mapPins.firstMatch
+        XCTAssertTrue(pin.waitForExistence(timeout: wait), "No snapshot venue pin to open")
+        pin.tap()
         XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
         openObservationForm(app)
 

@@ -44,41 +44,13 @@ final class FilterUITests: XCTestCase {
 
     @MainActor
     func testSelectingEveryFilterStillShowsQualifyingCafes() throws {
-        let app = launchNearby()
-
-        toggleLaptopFriendly(app)
-        pick(app, submenu: "Wi-Fi", option: "Fast only")
-        pick(app, submenu: "Outlets", option: "Plenty")
-        pick(app, submenu: "Seating", option: "Some or better")
-        pick(app, submenu: "Spot type", option: "cafe")
-
-        // The qualifying cafe survives "everything selected" (the bug showed
-        // zero cafes here); the library and the laptop-hostile cafe drop out.
-        XCTAssertTrue(app.staticTexts["Fixture Roasters"].waitForExistence(timeout: wait),
-                      "All filters selected emptied the list (brewdesk#77 regression)")
-        XCTAssertFalse(app.staticTexts["Fixture Reading Room"].exists,
-                       "Library should not pass the cafe spot-type filter")
-        XCTAssertFalse(app.staticTexts["Fixture Corner Cafe"].exists,
-                       "Laptop-discouraged cafe should not pass laptop-friendly")
-        XCTAssertFalse(app.descendants(matching: .any)["list-state-empty"].exists)
+        // UI3: filter surface moves to WorkFitFilterMenu — un-skip in #118
+        throw XCTSkip("Filters left the Nearby list with brewdesk#117 (UI3 tab restructure); they land on the Spots surface via WorkFitFilterMenu in #118.")
     }
 
     @MainActor
     func testHonestZeroShowsEmptyStateAndResetRestores() throws {
-        let app = launchNearby()
-
-        // Every fixture's seating is KNOWN "some" — a "Plenty" floor is an
-        // honest zero, not the bug.
-        pick(app, submenu: "Seating", option: "Plenty")
-        XCTAssertTrue(app.descendants(matching: .any)["list-state-empty"]
-            .waitForExistence(timeout: wait),
-            "Known-below-floor venues must actually filter out")
-
-        app.buttons["Filters"].tap()
-        let reset = app.descendants(matching: .any)["filters-reset"].firstMatch
-        XCTAssertTrue(reset.waitForExistence(timeout: wait))
-        reset.tap()
-        XCTAssertTrue(app.staticTexts["Fixture Roasters"].waitForExistence(timeout: wait),
-                      "Reset all filters did not restore the list")
+        // UI3: filter surface moves to WorkFitFilterMenu — un-skip in #118
+        throw XCTSkip("Filters left the Nearby list with brewdesk#117 (UI3 tab restructure); they land on the Spots surface via WorkFitFilterMenu in #118.")
     }
 }

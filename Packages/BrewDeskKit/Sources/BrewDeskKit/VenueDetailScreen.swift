@@ -11,9 +11,6 @@ public struct VenueDetailScreen: View {
     @Environment(\.launchEnvironment) private var launchEnvironment
     private let venue: Venue
     @Bindable private var savedVenues: SavedVenuesStore
-    // Directions-tap reminder prompt (brewdesk#93) — settings own the
-    // one-time-per-session prompt state; this screen only reads it.
-    @State private var reminderSettings: VisitReminderSettings
     @State private var photos: [VenuePhoto] = []
     @State private var expandedPhoto: VenuePhoto?
     @State private var photoLoad: PhotoLoad = .loading
@@ -25,10 +22,9 @@ public struct VenueDetailScreen: View {
 
     private enum PhotoLoad { case loading, loaded, failed }
 
-    public init(venue: Venue, savedVenues: SavedVenuesStore, reminderSettings: VisitReminderSettings = .shared) {
+    public init(venue: Venue, savedVenues: SavedVenuesStore) {
         self.venue = venue
         self.savedVenues = savedVenues
-        _reminderSettings = State(initialValue: reminderSettings)
     }
 
     private var theme: BrewDeskTheme { BrewDeskTheme(isDarkMode: colorScheme == .dark) }
@@ -58,21 +54,6 @@ public struct VenueDetailScreen: View {
         }
         .background(theme.backgroundColor.ignoresSafeArea())
         .safeAreaInset(edge: .bottom) { actionDock }
-        // One-time inline permission ask (brewdesk#93) — never on launch,
-        // only right after a Directions tap; see `directionsTapped`. An
-        // overlay above the dock (not scroll content — this is a
-        // `LazyVStack`, and a card at the bottom of it may never
-        // materialize without scrolling) so it's visible the instant it
-        // appears. `reminderSettings` is process-shared, so this also
-        // guards against showing the prompt on a venue other than the one
-        // that triggered it (fast navigation away before responding).
-        .overlay(alignment: .bottom) {
-            if let promptTarget = reminderSettings.promptTarget, promptTarget.venueId == venue.id {
-                VisitReminderPromptCard(target: promptTarget, settings: reminderSettings)
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 110)
-            }
-        }
         .navigationTitle("Details")
         .navigationBarTitleDisplayMode(.inline)
         #if DEBUG
@@ -518,9 +499,6 @@ public struct VenueDetailScreen: View {
     private var actionButtons: some View {
         Button {
             openDirections()
-            // brewdesk#93: the only launch point (with the Saved toggle)
-            // that may ever ask for notification permission.
-            Task { await reminderSettings.directionsTapped(venueId: venue.id, name: venue.name) }
         } label: {
             actionLabel("Directions", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
         }

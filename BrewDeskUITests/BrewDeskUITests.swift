@@ -6,16 +6,30 @@ final class BrewDeskUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments.append("-UITestSkipGates")
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["Explore"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.tabBars.buttons["Nearby"].exists)
-        XCTAssertTrue(app.tabBars.buttons["Saved"].exists)
+        // brewdesk#117: exactly three tabs, identified by accessibility id
+        // (not the localized label, since the label itself is also tested
+        // in `testSpanishDiscoveryNavigation`).
+        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.tabBars.buttons["tab-saved"].exists)
+        XCTAssertTrue(app.tabBars.buttons["tab-you"].exists)
 
-        app.tabBars.buttons["Saved"].tap()
-        XCTAssertTrue(app.navigationBars["Saved"].waitForExistence(timeout: 2))
-        app.buttons["About"].tap()
-        XCTAssertTrue(app.navigationBars["About"].waitForExistence(timeout: 2))
+        // You is now the account/About surface directly — no more Saved →
+        // About push.
+        app.tabBars.buttons["tab-you"].tap()
+        XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["BrewDesk"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["OpenStreetMap contributors"].exists)
+
+        // About sits below the account card + how-this-works rows now, so
+        // it may not be materialized without scrolling (SwiftUI `List` is
+        // lazy, same reason other tests in this suite swipe to reach a
+        // below-the-fold row).
+        let osmCredit = app.descendants(matching: .any)["OpenStreetMap contributors"]
+        var swipes = 0
+        while !osmCredit.exists, swipes < 8 {
+            app.swipeUp()
+            swipes += 1
+        }
+        XCTAssertTrue(osmCredit.exists)
     }
 
     @MainActor
@@ -28,9 +42,9 @@ final class BrewDeskUITests: XCTestCase {
         ]
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["Explorar"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.tabBars.buttons["Cercanos"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Lugares"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.tabBars.buttons["Guardados"].exists)
+        XCTAssertTrue(app.tabBars.buttons["Tú"].exists)
     }
 
     @MainActor
@@ -96,16 +110,26 @@ final class BrewDeskUITests: XCTestCase {
         ]
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: 8))
-        app.tabBars.buttons["Nearby"].tap()
-        // Ranked list: open whichever café is on top and carry its name.
-        let top = try XCTUnwrap(app.firstVenueRow(), "Nearby list rendered no venue rows")
-        top.row.tap()
+        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: 8))
+        app.tabBars.buttons["tab-spots"].tap()
+        // Ranked, live: open whichever café is on top and carry its name.
+        let top = try XCTUnwrap(app.firstMapPin(), "Spots rendered no venue pins")
+        top.pin.tap()
         XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 3))
         app.buttons["Save"].tap()
         XCTAssertTrue(app.buttons["Saved"].waitForExistence(timeout: 2))
+        // Detail opens as a sheet from Spots (brewdesk#117) — swipe down to
+        // dismiss it, then wait for Spots (and its tab bar) to actually be
+        // back and interactive before tapping into it — the dismiss
+        // animation briefly leaves the tab bar in the hierarchy with no
+        // valid hit point.
+        app.swipeDown()
+        XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: 5), "Spots did not survive the sheet dismiss")
 
-        app.tabBars.buttons["Saved"].tap()
+        let savedTab = app.tabBars.buttons["tab-saved"]
+        XCTAssertTrue(savedTab.waitForExistence(timeout: 3))
+        savedTab.waitUntilHittable()
+        savedTab.tap()
         XCTAssertTrue(app.navigationBars["Saved"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts[top.name].waitForExistence(timeout: 8),
                       "Saved tab does not list \(top.name)")
@@ -117,10 +141,10 @@ final class BrewDeskUITests: XCTestCase {
         app.launchArguments.append("-UITestSkipGates")
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: 8))
-        app.tabBars.buttons["Nearby"].tap()
-        let top = try XCTUnwrap(app.firstVenueRow(), "Nearby list rendered no venue rows")
-        top.row.tap()
+        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: 8))
+        app.tabBars.buttons["tab-spots"].tap()
+        let top = try XCTUnwrap(app.firstMapPin(), "Spots rendered no venue pins")
+        top.pin.tap()
         XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 3))
 
         // The floating action dock (Directions/Save/Share) is translucent
@@ -172,10 +196,10 @@ final class BrewDeskUITests: XCTestCase {
         ]
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: 8))
-        app.tabBars.buttons["Nearby"].tap()
-        let top = try XCTUnwrap(app.firstVenueRow(), "Nearby list rendered no venue rows")
-        top.row.tap()
+        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: 8))
+        app.tabBars.buttons["tab-spots"].tap()
+        let top = try XCTUnwrap(app.firstMapPin(), "Spots rendered no venue pins")
+        top.pin.tap()
         XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Workability"].exists)
         XCTAssertTrue(app.buttons["Directions"].exists)

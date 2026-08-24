@@ -9,6 +9,13 @@ import XCTest
 ///
 /// Run on iPhone AND in iPad compatibility (Apple reviewed Baat on an iPad):
 ///   docs/REVIEWER-SIMULATION.md
+///
+/// brewdesk#117 (UI3 tab restructure): Explore + Nearby collapsed into one
+/// Spots tab, and Account became its own You tab. Tab navigation broke, so
+/// this suite was updated per the ticket's explicit carve-out. The Filters
+/// step (Nearby's list menu) is dropped — UI3: filter surface moves to
+/// WorkFitFilterMenu — un-skip in #118 — and the capture numbering was
+/// tightened up to match.
 final class ReviewerSimulationTests: XCTestCase {
     /// Apple Park. Far outside NYC coverage — the reviewer-in-California case
     /// that emptied the map before brewdesk#1.
@@ -55,25 +62,13 @@ final class ReviewerSimulationTests: XCTestCase {
                       "No venue pins on the Union Square map")
         capture("04-map-union-square-fallback")
 
-        // ── 3. Browse: list, filters, search ──────────────────────────────
-        app.tabBars.buttons["Nearby"].tap()
-        XCTAssertTrue(app.navigationBars["Nearby"].waitForExistence(timeout: 5))
-        XCTAssertTrue(venueRows(app).firstMatch.waitForExistence(timeout: 15),
-                      "Nearby list rendered no venue rows")
+        // ── 3. Browse: one Spots surface now (map + shelf), then search ───
+        // brewdesk#117 collapsed Explore + Nearby into Spots, so there's no
+        // second tab to switch to for this step any more.
         XCTAssertTrue(app.descendants(matching: .any)["dataset-stat-strip"].waitForExistence(timeout: 10),
-                      "Dataset stat strip missing from list (brewdesk#34 regression)")
-        capture("05-list-nearby")
+                      "Dataset stat strip missing from Spots (brewdesk#34 regression)")
+        capture("05-map-spots-browse")
 
-        app.buttons["Filters"].tap()
-        let laptopOnly = app.descendants(matching: .any)["Laptop-friendly only"]
-        XCTAssertTrue(laptopOnly.waitForExistence(timeout: 2))
-        capture("06-filters-menu")
-        laptopOnly.tap()
-        XCTAssertTrue(venueRows(app).firstMatch.waitForExistence(timeout: 10),
-                      "Laptop-friendly filter produced no venues")
-        capture("07-list-laptop-friendly")
-
-        app.tabBars.buttons["Explore"].tap()
         let search = app.textFields["Search spots"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
         search.tap()
@@ -81,11 +76,10 @@ final class ReviewerSimulationTests: XCTestCase {
         app.keyboards.buttons["Search"].tap()
         XCTAssertTrue(app.staticTexts["1 work spot"].waitForExistence(timeout: 15),
                       "Search for Housing Works did not narrow to one venue")
-        capture("08-map-search-result")
+        capture("06-map-search-result")
 
         // ── 4. Detail: claim-level evidence (the 4.3(b) differentiator) ───
-        app.tabBars.buttons["Nearby"].tap()
-        let housingWorks = app.staticTexts["Housing Works Bookstore Cafe"].firstMatch
+        let housingWorks = app.mapPin(named: "Housing Works Bookstore Cafe")
         XCTAssertTrue(housingWorks.waitForExistence(timeout: 5))
         housingWorks.tap()
         XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 5))
@@ -93,15 +87,25 @@ final class ReviewerSimulationTests: XCTestCase {
         XCTAssertTrue(app.buttons["Directions"].exists)
         XCTAssertTrue(app.buttons["Save"].exists)
         XCTAssertTrue(app.buttons["Share"].exists)
-        capture("09-detail-evidence")
-        app.navigationBars["Details"].buttons.firstMatch.tap()
+        capture("07-detail-evidence")
+        // Detail now opens as a sheet from the Spots map (brewdesk#117) —
+        // no push, no back button; swipe down to dismiss it.
+        app.swipeDown()
+        XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: 5), "Spots did not survive the sheet dismiss")
 
-        // ── 5. Methodology screen ─────────────────────────────────────────
-        XCTAssertTrue(app.navigationBars["Nearby"].waitForExistence(timeout: 3))
-        app.buttons["How scoring works"].tap()
+        // ── 5. Methodology ─────────────────────────────────────────────────
+        // The list toolbar's own "How scoring works" entry left with
+        // Nearby; the You tab carries it now, independent of the browse
+        // surface.
+        let youTab = app.tabBars.buttons["tab-you"]
+        XCTAssertTrue(youTab.waitForExistence(timeout: 5))
+        youTab.waitUntilHittable()
+        youTab.tap()
+        app.descendants(matching: .any)["methodology-link"].tap()
         XCTAssertTrue(app.navigationBars["How Work Fit works"].waitForExistence(timeout: 3),
-                      "Methodology screen did not open from the Nearby toolbar")
-        capture("10-methodology")
+                      "Methodology screen did not open from the You tab")
+        capture("08-methodology")
+        app.tabBars.buttons["tab-spots"].tap()
 
         // ── 6. Grant location from Cupertino → real viewport query ────────
         // bd#108 removed the client-side "outside NYC" fallback: the app now
@@ -133,7 +137,7 @@ final class ReviewerSimulationTests: XCTestCase {
                       "Map emptied for a Cupertino reviewer (brewdesk#1 / bd#108 regression)")
         XCTAssertTrue(app.descendants(matching: .any)["coverage-banner"].waitForExistence(timeout: 5),
                       "Baseline coverage banner missing for a Cupertino reviewer (bd#108)")
-        capture("11-map-cupertino-real-viewport")
+        capture("09-map-cupertino-real-viewport")
 
         // ── 7. Offline mid-browse → relaunch ──────────────────────────────
         // Lands with brewdesk#27's Release-safe fixture seam
@@ -144,7 +148,7 @@ final class ReviewerSimulationTests: XCTestCase {
         app.terminate()
         app.launchArguments = englishArguments
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["Explore"].waitForExistence(timeout: 8),
+        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: 8),
                       "Relaunch replayed onboarding instead of restoring discovery")
         XCTAssertFalse(app.buttons["Continue"].exists)
         // Count is viewport-dependent since bd#108 (relaunch restores the
@@ -153,7 +157,7 @@ final class ReviewerSimulationTests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "work spot")
         ).firstMatch.waitForExistence(timeout: 15),
                       "Relaunch did not restore the venue-count header")
-        capture("12-relaunch-restored")
+        capture("10-relaunch-restored")
     }
 
     /// bd#108, deterministic half of the Cupertino step: once ve#46 ships an
@@ -172,29 +176,23 @@ final class ReviewerSimulationTests: XCTestCase {
         ]
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["Explore"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: 8))
         let banner = app.descendants(matching: .any)["coverage-banner"]
         XCTAssertTrue(banner.waitForExistence(timeout: 15),
                       "Baseline coverage banner missing for the baselineCity fixture")
         XCTAssertTrue(app.staticTexts["Baseline data here — not yet researched. NYC is fully researched."].exists)
 
-        app.tabBars.buttons["Nearby"].tap()
-        XCTAssertTrue(app.navigationBars["Nearby"].waitForExistence(timeout: 5))
-        let rows = venueRows(app)
-        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 15),
-                      "baselineCity fixture rendered no venue rows")
-        XCTAssertGreaterThanOrEqual(rows.count, 5, "Expected at least 5 baseline venue rows near Cupertino")
+        // brewdesk#117: Spots (map + shelf) is the only browse surface now;
+        // its venue buttons carry the same "<name>, Work Fit <n>, <hood>"
+        // shape Nearby's rows used to.
+        let pins = app.mapPins
+        XCTAssertTrue(pins.firstMatch.waitForExistence(timeout: 15),
+                      "baselineCity fixture rendered no venue pins")
+        XCTAssertGreaterThanOrEqual(pins.count, 5, "Expected at least 5 baseline venue pins near Cupertino")
         capture("cupertino-baseline-coverage-fixture")
     }
 
     // MARK: - Helpers
-
-    /// Map pins expose themselves as buttons labelled
-    /// "<name>, Work Fit <score>, <neighborhood>" (CafeMapScreen).
-    @MainActor
-    private func mapPin(_ app: XCUIApplication, named name: String) -> XCUIElement {
-        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name + ",")).firstMatch
-    }
 
     /// The location prompt is a system alert owned by SpringBoard; the app
     /// advances to discovery underneath it. Allow it explicitly, then nudge
@@ -216,17 +214,9 @@ final class ReviewerSimulationTests: XCTestCase {
             allow.tap()
         }
         // Harmless interaction: triggers the monitor if an alert is still up.
-        if app.tabBars.buttons["Explore"].waitForExistence(timeout: 8) {
-            app.tabBars.buttons["Explore"].tap()
+        if app.tabBars.buttons["tab-spots"].waitForExistence(timeout: 8) {
+            app.tabBars.buttons["tab-spots"].tap()
         }
-    }
-
-    /// Nearby rows are combined accessibility elements labelled
-    /// "<name>, Work Fit <score>, <neighborhood>, Wi-Fi <value>, outlets <value>".
-    /// The list is ranked, so never assume a specific café is on screen.
-    @MainActor
-    private func venueRows(_ app: XCUIApplication) -> XCUIElementQuery {
-        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", ", Wi-Fi "))
     }
 
     @MainActor

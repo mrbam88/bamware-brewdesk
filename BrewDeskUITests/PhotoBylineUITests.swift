@@ -32,13 +32,15 @@ final class PhotoBylineUITests: XCTestCase {
         app.descendants(matching: .any)[identifier]
     }
 
+    // brewdesk#117: detail now opens from the Spots tab's map/shelf (a
+    // sheet), not a Nearby-list push — Nearby no longer exists.
     @MainActor
     private func openFixtureRoastersDetail(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["Nearby"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["Nearby"].tap()
-        let row = app.staticTexts["Fixture Roasters"].firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: wait))
-        row.tap()
+        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
+        app.tabBars.buttons["tab-spots"].tap()
+        let pin = app.mapPin(named: "Fixture Roasters")
+        XCTAssertTrue(pin.waitForExistence(timeout: wait))
+        pin.tap()
         XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
     }
 

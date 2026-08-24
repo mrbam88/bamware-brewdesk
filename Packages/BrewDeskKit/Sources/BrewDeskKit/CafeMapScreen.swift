@@ -8,6 +8,9 @@ public struct CafeMapScreen: View {
     @Bindable private var model: VenuesModel
     @Bindable private var savedVenues: SavedVenuesStore
     @State private var selected: Venue?
+    /// brewdesk#117: forces the detail sheet to open at `.large` — see the
+    /// `.sheet` modifier below for why.
+    @State private var detailDetent: PresentationDetent = .large
     @State private var position: MapCameraPosition
     /// Camera region recovered after a gesture settles (see `scheduleReplan`).
     /// Mid-gesture frames never touch state, so a pan composites existing
@@ -142,13 +145,27 @@ public struct CafeMapScreen: View {
             NavigationStack {
                 VenueDetailScreen(venue: venue, savedVenues: savedVenues)
             }
-            .presentationDetents([.medium, .large])
+            // brewdesk#117: defaults to `.large` (an explicit `selection`,
+            // not just detent order — SwiftUI opens at the first detent in
+            // the set otherwise, i.e. `.medium`). Detail was never laid out
+            // for half the screen: it was always a full push before this
+            // ticket made the map/shelf sheet its only route from Spots, and
+            // `.medium` crowded real content into real a11y-audit failures
+            // (clipped text, sub-44pt hit targets) that a full push never
+            // hit. `.medium` stays reachable by dragging down — this only
+            // changes where the sheet opens.
+            .presentationDetents([.medium, .large], selection: $detailDetent)
             .presentationDragIndicator(.visible)
             // At medium detent a scroll gesture must scroll the detail content
             // (clearing the action dock) rather than resize the sheet first —
             // the dock occluded the photo strip with no way to scroll it into
             // view (ui-review-2026-08-21 finding 6).
             .presentationContentInteraction(.scrolls)
+        }
+        // brewdesk#117: each fresh selection opens full-height, regardless
+        // of whatever detent a previous venue's sheet was left at.
+        .onChange(of: selected) { _, newValue in
+            if newValue != nil { detailDetent = .large }
         }
         .onChange(of: model.centerLat) {
             position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))

@@ -5,36 +5,26 @@ public struct SavedCafesScreen: View {
     @Bindable private var savedVenues: SavedVenuesStore
     @State private var model: SavedVenuesModel
     private let listing: (any VenueListing)?
-    private let browseNearby: (() -> Void)?
+    private let browseSpots: (() -> Void)?
 
     public init(
         savedVenues: SavedVenuesStore,
         venueDetails: any VenueDetailServing,
         listing: (any VenueListing)? = nil,
-        browseNearby: (() -> Void)? = nil
+        browseSpots: (() -> Void)? = nil
     ) {
         self.savedVenues = savedVenues
         self.listing = listing
-        self.browseNearby = browseNearby
+        self.browseSpots = browseSpots
         _model = State(initialValue: SavedVenuesModel(service: venueDetails))
     }
 
     public var body: some View {
         content
             .toolbar {
-                // Account entry (brewdesk#48). AccountScreen resolves its own
-                // services, so this stays a single additive toolbar item.
-                // Hidden in the store-submission build (brewdesk#67).
-                if !StoreSurface.isGated {
-                    ToolbarItem(placement: .topBarLeading) {
-                        NavigationLink {
-                            AccountScreen()
-                        } label: {
-                            Label("Account", systemImage: "person.circle")
-                        }
-                        .accessibilityIdentifier("account-entry")
-                    }
-                }
+                // brewdesk#117: the Account entry point moved to the You
+                // tab (AccountScreen is now that tab's root), so Saved's
+                // toolbar carries only Import.
                 if let listing {
                     ToolbarItem(placement: .topBarTrailing) {
                         NavigationLink {
@@ -96,10 +86,6 @@ public struct SavedCafesScreen: View {
         }
         // Cream page treatment for brand cohesion (finding 3).
         .background(BrewDeskPalette.page.ignoresSafeArea())
-        // Visit reminders toggle (brewdesk#93) — the only other place
-        // (besides the Directions-tap prompt) that ever asks for
-        // notification permission. Self-contained; see VisitReminderViews.
-        .safeAreaInset(edge: .top) { VisitReminderToggleRow() }
         .navigationTitle("saved_tab_title")
         .navigationDestination(for: Venue.self) { venue in
             VenueDetailScreen(venue: venue, savedVenues: savedVenues)
@@ -117,10 +103,10 @@ public struct SavedCafesScreen: View {
         } description: {
             Text("Bookmark a spot from Explore or Nearby to keep it here.")
         } actions: {
-            if let browseNearby {
-                Button("Browse Nearby") { browseNearby() }
+            if let browseSpots {
+                Button("Browse Spots") { browseSpots() }
                     .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("saved-browse-nearby")
+                    .accessibilityIdentifier("saved-browse-spots")
             }
         }
         .accessibilityElement(children: .contain)
