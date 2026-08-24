@@ -107,6 +107,11 @@ final class BrewDeskUITests: XCTestCase {
         app.launchArguments += [
             "-UITestSkipGates",
             "-brewdesk.saved-venue-ids", "",
+            // Fresh simulator containers have no persisted debug env and the
+            // store falls back to .localhost — pin production so hydration
+            // has a live server (found via failure hierarchy: ENV: Localhost
+            // banner + "Saved spots unavailable").
+            "-brewdesk.debug.environment", "production",
         ]
         app.launch()
 
@@ -123,7 +128,7 @@ final class BrewDeskUITests: XCTestCase {
         // back and interactive before tapping into it — the dismiss
         // animation briefly leaves the tab bar in the hierarchy with no
         // valid hit point.
-        app.swipeDown()
+        app.dismissDetailSheet()
         XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: 5), "Spots did not survive the sheet dismiss")
 
         let savedTab = app.tabBars.buttons["tab-saved"]
@@ -131,7 +136,13 @@ final class BrewDeskUITests: XCTestCase {
         savedTab.waitUntilHittable()
         savedTab.tap()
         XCTAssertTrue(app.navigationBars["Saved"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts[top.name].waitForExistence(timeout: 8),
+        // Saved rows are the shared VenueRow, whose children combine into
+        // one labeled element ("Name, Work Fit N, Neighborhood") — there is
+        // no bare StaticText with just the venue name to query (brewdesk#117).
+        let savedRow = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", top.name)
+        ).firstMatch
+        XCTAssertTrue(savedRow.waitForExistence(timeout: 8),
                       "Saved tab does not list \(top.name)")
     }
 

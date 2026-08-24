@@ -90,7 +90,7 @@ final class ReviewerSimulationTests: XCTestCase {
         capture("07-detail-evidence")
         // Detail now opens as a sheet from the Spots map (brewdesk#117) —
         // no push, no back button; swipe down to dismiss it.
-        app.swipeDown()
+        app.dismissDetailSheet()
         XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: 5), "Spots did not survive the sheet dismiss")
 
         // ── 5. Methodology ─────────────────────────────────────────────────

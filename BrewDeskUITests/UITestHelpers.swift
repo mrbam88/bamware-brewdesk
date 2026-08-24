@@ -103,10 +103,15 @@ extension XCUIApplication {
     /// gone rather than assuming a fixed count.
     @discardableResult
     func dismissDetailSheet(timeout: TimeInterval = 5) -> Bool {
-        for _ in 0..<4 {
-            guard navigationBars["Details"].exists else { return true }
+        guard navigationBars["Details"].exists else { return true }
+        // `.presentationContentInteraction(.scrolls)` routes swipes to the
+        // detail scroll view, so gestures can't reliably dismiss the sheet —
+        // use its explicit Close button (brewdesk#117), swipe as fallback.
+        let close = buttons["detail-close"]
+        if close.waitForExistence(timeout: 2), close.isHittable {
+            close.tap()
+        } else {
             swipeDown()
-            _ = navigationBars["Details"].waitForNonExistence(timeout: 1)
         }
         return navigationBars["Details"].waitForNonExistence(timeout: timeout)
     }

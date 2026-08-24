@@ -144,6 +144,22 @@ public struct CafeMapScreen: View {
         .sheet(item: $selected) { venue in
             NavigationStack {
                 VenueDetailScreen(venue: venue, savedVenues: savedVenues)
+                    // brewdesk#117: `.presentationContentInteraction(.scrolls)`
+                    // means swipes scroll the detail content — the drag
+                    // indicator is the only gesture path out, so the sheet
+                    // gets an explicit Close affordance too (and tests use it).
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button {
+                                selected = nil
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .accessibilityLabel("Close")
+                            .accessibilityIdentifier("detail-close")
+                        }
+                    }
             }
             // brewdesk#117: defaults to `.large` (an explicit `selection`,
             // not just detent order — SwiftUI opens at the first detent in

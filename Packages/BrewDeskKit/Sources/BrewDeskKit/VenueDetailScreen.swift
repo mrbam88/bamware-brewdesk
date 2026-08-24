@@ -107,11 +107,17 @@ public struct VenueDetailScreen: View {
     private var photoStripError: some View {
         HStack(spacing: 10) {
             Label("Photos unavailable", systemImage: "photo")
+                .font(.footnote)
             Spacer(minLength: 0)
+            // 44pt minimum touch target + footnote type: the caption-sized
+            // text button failed the accessibility audit (hit region + text
+            // size) once detail began presenting as a sheet (brewdesk#117).
             Button("Retry") { photoAttempt += 1 }
+                .font(.footnote.weight(.semibold))
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
                 .accessibilityIdentifier("photos-retry")
         }
-        .font(.caption)
         .foregroundStyle(.secondary)
         .padding(.horizontal, 4)
         .accessibilityElement(children: .contain)

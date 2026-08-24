@@ -89,7 +89,7 @@ final class UIReviewCaptureTests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 10))
         // Sheet, not a push (brewdesk#117) — swipe down to dismiss back to Spots.
-        app.swipeDown()
+        app.dismissDetailSheet()
         XCTAssertTrue(app.descendants(matching: .any)["map-discovery-shelf"].waitForExistence(timeout: 10))
 
         // ── 6. Saved (empty state — launched with no saved ids) ────────

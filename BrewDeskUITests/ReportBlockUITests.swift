@@ -133,12 +133,15 @@ final class ReportBlockUITests: XCTestCase {
         // Detail is a sheet from Spots (brewdesk#117) — swipe down to
         // dismiss it (no back button) and wait for Spots to actually be
         // back before reopening it.
-        app.swipeDown()
-        XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: wait), "Spots did not survive the sheet dismiss")
-        let pin = app.mapPin(named: "Fixture Roasters")
-        XCTAssertTrue(pin.waitForExistence(timeout: wait))
-        pin.waitUntilHittable()
-        pin.tap()
+        app.dismissDetailSheet()
+        // Re-enter via the shelf row, not the map pin — the resting shelf
+        // sits over the fixture's pin, and the row is the designed path.
+        let row = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Fixture Roasters")
+        ).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: wait), "Fixture Roasters row not in shelf")
+        row.waitUntilHittable()
+        row.tap()
         XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
 
         XCTAssertTrue(element(app, "venue-photo-strip").waitForExistence(timeout: wait))
