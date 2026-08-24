@@ -141,7 +141,10 @@ final class AppStoreScreenshotTests: XCTestCase {
         let housingWorks = app.mapPin(named: "Housing Works Bookstore Cafe")
         XCTAssertTrue(housingWorks.waitForExistence(timeout: 5))
         housingWorks.tap()
-        XCTAssertTrue(app.navigationBars[locale.detailsNav].waitForExistence(timeout: 5))
+        // brewdesk#119: the nav title is now the venue's own name (not a
+        // localized "Details"/"Detalles" constant), so this keys off the
+        // detail root's identifier instead — locale-independent.
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts[locale.workability].waitForExistence(timeout: 2))
         // Ticket rule: no Google Places photos prominent in marketing shots.
         // -UITestNoPhotos nils the photo service, so no thumbnail may exist.

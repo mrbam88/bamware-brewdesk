@@ -120,7 +120,7 @@ final class BrewDeskUITests: XCTestCase {
         // Ranked, live: open whichever café is on top and carry its name.
         let top = try XCTUnwrap(app.firstMapPin(), "Spots rendered no venue pins")
         top.pin.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 3))
         app.buttons["Save"].tap()
         XCTAssertTrue(app.buttons["Saved"].waitForExistence(timeout: 2))
         // Detail opens as a sheet from Spots (brewdesk#117) — swipe down to
@@ -156,7 +156,7 @@ final class BrewDeskUITests: XCTestCase {
         app.tabBars.buttons["tab-spots"].tap()
         let top = try XCTUnwrap(app.firstMapPin(), "Spots rendered no venue pins")
         top.pin.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 3))
 
         // The floating action dock (Directions/Save/Share) is translucent
         // glass; content legitimately scrolls beneath it, and the audit
@@ -211,7 +211,7 @@ final class BrewDeskUITests: XCTestCase {
         app.tabBars.buttons["tab-spots"].tap()
         let top = try XCTUnwrap(app.firstMapPin(), "Spots rendered no venue pins")
         top.pin.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 3))
         XCTAssertTrue(app.staticTexts["Workability"].exists)
         XCTAssertTrue(app.buttons["Directions"].exists)
         XCTAssertTrue(app.buttons["Save"].exists)

@@ -20,7 +20,7 @@ final class CaptureFlowUITests: XCTestCase {
         let row = app.staticTexts["Fixture Roasters"].firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 8), "Fixture venue row should appear")
         row.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 8))
 
         let entry = app.buttons["capture-entry"]
         XCTAssertTrue(entry.waitForExistence(timeout: 4), "DEBUG capture entry should be in the toolbar")
@@ -74,7 +74,7 @@ final class CaptureFlowUITests: XCTestCase {
             "Mock submission should land on the thank-you state"
         )
         app.buttons["capture-done"].tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 4))
     }
 
     @MainActor
@@ -93,7 +93,7 @@ final class CaptureFlowUITests: XCTestCase {
         app.buttons["capture-cancel"].tap()
         XCTAssertTrue(alert.waitForExistence(timeout: 4))
         alert.buttons["Discard"].tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: 4))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 4))
     }
 
     /// Audit scoped like the Details-screen audit in BrewDeskUITests (same

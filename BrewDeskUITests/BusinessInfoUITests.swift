@@ -47,7 +47,7 @@ final class BusinessInfoUITests: XCTestCase {
         let pin = app.mapPin(named: venueName)
         XCTAssertTrue(pin.waitForExistence(timeout: wait))
         pin.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
     }
 
     /// The card sits below Workability in a scroll view; one swipe brings it

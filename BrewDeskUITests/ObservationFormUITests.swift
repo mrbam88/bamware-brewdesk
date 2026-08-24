@@ -44,7 +44,7 @@ final class ObservationFormUITests: XCTestCase {
         let pin = app.mapPin(named: "Fixture Roasters")
         XCTAssertTrue(pin.waitForExistence(timeout: wait))
         pin.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
     }
 
     /// The entry card sits at the bottom of the detail scroll view; swipe
@@ -126,7 +126,7 @@ final class ObservationFormUITests: XCTestCase {
         XCTAssertTrue(element(app, "observation-thanks").waitForExistence(timeout: wait),
                       "Thank-you state missing after submit")
         element(app, "observation-done").tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait),
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait),
                       "Done should land back on the venue detail")
     }
 
@@ -142,7 +142,7 @@ final class ObservationFormUITests: XCTestCase {
         let pin = app.mapPins.firstMatch
         XCTAssertTrue(pin.waitForExistence(timeout: wait), "No snapshot venue pin to open")
         pin.tap()
-        XCTAssertTrue(app.navigationBars["Details"].waitForExistence(timeout: wait))
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
         openObservationForm(app)
 
         answerAllFive(app)
