@@ -120,7 +120,8 @@ public struct CafeMapScreen: View {
                 model: model,
                 detent: $shelfDetent,
                 selectedID: selected?.id,
-                fullHeight: max(320, mapHeight * 0.7)
+                fullHeight: max(320, mapHeight * 0.7),
+                isSearchFocused: searchFocused
             ) { venue in
                 selected = venue
                 position = .region(
@@ -350,47 +351,59 @@ public struct CafeMapScreen: View {
         }
     }
 
-    /// One glass card for search + count + hint + stat strip: bare text
-    /// painted on the map collided with map labels in light mode and vanished
-    /// dark-on-dark (ui-review-2026-08-21 finding 2). Banners dock directly
-    /// beneath the card as sibling rows (finding 15's grouping).
+    /// One glass card for search + filters + the single count line
+    /// (ui-review-2026-08-21 finding 2). Banners dock directly beneath the
+    /// card as sibling rows (finding 15's grouping).
+    ///
+    /// UI3 (brewdesk#118): the field's trailing control and the count line
+    /// below it are the whole header now — the old chip rail moved into
+    /// `WorkFitFilterMenu`, and `DatasetStatStrip`'s separate row folded into
+    /// the one count line (both numbers dynamic; never hardcoded).
     private var searchHeader: some View {
         VStack(spacing: 8) {
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
-                    TextField("Search spots", text: $model.searchQuery)
-                        .submitLabel(.search)
-                        .focused($searchFocused)
-                        .onSubmit {
-                            model.submitSearch()
-                            searchFocused = false
-                        }
-                        .toolbar {
-                            ToolbarItemGroup(placement: .keyboard) {
-                                Spacer()
-                                Button("Done") {
-                                    searchFocused = false
-                                }
-                                .accessibilityIdentifier("search-done")
+                    HStack(spacing: 10) {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search spots", text: $model.searchQuery)
+                            .submitLabel(.search)
+                            .focused($searchFocused)
+                            .onSubmit {
+                                model.submitSearch()
+                                searchFocused = false
+                            }
+                        if !model.searchQuery.isEmpty {
+                            Button {
+                                model.clearSearch()
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
                             }
                         }
-                    if !model.searchQuery.isEmpty {
-                        Button {
-                            model.clearSearch()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
+                    }
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 44)
+                    .background(.thinMaterial, in: Capsule())
+
+                    // Trailing control: the filter badge normally, Cancel
+                    // while the field has focus — dismisses the keyboard and
+                    // clears focus (brewdesk#87's cannot-dismiss-keyboard fix).
+                    // Retired the floating keyboard-toolbar Done button that
+                    // used to draw over the venue card.
+                    if searchFocused {
+                        Button("Cancel") {
+                            searchFocused = false
                         }
+                        .font(.subheadline.bold())
+                        .accessibilityIdentifier("search-cancel")
+                    } else {
+                        WorkFitFilterButton(model: model)
                     }
                 }
-                .padding(.horizontal, 14)
-                .frame(minHeight: 44)
-                .background(.thinMaterial, in: Capsule())
 
                 HStack {
-                    Text(localizedWorkSpotCount(model.venues.count))
+                    Text(countLine)
                         .font(.caption.bold())
                     Spacer()
                     Text("Scores show Work Fit")
@@ -398,8 +411,7 @@ public struct CafeMapScreen: View {
                         .foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 6)
-
-                DatasetStatStrip(model: model)
+                .accessibilityIdentifier("map-count-line")
             }
             .padding(10)
             .brewDeskGlass(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
@@ -421,6 +433,24 @@ public struct CafeMapScreen: View {
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)
+    }
+
+    /// "N of M spots" — the two competing counts (a plain venue count and
+    /// `DatasetStatStrip`'s dataset total) collapsed into one line
+    /// (brewdesk#118). Both numbers stay dynamic: `N` is the live, filtered
+    /// `model.venues.count`; `M` is the dataset total from `model.health`
+    /// once it loads, and falls back to the plain count (never a hardcoded
+    /// figure) before health answers.
+    private var countLine: String {
+        guard let total = model.health?.venueCount else {
+            return localizedWorkSpotCount(model.venues.count)
+        }
+        return String(
+            format: String(localized: "%1$lld of %2$lld spots"),
+            locale: .current,
+            model.venues.count,
+            total
+        )
     }
 
     /// Extra bottom safe area for the map subtree while the shelf rests at

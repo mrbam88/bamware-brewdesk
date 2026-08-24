@@ -79,7 +79,7 @@ public struct CafeListScreen: View {
             .onSubmit(of: .search) { model.submitSearch() }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    filterMenu
+                    WorkFitFilterButton(model: model)
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     NavigationLink {
@@ -126,77 +126,6 @@ public struct CafeListScreen: View {
         }
     }
 
-    /// Each filter group is a labeled submenu naming its dimension (the menu
-    /// picker style also surfaces the current selection on the row), and a
-    /// Reset row clears everything — the old menu was nine unlabeled options
-    /// the user had to decode (ui-review-2026-08-21 finding 10).
-    /// `Section("…")` headers were tried first but `Menu` does not render
-    /// them; labeled submenu pickers carry the same information.
-    private var filterMenu: some View {
-        Menu {
-            Toggle("Laptop-friendly only", isOn: $model.laptopFriendlyOnly)
-            Picker("Wi-Fi", selection: $model.minWifi) {
-                Text("Any Wi-Fi").tag(WifiMinimum?.none)
-                Text("OK or better").tag(WifiMinimum?.some(.ok))
-                Text("Fast only").tag(WifiMinimum?.some(.fast))
-            }
-            .pickerStyle(.menu)
-            Picker("Outlets", selection: $model.minOutlets) {
-                Text("Any outlets").tag(OutletMinimum?.none)
-                Text("Some or better").tag(OutletMinimum?.some(.some))
-                Text("Plenty").tag(OutletMinimum?.some(.plenty))
-            }
-            .pickerStyle(.menu)
-            Picker("Seating", selection: $model.minSeating) {
-                Text("Any seating").tag(SeatingMinimum?.none)
-                Text("Some or better").tag(SeatingMinimum?.some(.some))
-                Text("Plenty").tag(SeatingMinimum?.some(.plenty))
-            }
-            .pickerStyle(.menu)
-            if model.venueTypesAvailable {
-                Picker("Spot type", selection: $model.venueType) {
-                    Text("All spots").tag(VenueTypeFilter?.none)
-                    ForEach(VenueTypeFilter.allCases, id: \.rawValue) { type in
-                        Text(LocalizedStringKey(type.rawValue)).tag(VenueTypeFilter?.some(type))
-                    }
-                }
-                .pickerStyle(.menu)
-            }
-            Section {
-                Button("Reset all filters", systemImage: "arrow.counterclockwise") {
-                    resetFilters()
-                }
-                .disabled(!filtersActive)
-                .accessibilityIdentifier("filters-reset")
-            }
-        } label: {
-            Label("Filters", systemImage: filtersActive
-                ? "line.3.horizontal.decrease.circle.fill"
-                : "line.3.horizontal.decrease.circle")
-        }
-        // One light tick per dimension change — covers apply AND reset,
-        // since reset is only enabled when a dimension is active, so it
-        // always flips at least one of these (brewdesk#75). `.sensoryFeedback`
-        // already no-ops under Reduce Motion.
-        .sensoryFeedback(.selection, trigger: model.laptopFriendlyOnly)
-        .sensoryFeedback(.selection, trigger: model.minWifi)
-        .sensoryFeedback(.selection, trigger: model.minOutlets)
-        .sensoryFeedback(.selection, trigger: model.minSeating)
-        .sensoryFeedback(.selection, trigger: model.venueType)
-    }
-
-    private func resetFilters() {
-        model.laptopFriendlyOnly = false
-        model.minWifi = nil
-        model.minOutlets = nil
-        model.minSeating = nil
-        model.venueType = nil
-    }
-
-    private var filtersActive: Bool {
-        model.laptopFriendlyOnly || model.minWifi != nil || model.minOutlets != nil
-            || model.minSeating != nil || model.venueType != nil
-    }
 }
 
 struct VenueRow: View {
