@@ -453,17 +453,18 @@ public struct CafeMapScreen: View {
         )
     }
 
-    /// Extra bottom safe area for the map subtree while the shelf rests at
-    /// the current detent — how compass, user-location button, and attribution
-    /// avoid the card, mirroring the detail dock's safe-area approach. Sized
-    /// from Dynamic Type–scaled estimates of the card's intrinsic parts, and
-    /// capped at the medium clearance for `.full` (the map is covered anyway).
+    /// Extra bottom safe area for the map subtree — how compass,
+    /// user-location button, and attribution avoid the card, mirroring the
+    /// detail dock's safe-area approach. Sized from Dynamic Type–scaled
+    /// estimates of the MEDIUM card's intrinsic parts and deliberately
+    /// CONSTANT across detents (brewdesk#128): `Map` re-fits its camera into
+    /// the safe viewport whenever this inset changes, so a per-detent value
+    /// made the map visibly jump with every shelf drag. The card is an
+    /// overlay; the map underneath must not move with it. At `.peek` the
+    /// controls simply rest where the medium card's top would be, and `.full`
+    /// covers them either way.
     private var shelfClearance: CGFloat {
-        let peek = shelfChipRowHeight + 56
-        switch shelfDetent {
-        case .peek: return peek
-        case .medium, .full: return peek + shelfCardBlockHeight + 12
-        }
+        shelfChipRowHeight + 56 + shelfCardBlockHeight + 12
     }
 
     /// A new plan is needed once the camera leaves what the current plan's
