@@ -11,8 +11,15 @@ import VenueKit
 /// instead of clipping (ui-review-2026-08-21 finding 7); only `.full` takes a
 /// fixed height, and its list scrolls.
 ///
+/// The drag RESIZES the card in place (brewdesk#125). The card's bottom edge
+/// never leaves the screen bottom — its glass bleeds through the bottom safe
+/// area, so the floating tab bar rests on the card's surface exactly like the
+/// design spec's mockups. The pre-#125 model translated the whole card with
+/// `.offset`, which slid it beneath the tab bar mid-collapse and left a strip
+/// of raw map under the card's square-cut bottom at peek.
+///
 /// Drag state lives HERE, not on the map screen: mid-drag frames mutate only
-/// this view's `dragOffset`, so the map's body — and the annotation planner —
+/// this view's `dragHeight`, so the map's body — and the annotation planner —
 /// never re-evaluates per frame (the brewdesk#54 invariant).
 struct DiscoveryShelfCard: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -30,33 +37,53 @@ struct DiscoveryShelfCard: View {
     var isSearchFocused = false
     let onVenueTap: (Venue) -> Void
 
-    @State private var dragOffset: CGFloat = 0
+    /// Concrete card height while a resize drag is live; nil at rest. The
+    /// finger resizes the card 1:1 (rubber-banded past the end detents), so
+    /// the bottom edge never detaches from the screen bottom (brewdesk#125).
+    @State private var dragHeight: CGFloat?
     /// Shelf-card score tile scales with Dynamic Type instead of clipping in
     /// a fixed 72×82 frame (ui-review-2026-08-21 finding 7).
     @ScaledMetric(relativeTo: .title2) private var scoreTileMinWidth: CGFloat = 72
     @ScaledMetric(relativeTo: .title2) private var scoreTileMinHeight: CGFloat = 82
-    /// Last measured intrinsic height while resting at `.peek`/`.medium`
+    /// Last measured intrinsic height while resting at `.medium`
     /// (brewdesk#88). `.frame(height:)` cannot interpolate between `nil` and
     /// a concrete value, so it used to snap on the very first frame of every
-    /// transition into or out of `.full` — the flash. Kept fresh by
-    /// `onGeometryChange` below whenever the card isn't mid full-boundary
-    /// crossing, so it's a real number by the time one starts.
-    @State private var restingHeight: CGFloat?
-    /// True only while animating a transition where one end is `.full`. Pins
-    /// `cardHeight` to two concrete numbers (`restingHeight` and
-    /// `fullHeight`) for the duration so the frame can interpolate instead of
-    /// jumping; peek↔medium never sets this, since both ends are already
-    /// `nil` and SwiftUI's own layout interpolation handles that smoothly.
-    @State private var isCrossingFullBoundary = false
+    /// animated transition — the flash. Kept fresh by `onGeometryChange`
+    /// below whenever the card is resting at `.medium`, so every settle
+    /// animation has a real number to land on.
+    @State private var mediumHeight: CGFloat?
+    /// True only while a settle animation is in flight. Pins `cardHeight` to
+    /// the target detent's concrete height for the duration so the frame can
+    /// interpolate from the drag's last concrete height instead of jumping
+    /// (brewdesk#88's lesson, generalized to every detent pair by #125).
+    @State private var isSettling = false
 
-    /// See `restingHeight`/`isCrossingFullBoundary` above. Outside an active
-    /// full-boundary crossing this is unchanged from before brewdesk#88:
-    /// `nil` at peek/medium (intrinsic, Dynamic Type reflows) and
-    /// `fullHeight` at full.
+    /// The card's two structural size constants. `peekHeight` must equal the
+    /// card's intrinsic height at `.peek` — grabber row + vertical padding —
+    /// or the un-pin after a settle animation would visibly snap.
+    private static let verticalPadding: CGFloat = 10
+    private static let grabberRowHeight: CGFloat = 24
+    private var peekHeight: CGFloat { Self.grabberRowHeight + Self.verticalPadding * 2 }
+
+    /// The concrete height a detent settles at. `.medium` prefers the live
+    /// measurement; the fallback only matters when the session opens straight
+    /// into `.full` and the card has never rested at `.medium` — the un-pin
+    /// back to intrinsic self-corrects any estimate drift.
+    private func baseHeight(of detent: ShelfDetent) -> CGFloat {
+        switch detent {
+        case .peek: peekHeight
+        case .medium: mediumHeight ?? 240
+        case .full: fullHeight
+        }
+    }
+
+    /// `nil` at rest at peek/medium (intrinsic, Dynamic Type reflows);
+    /// concrete while dragging, settling, focused, or at `.full`.
     private var cardHeight: CGFloat? {
         guard !isSearchFocused else { return fullHeight }
-        guard isCrossingFullBoundary else { return detent == .full ? fullHeight : nil }
-        return detent == .full ? fullHeight : (restingHeight ?? fullHeight)
+        if let dragHeight { return dragHeight }
+        if isSettling { return baseHeight(of: detent) }
+        return detent == .full ? fullHeight : nil
     }
 
     var body: some View {
@@ -64,21 +91,36 @@ struct DiscoveryShelfCard: View {
             grabber
             if isSearchFocused || detent != .peek {
                 venueContent
+                    .transition(.opacity)
             }
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, Self.verticalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.height
         } action: { newHeight in
-            guard detent != .full, !isCrossingFullBoundary, !isSearchFocused else { return }
-            restingHeight = newHeight
+            guard detent == .medium, dragHeight == nil, !isSettling, !isSearchFocused else { return }
+            mediumHeight = newHeight
         }
         .frame(height: cardHeight, alignment: .top)
-        .brewDeskGlass(in: UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26))
+        // Clip BEFORE the glass: mid-animation the rail/list crossfade must
+        // not paint outside the card (the brewdesk#125 flash), but the glass
+        // below still bleeds past these bounds.
+        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26))
+        // The sheet's surface runs to the SCREEN bottom, not the safe-area
+        // line: the glass ignores the bottom inset so the floating tab bar
+        // rests on card surface instead of a strip of raw map (brewdesk#125,
+        // design-spec mockup 01).
+        .background {
+            Color.clear
+                .brewDeskGlass(in: UnevenRoundedRectangle(topLeadingRadius: 26, topTrailingRadius: 26))
+                .ignoresSafeArea(.container, edges: .bottom)
+                // Purely visual: the bleed reaches under the floating tab
+                // bar, and a hit-testable glass there swallows tab taps.
+                .allowsHitTesting(false)
+        }
         .shadow(color: .black.opacity(0.15), radius: 14, y: -3)
         .contentShape(Rectangle())
-        .offset(y: dragOffset)
         .gesture(resizeDrag)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("map-discovery-shelf")
@@ -100,7 +142,7 @@ struct DiscoveryShelfCard: View {
         Capsule()
             .fill(.tertiary)
             .frame(width: 38, height: 5)
-            .frame(maxWidth: .infinity, minHeight: 24)
+            .frame(maxWidth: .infinity, minHeight: Self.grabberRowHeight)
             .contentShape(Rectangle())
             .accessibilityElement()
             .accessibilityIdentifier("map-shelf-grabber")
@@ -121,72 +163,82 @@ struct DiscoveryShelfCard: View {
         // minimumDistance 8: venue-card and chip taps stay taps.
         DragGesture(minimumDistance: 8, coordinateSpace: .global)
             .onChanged { value in
-                dragOffset = dampened(value.translation.height)
+                dragHeight = rubberBanded(baseHeight(of: detent) - value.translation.height)
             }
             .onEnded { value in
                 let target = ShelfDetent.resolve(
                     from: detent,
                     projectedTranslation: value.predictedEndTranslation.height
                 )
-                setDetent(target, resettingDragOffset: true)
+                setDetent(target)
             }
     }
 
-    /// Live feedback: collapse-direction drags track the finger; expand
-    /// drags lift with resistance (the card grows on release, not mid-drag);
-    /// drags past an end detent rubber-band.
-    private func dampened(_ translation: CGFloat) -> CGFloat {
-        let collapsing = translation > 0
-        let hasRoom = collapsing ? detent.collapsed != nil : detent.expanded != nil
-        guard hasRoom else { return translation * 0.10 }
-        return translation * (collapsing ? 0.85 : 0.25)
+    /// The finger resizes the card 1:1 between the end detents; past either
+    /// end the excess compresses, matching sheet rubber-banding.
+    private func rubberBanded(_ proposed: CGFloat) -> CGFloat {
+        if proposed > fullHeight { return fullHeight + (proposed - fullHeight) * 0.15 }
+        if proposed < peekHeight { return peekHeight - (peekHeight - proposed) * 0.15 }
+        return proposed
     }
 
     /// Settles the shelf on `target`, used by both the drag gesture's release
     /// and the grabber's accessibility adjustable action.
     ///
-    /// A transition that crosses the `.full` boundary pins `cardHeight` to
-    /// concrete numbers for the animation's duration (brewdesk#88 — see
-    /// `isCrossingFullBoundary`); peek↔medium never needs that, so it's left
-    /// alone and keeps its existing (already-smooth) intrinsic-size
-    /// animation.
-    private func setDetent(_ target: ShelfDetent, resettingDragOffset: Bool = false) {
+    /// Every animated settle interpolates between two CONCRETE heights
+    /// (brewdesk#88's lesson): `isSettling` pins `cardHeight` to the target's
+    /// height for the animation, and un-pins in the completion — by which
+    /// point the pinned value equals the intrinsic height it hands back to,
+    /// so nothing moves on un-pin.
+    private func setDetent(_ target: ShelfDetent) {
         guard !reduceMotion else {
-            if resettingDragOffset { dragOffset = 0 }
+            dragHeight = nil
+            isSettling = false
             detent = target
             return
         }
-        guard detent == .full || target == .full else {
-            withAnimation(.snappy) {
-                if resettingDragOffset { dragOffset = 0 }
+        if dragHeight != nil {
+            // Released from a live drag: the transaction's "old" height is
+            // the drag's concrete value, so it can animate directly.
+            isSettling = true
+            withAnimation(.snappy, completionCriteria: .logicallyComplete) {
+                dragHeight = nil
                 detent = target
+            } completion: {
+                isSettling = false
             }
             return
         }
-        // Setting `isCrossingFullBoundary` and opening `withAnimation` in the
-        // same call lands in the *same* SwiftUI update pass — the animation
-        // would still read its "old" `cardHeight` as `nil` from the last
-        // real render, reintroducing the brewdesk#88 snap. Deferring one
-        // run-loop tick lets the flag commit on its own first, by which
-        // point `restingHeight` already equals the true current size, so the
-        // animated transaction has two concrete numbers to interpolate
-        // between. One frame (~16ms) of latency on release, well under
-        // perceptible.
-        isCrossingFullBoundary = true
+        // No drag in flight (accessibility adjustable action): the old
+        // height may be intrinsic (`nil`), which `.frame(height:)` cannot
+        // animate from. Committing `isSettling` on its own pass first makes
+        // the old height concrete; one run-loop tick (~16ms) of latency,
+        // well under perceptible. (The pre-animation pin reads the CURRENT
+        // detent's height, so the pinned frame matches what's on screen.)
+        isSettling = true
         DispatchQueue.main.async {
             withAnimation(.snappy, completionCriteria: .logicallyComplete) {
-                if resettingDragOffset { self.dragOffset = 0 }
                 self.detent = target
             } completion: {
-                self.isCrossingFullBoundary = false
+                self.isSettling = false
             }
         }
     }
 
     // MARK: - Content
 
-    @ViewBuilder
+    /// The rail/list swap lives in a top-aligned ZStack: during the settle
+    /// crossfade both exist at once, and in a VStack the outgoing one would
+    /// be laid out BELOW the incoming one — pushed straight out of the clip,
+    /// which read as the card going blank for the animation (brewdesk#125).
     private var venueContent: some View {
+        ZStack(alignment: .top) {
+            venueContentSwitch
+        }
+    }
+
+    @ViewBuilder
+    private var venueContentSwitch: some View {
         if model.venues.isEmpty {
             // Only a *loaded* empty result is an empty state; while loading
             // or failed the overlay owns the message and the shelf stays quiet.
@@ -206,8 +258,10 @@ struct DiscoveryShelfCard: View {
             }
         } else if isSearchFocused || detent == .full {
             fullList
+                .transition(.opacity)
         } else {
             horizontalRail
+                .transition(.opacity)
         }
     }
 
