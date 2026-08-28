@@ -37,12 +37,20 @@ final class MapShelfDetentUITests: XCTestCase {
 
     /// Drags the grabber to a normalized window y, then waits for the card's
     /// snap animation to settle.
+    ///
+    /// The press targets the top 12pt of the SHELF, where the grabber pill
+    /// actually is. The grabber element's reported accessibility frame spans
+    /// the whole card, so its center lands inside the full-detent list —
+    /// where the ScrollView claims the drag and no detent changes (found
+    /// while fixing brewdesk#125; a real finger on the pill never hits this).
     @MainActor
     private func dragGrabber(_ app: XCUIApplication, toNormalizedY y: CGFloat) {
         let handle = grabber(app)
         XCTAssertTrue(handle.waitForExistence(timeout: wait), "shelf grabber missing")
+        let card = shelf(app)
         let window = app.windows.firstMatch
-        handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        card.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: card.frame.width / 2, dy: 12))
             .press(
                 forDuration: 0.05,
                 thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: y)),
@@ -111,9 +119,12 @@ final class MapShelfDetentUITests: XCTestCase {
         let peekTop = settledShelfTop(app)
         XCTAssertGreaterThan(peekTop, height * 0.78, "shelf did not collapse to peek")
         XCTAssertGreaterThan(peekTop, mediumTop + 40, "drag down did not shrink the shelf")
+        // UI3 (#118) moved the filter chips into WorkFitFilterMenu; peek is
+        // the grabber-only sliver now, and the grabber must stay usable to
+        // drag back out (#125).
         XCTAssertTrue(
-            app.buttons["Laptop friendly"].isHittable,
-            "filter chips must stay usable at peek"
+            grabber(app).isHittable,
+            "grabber must stay usable at peek"
         )
         capture("shelf-peek")
     }
