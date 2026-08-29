@@ -53,7 +53,18 @@ final class ReviewerSimulationTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Start where you are."].waitForExistence(timeout: 2))
         capture("03-location-intro")
         app.buttons["Use Union Square instead"].tap()
-        XCTAssertTrue(app.staticTexts["100 work spots"].waitForExistence(timeout: 15),
+        // UI3 (#118) folded DatasetStatStrip's "100 work spots" text into
+        // the single map-count-line ("N of M spots"); "100" was only the
+        // fixed fallback-dataset size, and brewdesk#37 says never assert an
+        // exact live count, so match the identifier's shape instead of any
+        // string. The identifier is on the row, not a combined accessibility
+        // element, so it attaches to both texts in the row ("N of M spots"
+        // and the sibling "Scores show Work Fit") — narrow to the one whose
+        // label actually names a spot count.
+        let unionSquareCountLine = app.staticTexts.matching(NSPredicate(
+            format: "identifier == %@ AND label CONTAINS %@", "map-count-line", "spot"
+        )).firstMatch
+        XCTAssertTrue(unionSquareCountLine.waitForExistence(timeout: 15),
                       "Map did not load the Union Square dataset without location")
         // brewdesk#37 rule: live data re-ranks/renames venues, so match the
         // pin shape, not a café name (the matcher merge of 2026-08-23 renamed
@@ -64,9 +75,13 @@ final class ReviewerSimulationTests: XCTestCase {
 
         // ── 3. Browse: one Spots surface now (map + shelf), then search ───
         // brewdesk#117 collapsed Explore + Nearby into Spots, so there's no
-        // second tab to switch to for this step any more.
-        XCTAssertTrue(app.descendants(matching: .any)["dataset-stat-strip"].waitForExistence(timeout: 10),
-                      "Dataset stat strip missing from Spots (brewdesk#34 regression)")
+        // second tab to switch to for this step any more. UI3 (#118) also
+        // retired dataset-stat-strip as a Spots element (DatasetStatStrip
+        // now only renders on the unreachable CafeListScreen); map-header-card
+        // is the Spots header's own identifier, wrapping the search field,
+        // filter button, and count line as one accessibility element.
+        XCTAssertTrue(app.descendants(matching: .any)["map-header-card"].waitForExistence(timeout: 10),
+                      "Spots header card missing (brewdesk#34/#118 regression)")
         capture("05-map-spots-browse")
 
         let search = app.textFields["Search spots"]
@@ -74,8 +89,18 @@ final class ReviewerSimulationTests: XCTestCase {
         search.tap()
         search.typeText("Housing Works")
         app.keyboards.buttons["Search"].tap()
-        XCTAssertTrue(app.staticTexts["1 work spot"].waitForExistence(timeout: 15),
-                      "Search for Housing Works did not narrow to one venue")
+        // Same UI3 drift as the Union Square step: DatasetStatStrip's plural-
+        // aware "1 work spot" text is gone, folded into map-count-line's
+        // "N of M spots" line. Assert the identifier's shape plus the
+        // narrowed-to-one outcome (a search result, not a live dataset size,
+        // so asserting "1" here doesn't break the brewdesk#37 rule).
+        let searchCountLine = app.staticTexts.matching(NSPredicate(
+            format: "identifier == %@ AND label CONTAINS %@", "map-count-line", "spot"
+        )).firstMatch
+        XCTAssertTrue(searchCountLine.waitForExistence(timeout: 15),
+                      "Search for Housing Works did not narrow the map (map-count-line missing)")
+        XCTAssertTrue(searchCountLine.label.hasPrefix("1"),
+                      "Search for Housing Works did not narrow to one venue (count line: \(searchCountLine.label))")
         capture("06-map-search-result")
 
         // ── 4. Detail: claim-level evidence (the 4.3(b) differentiator) ───
@@ -152,10 +177,14 @@ final class ReviewerSimulationTests: XCTestCase {
                       "Relaunch replayed onboarding instead of restoring discovery")
         XCTAssertFalse(app.buttons["Continue"].exists)
         // Count is viewport-dependent since bd#108 (relaunch restores the
-        // last real viewport, e.g. Cupertino's 30, not NYC's 100).
-        XCTAssertTrue(app.staticTexts.matching(
-            NSPredicate(format: "label CONTAINS %@", "work spot")
-        ).firstMatch.waitForExistence(timeout: 15),
+        // last real viewport, e.g. Cupertino's 30, not NYC's 100). Same UI3
+        // drift as above: once `model.health` has loaded (it has, well
+        // before this point in the run), the line reads "N of M spots", not
+        // "N work spots" — matching "work spot" alone no longer finds it, so
+        // key off the map-count-line identifier instead.
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(
+            format: "identifier == %@ AND label CONTAINS %@", "map-count-line", "spot"
+        )).firstMatch.waitForExistence(timeout: 15),
                       "Relaunch did not restore the venue-count header")
         capture("10-relaunch-restored")
     }
