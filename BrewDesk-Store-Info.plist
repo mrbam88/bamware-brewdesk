@@ -4,6 +4,13 @@
 <dict>
 	<key>BDStoreSurfaceGated</key>
 	<string>$(STORE_SURFACE_GATED)</string>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+		<key>UIImageName</key>
+		<string>LaunchMark</string>
+	</dict>
 	<key>UIAppFonts</key>
 	<array>
 		<string>HankenGrotesk[wght].ttf</string>
