@@ -46,6 +46,11 @@ struct RootView: View {
                 }
             }
         }
+        // Matches the LaunchScreen's LaunchBackground asset color so the very
+        // first rendered frame carries the branded green straight through
+        // into SwiftUI — no white flash between the system launch screen and
+        // whichever gate (onboarding/location/discovery) draws first (#133).
+        .background(Color("LaunchBackground").ignoresSafeArea())
         .environment(\.launchEnvironment, environment)
     }
 
