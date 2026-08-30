@@ -121,3 +121,25 @@ extension XCUIApplication {
         return close.waitForNonExistence(timeout: timeout)
     }
 }
+
+/// Tab-bar corollary of the brewdesk#37 rule (brewdesk#131): on iOS 26 the
+/// floating tab bar's buttons carry their `.tabItem` accessibility
+/// identifiers only several seconds AFTER a fresh launch, while their
+/// visible labels exist from the first frame. Tests that touch a tab right
+/// after launch must therefore match by label (English is forced via
+/// `-AppleLanguages`); the identifier is accepted too for the settled case.
+extension XCUIApplication {
+    func tabButton(_ englishLabel: String, identifier: String) -> XCUIElement {
+        tabBars.buttons.matching(
+            NSPredicate(
+                format: "identifier == %@ OR label == %@",
+                identifier,
+                englishLabel
+            )
+        ).firstMatch
+    }
+
+    var spotsTab: XCUIElement { tabButton("Spots", identifier: "tab-spots") }
+    var savedTab: XCUIElement { tabButton("Saved", identifier: "tab-saved") }
+    var youTab: XCUIElement { tabButton("You", identifier: "tab-you") }
+}
