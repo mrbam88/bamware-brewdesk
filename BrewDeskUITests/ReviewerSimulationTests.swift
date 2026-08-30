@@ -122,7 +122,7 @@ final class ReviewerSimulationTests: XCTestCase {
         // The list toolbar's own "How scoring works" entry left with
         // Nearby; the You tab carries it now, independent of the browse
         // surface.
-        let youTab = app.tabBars.buttons["tab-you"]
+        let youTab = app.youTab
         XCTAssertTrue(youTab.waitForExistence(timeout: 5))
         youTab.waitUntilHittable()
         youTab.tap()
@@ -130,7 +130,7 @@ final class ReviewerSimulationTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["How Work Fit works"].waitForExistence(timeout: 3),
                       "Methodology screen did not open from the You tab")
         capture("08-methodology")
-        app.tabBars.buttons["tab-spots"].tap()
+        app.spotsTab.tap()
 
         // ── 6. Grant location from Cupertino → real viewport query ────────
         // bd#108 removed the client-side "outside NYC" fallback: the app now
@@ -173,7 +173,7 @@ final class ReviewerSimulationTests: XCTestCase {
         app.terminate()
         app.launchArguments = englishArguments
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: 8),
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: 8),
                       "Relaunch replayed onboarding instead of restoring discovery")
         XCTAssertFalse(app.buttons["Continue"].exists)
         // Count is viewport-dependent since bd#108 (relaunch restores the
@@ -205,7 +205,7 @@ final class ReviewerSimulationTests: XCTestCase {
         ]
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: 8))
         let banner = app.descendants(matching: .any)["coverage-banner"]
         XCTAssertTrue(banner.waitForExistence(timeout: 15),
                       "Baseline coverage banner missing for the baselineCity fixture")
@@ -217,7 +217,15 @@ final class ReviewerSimulationTests: XCTestCase {
         let pins = app.mapPins
         XCTAssertTrue(pins.firstMatch.waitForExistence(timeout: 15),
                       "baselineCity fixture rendered no venue pins")
-        XCTAssertGreaterThanOrEqual(pins.count, 5, "Expected at least 5 baseline venue pins near Cupertino")
+        // No exact pin-count assertions (brewdesk#37 / #131): the annotation
+        // planner clusters at city zoom, so the number of individual pins is
+        // a layout decision, not a data fact. The count line proves the
+        // dataset actually loaded.
+        let countLine = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "map-count-line", "spot")
+        ).firstMatch
+        XCTAssertTrue(countLine.waitForExistence(timeout: 5),
+                      "Count line missing for the baselineCity fixture")
         capture("cupertino-baseline-coverage-fixture")
     }
 
@@ -243,8 +251,8 @@ final class ReviewerSimulationTests: XCTestCase {
             allow.tap()
         }
         // Harmless interaction: triggers the monitor if an alert is still up.
-        if app.tabBars.buttons["tab-spots"].waitForExistence(timeout: 8) {
-            app.tabBars.buttons["tab-spots"].tap()
+        if app.spotsTab.waitForExistence(timeout: 8) {
+            app.spotsTab.tap()
         }
     }
 
