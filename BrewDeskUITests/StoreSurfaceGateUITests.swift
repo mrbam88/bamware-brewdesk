@@ -49,15 +49,15 @@ final class StoreSurfaceGateUITests: XCTestCase {
 
     @MainActor
     private func openSavedTab(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["tab-saved"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["tab-saved"].tap()
+        XCTAssertTrue(app.savedTab.waitForExistence(timeout: wait))
+        app.savedTab.tap()
         XCTAssertTrue(element(app, "saved-state-empty").waitForExistence(timeout: wait))
     }
 
     @MainActor
     private func openYouTab(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["tab-you"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["tab-you"].tap()
+        XCTAssertTrue(app.youTab.waitForExistence(timeout: wait))
+        app.youTab.tap()
         XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: wait))
     }
 
@@ -65,8 +65,8 @@ final class StoreSurfaceGateUITests: XCTestCase {
     // sheet), not a Nearby-list push — Nearby no longer exists.
     @MainActor
     private func openFixtureRoastersDetail(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["tab-spots"].tap()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
+        app.spotsTab.tap()
         let pin = app.mapPin(named: "Fixture Roasters")
         XCTAssertTrue(pin.waitForExistence(timeout: wait))
         pin.tap()
