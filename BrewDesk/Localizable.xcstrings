@@ -12,6 +12,16 @@
         }
       }
     },
+    "%1$lld of %2$lld spots": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld de %2$lld lugares"
+          }
+        }
+      }
+    },
     "%1$lld spots · %2$lld observations · updated %3$@": {
       "extractionState": "stale",
       "localizations": {
@@ -125,6 +135,16 @@
         }
       }
     },
+    "Baseline data here — not yet researched. NYC is fully researched.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Datos de referencia aquí — aún no investigados. NYC está totalmente investigada."
+          }
+        }
+      }
+    },
     "Bookmark a spot from Explore or Nearby to keep it here.": {
       "extractionState": "stale",
       "localizations": {
@@ -159,17 +179,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ver cercanos"
-          }
-        }
-      }
-    },
-    "Spot service unavailable": {
-      "extractionState": "stale",
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Servicio de lugares no disponible"
           }
         }
       }
@@ -331,6 +340,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "No recomendado"
+          }
+        }
+      }
+    },
+    "Done": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Done"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hecho"
           }
         }
       }
@@ -636,6 +661,16 @@
         }
       }
     },
+    "Kept where legally required: safety records (e.g. reports filed against content). Saved spots live only on this device and are not affected.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se conserva donde la ley lo exige: registros de seguridad (por ejemplo, reportes presentados sobre contenido). Los lugares guardados existen solo en este dispositivo y no se ven afectados."
+          }
+        }
+      }
+    },
     "Know before you order.": {
       "localizations": {
         "es": {
@@ -753,24 +788,12 @@
         }
       }
     },
-    "No spots found": {
-      "extractionState": "stale",
+    "No account needed to browse, save spots, or share observations. An account only links future community contributions to a name you choose.": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "No se encontraron lugares"
-          }
-        }
-      }
-    },
-    "No spots in this view": {
-      "extractionState": "stale",
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No hay lugares en esta vista"
+            "value": "No hace falta cuenta para explorar, guardar lugares o compartir observaciones. Una cuenta solo vincula futuras contribuciones de la comunidad a un nombre que elijas."
           }
         }
       }
@@ -793,6 +816,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "No se permiten portátiles los fines de semana"
+          }
+        }
+      }
+    },
+    "No spots found": {
+      "extractionState": "stale",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se encontraron lugares"
+          }
+        }
+      }
+    },
+    "No spots in this view": {
+      "extractionState": "stale",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No hay lugares en esta vista"
           }
         }
       }
@@ -875,6 +920,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Aceptable o mejor"
+          }
+        }
+      }
+    },
+    "OSM baseline · updated %@": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Base OSM · actualizado %@"
           }
         }
       }
@@ -1035,6 +1090,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Foto no disponible"
+          }
+        }
+      }
+    },
+    "Photos and observations must be about the venue as a workspace.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las fotos y observaciones deben ser sobre el lugar como espacio de trabajo."
           }
         }
       }
@@ -1212,26 +1277,6 @@
         }
       }
     },
-    "Spots": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Lugares"
-          }
-        }
-      }
-    },
-    "You": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tú"
-          }
-        }
-      }
-    },
     "Saved spots unavailable": {
       "extractionState": "stale",
       "localizations": {
@@ -1364,6 +1409,17 @@
         }
       }
     },
+    "Spot service unavailable": {
+      "extractionState": "stale",
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Servicio de lugares no disponible"
+          }
+        }
+      }
+    },
     "Spot type": {
       "extractionState": "stale",
       "localizations": {
@@ -1371,6 +1427,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tipo de lugar"
+          }
+        }
+      }
+    },
+    "Spots": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lugares"
           }
         }
       }
@@ -1692,6 +1758,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sí, recuérdame"
+          }
+        }
+      }
+    },
+    "You": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tú"
           }
         }
       }
@@ -2018,72 +2094,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "investigación web"
-          }
-        }
-      }
-    },
-    "Done": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Done"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hecho"
-          }
-        }
-      }
-    },
-    "Baseline data here — not yet researched. NYC is fully researched.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Datos de referencia aquí — aún no investigados. NYC está totalmente investigada."
-          }
-        }
-      }
-    },
-    "OSM baseline · updated %@": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Base OSM · actualizado %@"
-          }
-        }
-      }
-    },
-    "Photos and observations must be about the venue as a workspace.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Las fotos y observaciones deben ser sobre el lugar como espacio de trabajo."
-          }
-        }
-      }
-    },
-    "No account needed to browse, save spots, or share observations. An account only links future community contributions to a name you choose.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No hace falta cuenta para explorar, guardar lugares o compartir observaciones. Una cuenta solo vincula futuras contribuciones de la comunidad a un nombre que elijas."
-          }
-        }
-      }
-    },
-    "Kept where legally required: safety records (e.g. reports filed against content). Saved spots live only on this device and are not affected.": {
-      "localizations": {
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Se conserva donde la ley lo exige: registros de seguridad (por ejemplo, reportes presentados sobre contenido). Los lugares guardados existen solo en este dispositivo y no se ven afectados."
           }
         }
       }

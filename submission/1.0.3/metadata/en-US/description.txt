@@ -1,0 +1,27 @@
+Know why a café fits your workday — before you order.
+
+BrewDesk is built for one job: working from cafés in New York City. It evaluates laptop policy first (including cafés that limit or discourage laptops — shown openly, never hidden), then seating, Wi-Fi, outlets, and noise. Every claim displays its source, its confidence, and the date it was last updated. Estimates stay labeled instead of pretending to be facts.
+
+SEE THE EVIDENCE
+• Every card carries an "updated" stamp — when the data was checked and where it came from
+• A human-verified seal appears only when a person stands behind a claim
+• "How Work Fit is scored" explains the entire formula inside the app — weights, confidence, and the 90-day freshness decay. No black boxes.
+
+BUILT FOR LAPTOP WORK
+• Laptop policy up front: friendly, time-limited, weekend rules, or discouraged — filter for it
+• Seating and outlet filters for actually getting work done
+• Wi-Fi rated honestly: above ~25 Mbps more speed stops mattering, so we say so
+• 2,000+ cafés across New York City with a transparent Work Fit score
+
+BRING YOUR OWN SPOTS
+Import your saved places from Google Maps (Takeout file) — matched on-device, never uploaded.
+
+LOCATION IS OPTIONAL
+Rank nearby cafés with your location, or browse all of NYC without granting it. Outside New York? You'll still see the full dataset. BrewDesk keeps no location history.
+
+FREE AND ACCOUNTLESS
+No account, subscription, advertising, analytics, or tracking.
+
+Café conditions change. BrewDesk shows freshness and sourcing so you can judge the evidence — but always confirm important details with the venue.
+
+Venue data combines curated research, OpenStreetMap, and labeled estimates. © OpenStreetMap contributors.
