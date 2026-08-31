@@ -1,14 +1,14 @@
-BrewDesk is a free, accountless guide to working from cafés in New York City. No purchases, subscriptions, advertising, analytics, accounts, or user-generated content. No review credentials are required.
+BrewDesk is a free, accountless guide to work-friendly spots — cafés, libraries, and parks — researched in depth for New York City, with baseline coverage in 50 US metro areas. No purchases, subscriptions, advertising, analytics, accounts, or user-generated content. No review credentials are required.
 
-REVIEWING FROM OUTSIDE NYC: the dataset is NYC-focused by design. Wherever you are, the app shows the full NYC dataset — with or without location access. If you grant location outside New York, a banner notes you are outside coverage and the map stays on NYC. Nothing requires being in New York to review.
+REVIEWING FROM OUTSIDE NYC: without location access the app shows the fully researched NYC dataset. If you grant location outside New York, the map shows real venues near you from our baseline coverage (50 US metros), with a banner noting the area is baseline data, not yet fully researched. Dataset liveness can be verified at our engine's public health endpoint (see /v1/health in the notes below if needed). Nothing requires being in New York to review.
 
 Location is optional. On the location-introduction screen, choose "Use Union Square instead" to review the full app without granting permission.
 
 WHAT DISTINGUISHES THIS APP — claim-level evidence, not crowd ratings:
-1. Open Explore and search for "Housing Works", then open Housing Works Bookstore Cafe.
+1. On the Spots tab, tap the search field and search for "Housing Works", then open Housing Works Bookstore Cafe from the results.
 2. The Workability section shows each Wi-Fi, outlet, laptop-policy, and noise claim with its source, confidence, and observation date. Estimates are labeled as estimates.
 3. Every café card carries an "Updated <date> · <source>" stamp. A seal appears only where a human verified the claim.
-4. Tap the info button (top-left of Nearby) for "How Work Fit is scored" — the complete scoring methodology is published inside the app: weights (laptop policy > seating > Wi-Fi = outlets > noise), confidence blending, and a 90-day freshness decay.
+4. Open the You tab and tap "How scoring works" — the complete scoring methodology is published inside the app: weights (laptop policy > seating > Wi-Fi = outlets > noise), confidence blending, and a 90-day freshness decay.
 
 Work-specific data no general-purpose map shows: explicit laptop policy including time-limited/weekend/discouraged venues shown openly, seating availability, and honest "unknown" states — we never guess. Users can import their Google Maps saved places; the file is parsed on-device and never uploaded.
 
