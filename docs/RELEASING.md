@@ -87,16 +87,30 @@ build Release.
   Info.plist (`BrewDesk-Store-Info.plist`) → read at runtime by
   `StoreSurface.isGated` in BrewDeskKit.
 - TestFlight rail: unchanged. Plain `Release` keeps every feature ON.
-- Store submission archive — the one-line flip is a build-setting override
-  on the archive command:
 
-```bash
-xcodebuild archive -project BrewDesk.xcodeproj -scheme BrewDesk \
-  -destination 'generic/platform=iOS' STORE_SURFACE_GATED=YES
-```
+### Release-branch flow (REQUIRED — decided by Bilal 2026-08-30)
 
-(For a fastlane lane, the equivalent is `xcargs: "STORE_SURFACE_GATED=YES"`
-on `build_app`.) Verify before upload: the exported app's Info.plist must
-contain `BDStoreSurfaceGated = YES`, and `StoreSurfaceGateUITests` proves the
-gated surface renders none of the gated UI. The flag flips back in the first
-post-approval update by archiving without the override.
+Command-line overrides (`STORE_SURFACE_GATED=YES` on the archive command)
+are FORBIDDEN for store archives: they leave no trace in git, so the
+submitted binary's state is invisible to history. Every store archive must
+be reproducible from a tagged commit:
+
+1. Cut a release branch from the exact main commit being shipped:
+   `git checkout -b release/1.0.3 main`
+2. Commit the flip ON THE BRANCH — set `STORE_SURFACE_GATED = YES` in
+   `BrewDesk.xcodeproj/project.pbxproj` as a normal one-line commit
+   ("release: gate store surface for 1.0.3 submission").
+3. Archive from the branch with NO build-setting overrides:
+   `xcodebuild archive -project BrewDesk.xcodeproj -scheme BrewDesk -destination 'generic/platform=iOS' -allowProvisioningUpdates`
+4. Verify before upload: the exported app's Info.plist contains
+   `BDStoreSurfaceGated = YES`, and `StoreSurfaceGateUITests` passes on the
+   branch.
+5. After Apple assigns the build number, tag the archived commit:
+   `git tag store/1.0.3-buildN && git push --tags`
+6. Push the branch. It is retired after approval — never merged back, never
+   long-lived. `main` NEVER carries the flip; the next submission cuts a
+   fresh branch.
+
+Result: `git diff main..store/1.0.3-buildN` shows exactly what the reviewer
+received — one commit, one setting. A long-lived "store" branch is equally
+forbidden: permanent divergence is how real feature drift starts.
