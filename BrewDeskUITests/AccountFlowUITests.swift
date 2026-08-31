@@ -32,11 +32,13 @@ final class AccountFlowUITests: XCTestCase {
     }
 
     // brewdesk#117: AccountScreen is now the You tab's root — no more
-    // Saved-toolbar "Account entry" push.
+    // Saved-toolbar "Account entry" push. Matched by label via `youTab`
+    // (brewdesk#131): the floating tab bar attaches identifiers seconds
+    // after launch, which made every test here fail at this first wait.
     @MainActor
     private func openAccount(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["tab-you"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["tab-you"].tap()
+        XCTAssertTrue(app.youTab.waitForExistence(timeout: wait))
+        app.youTab.tap()
         XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: wait))
     }
 
@@ -63,16 +65,16 @@ final class AccountFlowUITests: XCTestCase {
         let app = launch()
 
         // Browse venues — no sign-in, no gate.
-        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["tab-spots"].tap()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
+        app.spotsTab.tap()
         XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitForExistence(timeout: wait))
 
         // Saved tab renders (empty state) without forcing an account.
-        app.tabBars.buttons["tab-saved"].tap()
+        app.savedTab.tap()
         XCTAssertTrue(element(app, "saved-state-empty").waitForExistence(timeout: wait))
 
         // You tab is there too — offered, never forced.
-        app.tabBars.buttons["tab-you"].tap()
+        app.youTab.tap()
         XCTAssertTrue(element(app, "account-mode-toggle").waitForExistence(timeout: wait))
     }
 
