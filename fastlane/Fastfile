@@ -35,6 +35,31 @@ def app_store_connect_key
 end
 
 platform :ios do
+
+  desc "Re-shoot the App Store screenshot set (en+es, light, Release, store-gated) and assemble submission/<version>/"
+  lane :store_screenshots do |options|
+    version = options[:version] || "1.0"
+    device_udid = options[:udid] || "B7F78723-BC5A-44F5-9793-53AF6A0C071B" # iPhone 17 Pro Max
+    derived = "/tmp/dd-store-screenshots"
+
+    # Deterministic environment: booted sim, LIGHT appearance (the brand
+    # default — a dark-appearance sim silently produces a dark store set).
+    sh("xcrun simctl boot #{device_udid} 2>/dev/null || true")
+    sh("xcrun simctl ui #{device_udid} appearance light")
+
+    sh("cd .. && xcodebuild build-for-testing -workspace BrewDeskDevelopment.xcworkspace -scheme BrewDesk -configuration Release -destination 'id=#{device_udid}' -derivedDataPath #{derived} CODE_SIGN_IDENTITY=- ENABLE_TESTABILITY=YES")
+
+    { "en" => "raw", "es" => "raw-es" }.each do |locale, raw_dir|
+      sh("cd .. && xcodebuild test-without-building -workspace BrewDeskDevelopment.xcworkspace -scheme BrewDesk -configuration Release -destination 'id=#{device_udid}' -derivedDataPath #{derived} -only-testing:BrewDeskUITests/AppStoreScreenshotTests TEST_RUNNER_SCREENSHOT_LOCALE=#{locale}")
+      xcresult = Dir.glob("#{derived}/Logs/Test/*.xcresult").max_by { |f| File.mtime(f) }
+      sh("cd .. && python3 scripts/export_screenshot_attachments.py '#{xcresult}' fastlane/screenshots/#{raw_dir}")
+      sh("cd .. && swift scripts/compose_app_store_screenshots.swift #{locale}")
+    end
+
+    sh("cd .. && ./scripts/assemble_submission.sh #{version}")
+    UI.success("Submission pack: submission/#{version}/ — verify visually before deliver")
+  end
+
   desc "Build the next signed Release and upload it to TestFlight"
   lane :ship_testflight do
     required_environment!

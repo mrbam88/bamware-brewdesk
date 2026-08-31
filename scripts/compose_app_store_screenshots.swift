@@ -68,12 +68,12 @@ let captions: [String: [CaptureLocale: Captions]] = [
     ],
     "03": [
         .en: Captions(
-            headline: "A Work Fit map built for NYC.",
-            evidence: "2,000+ CAFES  /  TRANSPARENT SCORES"
+            headline: "A Work Fit map for where you work.",
+            evidence: "2,700+ WORK SPOTS  /  TRANSPARENT SCORES"
         ),
         .es: Captions(
-            headline: "Un mapa Work Fit hecho para NYC.",
-            evidence: "2.000+ CAFÉS  /  PUNTUACIONES TRANSPARENTES"
+            headline: "Un mapa Work Fit para donde trabajas.",
+            evidence: "2.700+ LUGARES PARA TRABAJAR  /  PUNTUACIONES TRANSPARENTES"
         ),
     ],
     "04": [

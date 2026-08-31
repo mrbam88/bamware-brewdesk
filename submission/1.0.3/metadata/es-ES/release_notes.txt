@@ -1,0 +1,6 @@
+• Cada tarjeta muestra cuándo se actualizó su dato y desde qué fuente
+• "Cómo funciona Work Fit": la metodología completa, dentro de la app
+• Avisos de política de portátiles mostrados abiertamente
+• Nuevo filtro de asientos
+• Importa tus lugares guardados de Google Maps (en el dispositivo)
+• ¿Fuera de NYC? Ahora se muestran todos los datos en lugar de un mapa vacío

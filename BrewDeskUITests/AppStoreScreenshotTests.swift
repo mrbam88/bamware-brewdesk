@@ -19,10 +19,6 @@ final class AppStoreScreenshotTests: XCTestCase {
         let findMyWorkCafe: String
         let startWhereYouAre: String
         let useUnionSquare: String
-        let nearbyTab: String
-        let exploreTab: String
-        let filters: String
-        let laptopFriendlyOnly: String
         let searchField: String
         /// Shape, not literal: the Union Square load is a real API count
         /// from a real-viewport query (bd#108), no longer a fixed number.
@@ -41,13 +37,9 @@ final class AppStoreScreenshotTests: XCTestCase {
             findMyWorkCafe: "Find my work spot",
             startWhereYouAre: "Start where you are.",
             useUnionSquare: "Use Union Square instead",
-            nearbyTab: "Nearby",
-            exploreTab: "Explore",
-            filters: "Filters",
-            laptopFriendlyOnly: "Laptop-friendly only",
             searchField: "Search spots",
-            workCafeCountPattern: "^[0-9,]+ work spots$",
-            oneWorkCafe: "1 work spot",
+            workCafeCountPattern: "^[0-9,]+ of [0-9,]+ spots$",
+            oneWorkCafe: "1 of ",
             detailsNav: "Details",
             workability: "Workability"
         )
@@ -60,13 +52,9 @@ final class AppStoreScreenshotTests: XCTestCase {
             findMyWorkCafe: "Encontrar mi lugar de trabajo",
             startWhereYouAre: "Empieza donde estás.",
             useUnionSquare: "Usar Union Square",
-            nearbyTab: "Cercanos",
-            exploreTab: "Explorar",
-            filters: "Filtros",
-            laptopFriendlyOnly: "Solo aptos para portátiles",
             searchField: "Buscar lugares",
-            workCafeCountPattern: "^[0-9,]+ lugares para trabajar$",
-            oneWorkCafe: "1 lugar para trabajar",
+            workCafeCountPattern: "^[0-9.,]+ de [0-9.,]+ lugares$",
+            oneWorkCafe: "1 de ",
             detailsNav: "Detalles",
             workability: "Aptitud para trabajar"
         )
@@ -116,12 +104,32 @@ final class AppStoreScreenshotTests: XCTestCase {
         capture("05-location-is-optional")
 
         app.buttons[locale.useUnionSquare].tap()
-        let workCafeCount = app.staticTexts.element(
-            matching: NSPredicate(format: "label MATCHES %@", locale.workCafeCountPattern)
-        )
+        // UI3: the single count line ("N of M spots") replaced the old
+        // "N work spots" text. Identifier + shape, never an exact count
+        // (brewdesk#37/#131).
+        let workCafeCount = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier == %@ AND label MATCHES %@",
+                "map-count-line",
+                locale.workCafeCountPattern
+            )
+        ).firstMatch
         XCTAssertTrue(workCafeCount.waitForExistence(timeout: 15))
         XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: 5))
         capture("03-work-fit-map")
+
+        // UI3 (#118): the Work Fit filter menu is home again — reinstate
+        // the 02 capture with the score-tier legend on screen.
+        let filterButton = app.descendants(matching: .any)["filter-button"].firstMatch
+        XCTAssertTrue(filterButton.waitForExistence(timeout: 5))
+        filterButton.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["work-fit-filter-menu"].firstMatch
+                .waitForExistence(timeout: 5)
+        )
+        capture("02-work-filters")
+        // Dismiss by tapping the map area outside the anchored menu.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75)).tap()
 
         // UI3: filter surface moves to WorkFitFilterMenu — un-skip in #118.
         // brewdesk#117 collapsed Explore + Nearby into one Spots tab; the
@@ -133,12 +141,22 @@ final class AppStoreScreenshotTests: XCTestCase {
 
         let search = app.textFields[locale.searchField]
         search.tap()
-        // "\n" presses the keyboard's return/search key without depending on
-        // its localized label.
         search.typeText("Housing Works\n")
-        XCTAssertTrue(app.staticTexts[locale.oneWorkCafe].waitForExistence(timeout: 15))
+        // UI3 (#118): focused search shows a vertical result list above the
+        // keyboard, and the count line narrows to "1 of M". Open the detail
+        // from the result row — the map is behind the list now.
+        let narrowed = app.descendants(matching: .any).matching(
+            NSPredicate(
+                format: "identifier == %@ AND label BEGINSWITH %@",
+                "map-count-line",
+                locale.oneWorkCafe
+            )
+        ).firstMatch
+        XCTAssertTrue(narrowed.waitForExistence(timeout: 15))
 
-        let housingWorks = app.mapPin(named: "Housing Works Bookstore Cafe")
+        let housingWorks = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Housing Works")
+        ).firstMatch
         XCTAssertTrue(housingWorks.waitForExistence(timeout: 5))
         housingWorks.tap()
         // brewdesk#119: the nav title is now the venue's own name (not a
