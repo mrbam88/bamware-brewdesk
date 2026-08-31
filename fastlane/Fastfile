@@ -56,6 +56,7 @@ platform :ios do
       sh("cd .. && swift scripts/compose_app_store_screenshots.swift #{locale}")
     end
 
+    sh("cd .. && python3 scripts/downscale_screenshots_65.py")
     sh("cd .. && ./scripts/assemble_submission.sh #{version}")
     UI.success("Submission pack: submission/#{version}/ — verify visually before deliver")
   end
