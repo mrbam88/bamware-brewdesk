@@ -11,6 +11,9 @@ DEST="submission/${VERSION}"
 mkdir -p "$DEST"/{screenshots,metadata,evidence}
 cp -R fastlane/screenshots/en-US "$DEST/screenshots/"
 cp -R fastlane/screenshots/es-ES "$DEST/screenshots/"
+mkdir -p "$DEST/screenshots/6.5"
+cp -R fastlane/screenshots/6.5/en-US "$DEST/screenshots/6.5/"
+cp -R fastlane/screenshots/6.5/es-ES "$DEST/screenshots/6.5/"
 cp -R fastlane/metadata/. "$DEST/metadata/"
 cp -R fastlane/review_information "$DEST/" 2>/dev/null || true
 
@@ -21,7 +24,8 @@ cat > "$DEST/README.md" <<MD
 Assembled $(date -u +%Y-%m-%dT%H:%M:%SZ) at commit ${GIT_SHA} by
 \`fastlane store_screenshots\`.
 
-- screenshots/ — composed 6.9" store set (1320×2868), en-US + es-ES,
+- screenshots/ — composed 6.9" store set (1320×2868) + derived 6.5" set
+  (1284×2778, screenshots/6.5/), en-US + es-ES,
   captured in LIGHT appearance from the Release build on iPhone 17 Pro Max
   with the store surface gated (matches the shipped binary).
 - metadata/ — listing text as submitted (source of truth: fastlane/metadata).
