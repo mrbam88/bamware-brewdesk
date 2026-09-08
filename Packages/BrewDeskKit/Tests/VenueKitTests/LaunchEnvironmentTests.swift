@@ -16,6 +16,7 @@ import Testing
         let environment = LaunchEnvironment(arguments: [])
         #expect(environment.scenario == nil)
         #expect(environment.locationDenied == false)
+        #expect(environment.locationUndetermined == false)
         #expect(environment.seedSnapshot == false)
         #expect(environment.skipGates == false)
         #expect(environment.noPhotos == false)
@@ -58,6 +59,11 @@ import Testing
     }
 
     // MARK: - Boolean flags
+
+    @Test func locationUndeterminedFlagParses() {
+        #expect(LaunchEnvironment(arguments: ["-UITestLocationUndetermined"]).locationUndetermined)
+        #expect(LaunchEnvironment(arguments: ["-UITestLocationUndetermined"]).locationDenied == false)
+    }
 
     @Test func locationDeniedFlagParses() {
         #expect(LaunchEnvironment(arguments: ["-UITestLocationDenied"]).locationDenied)

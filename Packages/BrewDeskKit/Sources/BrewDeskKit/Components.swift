@@ -289,6 +289,31 @@ struct LocationDeniedBanner: View {
     }
 }
 
+/// Shown when location permission has never been decided (`.notDetermined`)
+/// after the intro screen is gone (brewdesk#149). Before this banner the intro
+/// was the only place that ever asked, so "Use Union Square instead" — or a
+/// Settings reset to "Ask Next Time" — left no in-app way to turn location
+/// on. Same shape as `LocationDeniedBanner`; the button asks iOS directly.
+struct LocationUndeterminedBanner: View {
+    let requestAccess: @MainActor () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Label("Location is off — showing NYC.", systemImage: "location.slash")
+                .font(.caption.bold())
+            Spacer(minLength: 0)
+            Button("Use my location") { requestAccess() }
+                .font(.caption.bold())
+                .accessibilityIdentifier("location-request-access")
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 32)
+        .brewDeskGlass(in: Capsule())
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("location-undetermined-banner")
+    }
+}
+
 /// Honest banner for a viewport the engine only has OSM tier-0 data for
 /// (ve#46, bd#108) — shown whenever `VenuesModel.coverage == .baseline`.
 /// Never claims "verified"; the methodology link explains what "baseline"

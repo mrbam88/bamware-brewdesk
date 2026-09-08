@@ -19,6 +19,19 @@ private struct LocationDeniedKey: EnvironmentKey {
     static let defaultValue = false
 }
 
+/// True when the system has never been asked for location (`.notDetermined`)
+/// and the intro screen is behind us — e.g. the user chose "Use Union Square
+/// instead", or reset the permission in Settings to "Ask Next Time". Screens
+/// offer one in-app way to ask (brewdesk#149); `requestLocationAccess` is the
+/// action that asks. nil action = no affordance renders.
+private struct LocationUndeterminedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+private struct RequestLocationAccessKey: EnvironmentKey {
+    static let defaultValue: (@MainActor () -> Void)? = nil
+}
+
 extension EnvironmentValues {
     public var venuePhotoService: (any VenuePhotoServing)? {
         get { self[VenuePhotoServiceKey.self] }
@@ -33,5 +46,15 @@ extension EnvironmentValues {
     public var locationDenied: Bool {
         get { self[LocationDeniedKey.self] }
         set { self[LocationDeniedKey.self] = newValue }
+    }
+
+    public var locationUndetermined: Bool {
+        get { self[LocationUndeterminedKey.self] }
+        set { self[LocationUndeterminedKey.self] = newValue }
+    }
+
+    public var requestLocationAccess: (@MainActor () -> Void)? {
+        get { self[RequestLocationAccessKey.self] }
+        set { self[RequestLocationAccessKey.self] = newValue }
     }
 }
