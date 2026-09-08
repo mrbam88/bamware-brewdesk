@@ -5,6 +5,8 @@ import VenueKit
 public struct CafeMapScreen: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.locationDenied) private var locationDenied
+    @Environment(\.locationUndetermined) private var locationUndetermined
+    @Environment(\.requestLocationAccess) private var requestLocationAccess
     @Bindable private var model: VenuesModel
     @Bindable private var savedVenues: SavedVenuesStore
     @State private var selected: Venue?
@@ -429,6 +431,8 @@ public struct CafeMapScreen: View {
 
             if locationDenied {
                 LocationDeniedBanner()
+            } else if locationUndetermined, let requestLocationAccess {
+                LocationUndeterminedBanner(requestAccess: requestLocationAccess)
             }
         }
         .padding(.horizontal, 16)

@@ -170,7 +170,22 @@ final class DegradedStateTests: XCTestCase {
         XCTAssertTrue(element(app, "location-denied-banner").waitForExistence(timeout: wait))
         XCTAssertTrue(app.buttons["location-open-settings"].exists)
         // Content still renders: denied location is a banner, not a wall.
-        XCTAssertTrue(app.staticTexts["3 work spots"].waitForExistence(timeout: wait))
+        // (#37 rank-independence: the header count line's wording depends on
+        // whether dataset stats have loaded — assert the card and a pin.)
+        XCTAssertTrue(element(app, "map-header-card").waitForExistence(timeout: wait))
+        XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitForExistence(timeout: wait))
+    }
+
+    /// brewdesk#149: with the intro behind us and iOS never asked, the map
+    /// offers one button that asks; once granted the banner goes away.
+    @MainActor
+    func testMapLocationUndeterminedOffersRequestAndClears() {
+        let app = launch("fixtureOK", extra: ["-UITestLocationUndetermined"])
+        XCTAssertTrue(element(app, "location-undetermined-banner").waitForExistence(timeout: wait))
+        XCTAssertFalse(element(app, "location-denied-banner").exists)
+        XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitForExistence(timeout: wait))
+        app.buttons["location-request-access"].tap()
+        XCTAssertTrue(element(app, "location-undetermined-banner").waitForNonExistence(timeout: wait))
     }
 
     // MARK: - List (brewdesk#117: Nearby's list surface is gone — most of

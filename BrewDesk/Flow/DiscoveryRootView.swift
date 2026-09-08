@@ -72,6 +72,9 @@ struct DiscoveryRootView: View {
         // same fallback shape the rest of the app already uses for glass.
         .tint(BrewDeskPalette.roast)
         .environment(\.locationDenied, locationService.isDenied)
+        // brewdesk#149: past the intro, the map still offers one way to ask.
+        .environment(\.locationUndetermined, locationService.isUndetermined)
+        .environment(\.requestLocationAccess) { locationService.requestAccess() }
         // brewdesk#117: the You tab's About section reads its copy/URLs from
         // here instead of hardcoding them a second time.
         .environment(

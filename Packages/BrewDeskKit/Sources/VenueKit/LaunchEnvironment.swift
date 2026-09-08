@@ -24,6 +24,9 @@ public struct LaunchEnvironment: Sendable, Equatable {
     /// `-UITestLocationDenied` — pins `LocationService.authorizationStatus`
     /// to `.denied`.
     public let locationDenied: Bool
+    /// `-UITestLocationUndetermined` — pins `LocationService.authorizationStatus`
+    /// to `.notDetermined` until `requestAccess()` is called (brewdesk#149).
+    public let locationUndetermined: Bool
     /// `-UITestSeedSnapshot` — scenario launches opt in to the bundled
     /// first-paint snapshot (normal launches always load it).
     public let seedSnapshot: Bool
@@ -83,6 +86,7 @@ public struct LaunchEnvironment: Sendable, Equatable {
         }
         self.scenario = scenario
         locationDenied = arguments.contains("-UITestLocationDenied")
+        locationUndetermined = arguments.contains("-UITestLocationUndetermined")
         seedSnapshot = arguments.contains("-UITestSeedSnapshot")
         skipGates = arguments.contains("-UITestSkipGates")
         noPhotos = arguments.contains("-UITestNoPhotos")
