@@ -1,6 +1,6 @@
 Sabe por qué un café sirve para tu jornada — antes de pedir.
 
-BrewDesk está hecho para una sola cosa: trabajar desde cafés en Nueva York. Evalúa primero la política de portátiles (incluidos los cafés que los limitan o desaconsejan — mostrado abiertamente, nunca oculto), y después asientos, Wi-Fi, enchufes y ruido. Cada dato muestra su fuente, su confianza y la fecha de su última actualización. Las estimaciones quedan etiquetadas en lugar de fingir ser hechos.
+BrewDesk está hecho para una sola cosa: encontrar un lugar para trabajar — cafés, bibliotecas y parques — investigado a fondo en Nueva York, con cobertura básica en 50 áreas metropolitanas de EE. UU. Evalúa primero la política de portátiles (incluidos los cafés que los limitan o desaconsejan — mostrado abiertamente, nunca oculto), y después asientos, Wi-Fi, enchufes y ruido. Cada dato muestra su fuente, su confianza y la fecha de su última actualización. Las estimaciones quedan etiquetadas en lugar de fingir ser hechos.
 
 VE LA EVIDENCIA
 • Cada tarjeta lleva un sello de "actualizado" — cuándo se comprobó el dato y de dónde viene
@@ -11,13 +11,13 @@ HECHO PARA TRABAJAR CON PORTÁTIL
 • Política de portátiles por delante: permitido, con límite de tiempo, reglas de fin de semana o desaconsejado — fíltralo
 • Filtros de asientos y enchufes para trabajar de verdad
 • Wi-Fi valorado con honestidad: por encima de ~25 Mbps la velocidad extra deja de importar, y lo decimos
-• Más de 2.000 cafés de Nueva York con una puntuación Work Fit transparente
+• Más de 2.700 lugares de trabajo en Nueva York con una puntuación Work Fit transparente, más cobertura básica en 50 metrópolis de EE. UU.
 
 TRAE TUS PROPIOS LUGARES
 Importa tus lugares guardados de Google Maps (archivo Takeout) — emparejados en el dispositivo, nunca subidos.
 
 LA UBICACIÓN ES OPCIONAL
-Ordena los cafés cercanos con tu ubicación, o explora todo NYC sin concederla. ¿Fuera de Nueva York? Verás igualmente todos los datos. BrewDesk no guarda historial de ubicación.
+Ordena los lugares cercanos con tu ubicación, o explora todo NYC sin concederla. ¿Fuera de Nueva York? Verás lugares reales cerca de ti de nuestra cobertura básica, claramente marcados como datos básicos. BrewDesk no guarda historial de ubicación.
 
 GRATIS Y SIN CUENTA
 Sin cuenta, suscripción, publicidad, analítica ni rastreo.
