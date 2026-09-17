@@ -75,8 +75,10 @@ final class FilterUITests: XCTestCase {
         // zero cafes here); the laptop-hostile cafe drops out.
         XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitForExistence(timeout: wait),
                       "All filters selected emptied the list (brewdesk#77 regression)")
-        XCTAssertFalse(app.mapPin(named: "Fixture Corner Cafe").exists,
-                       "Laptop-discouraged cafe should not pass laptop-friendly")
+        // Wait for the filter to apply: asserting `.exists == false` the instant
+        // the last chip is tapped races the re-plan (brewdesk#166).
+        XCTAssertTrue(app.mapPin(named: "Fixture Corner Cafe").waitForNonExistence(timeout: wait),
+                      "Laptop-discouraged cafe should not pass laptop-friendly")
     }
 
     @MainActor
