@@ -158,8 +158,12 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
         })
     }
 
-    /// The proxy returns same-origin paths ("/v1/venues/…/media"); resolve
-    /// them against the active base URL so env switching keeps working.
+    /// Production returns Google's `photoUri` verbatim (host
+    /// `lh3.googleusercontent.com`), already absolute, so this is a no-op for
+    /// every real payload. The relative-path branch only resolves a
+    /// same-origin `/v1/venues/…/media` path if the engine ever sends one;
+    /// none do today (brewdesk#156). Kept so ScenarioVenueService fixtures
+    /// and future relative payloads still resolve against the active base URL.
     static func absolutePhotoURL(_ url: String, base: URL) -> String {
         guard url.hasPrefix("/") else { return url }
         return base.appendingPathComponent(url).absoluteString
