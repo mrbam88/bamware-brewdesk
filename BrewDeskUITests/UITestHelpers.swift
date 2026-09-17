@@ -30,6 +30,14 @@ extension XCUIApplication {
     fileprivate static func firstOnScreenMatch(in query: XCUIElementQuery, windowFrame: CGRect) -> XCUIElement? {
         for index in 0..<query.count {
             let candidate = query.element(boundBy: index)
+            // brewdesk#158: a result narrowing out from under this loop (a
+            // search debounce or a re-plan mid-iteration) can make `index`
+            // stale between the `query.count` read above and this element's
+            // resolution. `.exists` is the one property XCUITest guarantees
+            // never throws — it swallows exactly this race and reports
+            // `false` instead of the hard "Failed to get matching snapshot"
+            // failure that reading `.frame` on a gone element raises.
+            guard candidate.exists else { continue }
             let frame = candidate.frame
             if !frame.isEmpty, windowFrame.contains(CGPoint(x: frame.midX, y: frame.midY)) {
                 return candidate

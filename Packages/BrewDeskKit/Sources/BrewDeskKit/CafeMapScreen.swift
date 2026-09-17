@@ -19,6 +19,20 @@ public struct CafeMapScreen: View {
     /// annotation views instead of re-evaluating this body (brewdesk#54).
     @State private var visibleRegion: MKCoordinateRegion?
     @State private var replanTask: Task<Void, Never>?
+    /// True for the duration of a drag or pinch on the map (see the
+    /// `DragGesture`/`MagnifyGesture` handlers below) — brewdesk#158's
+    /// search-fit camera move must never fight a gesture the user's finger
+    /// is still driving.
+    ///
+    /// Held in a plain reference box, NOT as observed `@State` value: the
+    /// gesture `onChanged` handlers fire every frame of a pan, and the
+    /// brewdesk#54 invariant is that mid-gesture frames never invalidate this
+    /// body (each evaluation re-runs the annotation planner).
+    @State private var mapInteraction = MapInteractionFlag()
+    /// Debounced search→camera fit (brewdesk#158). Cancelled and
+    /// rescheduled on every keystroke; only the settled query moves the
+    /// camera.
+    @State private var searchFitTask: Task<Void, Never>?
     /// The shelf's resting detent (brewdesk#76). Changes once per settled
     /// drag — never per frame — so this body stays out of mid-gesture frames
     /// (the brewdesk#54 invariant). Mid-drag state lives in the card itself.
@@ -76,11 +90,19 @@ public struct CafeMapScreen: View {
                 }
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 1)
-                        .onEnded { _ in scheduleReplan(proxy: proxy, size: geometry.size) }
+                        .onChanged { _ in mapInteraction.isActive = true }
+                        .onEnded { _ in
+                            mapInteraction.isActive = false
+                            scheduleReplan(proxy: proxy, size: geometry.size)
+                        }
                 )
                 .simultaneousGesture(
                     MagnifyGesture()
-                        .onEnded { _ in scheduleReplan(proxy: proxy, size: geometry.size) }
+                        .onChanged { _ in mapInteraction.isActive = true }
+                        .onEnded { _ in
+                            mapInteraction.isActive = false
+                            scheduleReplan(proxy: proxy, size: geometry.size)
+                        }
                 )
                 // Built-in double-tap zoom has no drag or magnify phase.
                 .simultaneousGesture(
@@ -206,6 +228,12 @@ public struct CafeMapScreen: View {
         .onChange(of: selected) { _, newValue in
             if newValue != nil { detailDetent = .large }
         }
+        // brewdesk#158: a settled, non-empty search must move the camera to
+        // its results (critique finding 9 — a one-result search left the
+        // map showing an unrelated neighborhood with no pin in view).
+        .onChange(of: model.searchQuery) { _, newValue in
+            scheduleSearchFit(query: newValue)
+        }
         .onChange(of: model.centerLat) {
             position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
             visibleRegion = Self.region(lat: model.centerLat, lng: model.centerLng)
@@ -214,7 +242,87 @@ public struct CafeMapScreen: View {
             position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
             visibleRegion = Self.region(lat: model.centerLat, lng: model.centerLng)
         }
-        .onDisappear { replanTask?.cancel() }
+        .onDisappear {
+            replanTask?.cancel()
+            searchFitTask?.cancel()
+        }
+    }
+
+    // MARK: - Search-driven camera fit (brewdesk#158)
+
+    /// Cancels any pending fit and, for a non-empty query, schedules one
+    /// past `VenuesModel.scheduleSearchApplication`'s own ~200ms debounce
+    /// so `model.venues` already reflects the settled search by the time
+    /// this reads it. Clearing the query (or narrowing it to blank) simply
+    /// cancels — no move, camera stays put, matching the ticket's scope.
+    private func scheduleSearchFit(query: String) {
+        searchFitTask?.cancel()
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        searchFitTask = Task {
+            try? await Task.sleep(for: .milliseconds(260))
+            guard !Task.isCancelled else { return }
+            // Superseded by further typing, or the user is mid-gesture —
+            // never yank the camera out from under a drag/pinch in flight.
+            guard model.searchQuery == query, !mapInteraction.isActive else { return }
+            let results = model.venues
+            guard !results.isEmpty,
+                  let region = Self.searchFitRegion(for: results, mapHeight: mapHeight, shelfClearance: shelfClearance)
+            else { return }
+            // Programmatic move: the target region is already known, so
+            // re-plan pins for it directly rather than waiting on a camera
+            // settle (same pattern as the cluster-zoom handler above).
+            visibleRegion = region
+            if reduceMotion {
+                position = .region(region)
+            } else {
+                withAnimation(.snappy) { position = .region(region) }
+            }
+        }
+    }
+
+    /// The camera region that fits `results`: a single result centers at
+    /// neighborhood zoom (the same span `DiscoveryShelfCard`'s selection
+    /// callback uses); several results fit their bounding box with padding.
+    /// The fitted box is biased north by half of `shelfClearance`'s share of
+    /// `mapHeight` so a southerly result still lands above the shelf card
+    /// rather than behind it.
+    static func searchFitRegion(
+        for results: [Venue], mapHeight: CGFloat, shelfClearance: CGFloat
+    ) -> MKCoordinateRegion? {
+        guard let first = results.first else { return nil }
+        var minLat = first.lat, maxLat = first.lat
+        var minLng = first.lng, maxLng = first.lng
+        for venue in results.dropFirst() {
+            minLat = min(minLat, venue.lat)
+            maxLat = max(maxLat, venue.lat)
+            minLng = min(minLng, venue.lng)
+            maxLng = max(maxLng, venue.lng)
+        }
+
+        let neighborhoodZoomSpan = 0.012
+        let paddingMultiplier = 1.6
+        let paddedLatSpan = max((maxLat - minLat) * paddingMultiplier, neighborhoodZoomSpan)
+        let paddedLngSpan = max((maxLng - minLng) * paddingMultiplier, neighborhoodZoomSpan)
+
+        let shelfFraction: Double
+        if mapHeight > 0, shelfClearance > 0, shelfClearance < mapHeight {
+            shelfFraction = Double(shelfClearance / mapHeight)
+        } else {
+            shelfFraction = 0
+        }
+        let latitudeDelta = shelfFraction < 1 ? paddedLatSpan / (1 - shelfFraction) : paddedLatSpan
+        // Half the reserved gap shifts the geometric center south so the
+        // results — which stay at their true latitude — render in the
+        // northern (visible, non-shelf-covered) part of the map.
+        let latitudeShift = (shelfFraction / 2) * latitudeDelta
+
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(
+                latitude: (minLat + maxLat) / 2 - latitudeShift,
+                longitude: (minLng + maxLng) / 2
+            ),
+            span: MKCoordinateSpan(latitudeDelta: latitudeDelta, longitudeDelta: paddedLngSpan)
+        )
     }
 
     // MARK: - Camera-driven re-planning
@@ -526,4 +634,11 @@ public struct CafeMapScreen: View {
     private func coordinate(of venue: Venue) -> CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: venue.lat, longitude: venue.lng)
     }
+}
+
+/// Unobserved mutable flag for "a finger is driving the map right now"
+/// (brewdesk#158). A class so writing it never invalidates a SwiftUI body.
+@MainActor
+private final class MapInteractionFlag {
+    var isActive = false
 }
