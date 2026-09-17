@@ -9,13 +9,13 @@ final class BrewDeskUITests: XCTestCase {
         // brewdesk#117: exactly three tabs, identified by accessibility id
         // (not the localized label, since the label itself is also tested
         // in `testSpanishDiscoveryNavigation`).
-        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.tabBars.buttons["tab-saved"].exists)
-        XCTAssertTrue(app.tabBars.buttons["tab-you"].exists)
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.savedTab.exists)
+        XCTAssertTrue(app.youTab.exists)
 
         // You is now the account/About surface directly — no more Saved →
         // About push.
-        app.tabBars.buttons["tab-you"].tap()
+        app.youTab.tap()
         XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.staticTexts["BrewDesk"].exists)
 
@@ -115,8 +115,8 @@ final class BrewDeskUITests: XCTestCase {
         ]
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: 8))
-        app.tabBars.buttons["tab-spots"].tap()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: 8))
+        app.spotsTab.tap()
         // Ranked, live: open whichever café is on top and carry its name.
         let top = try XCTUnwrap(app.firstMapPin(), "Spots rendered no venue pins")
         top.pin.tap()
@@ -131,7 +131,7 @@ final class BrewDeskUITests: XCTestCase {
         app.dismissDetailSheet()
         XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: 5), "Spots did not survive the sheet dismiss")
 
-        let savedTab = app.tabBars.buttons["tab-saved"]
+        let savedTab = app.savedTab
         XCTAssertTrue(savedTab.waitForExistence(timeout: 3))
         savedTab.waitUntilHittable()
         savedTab.tap()
@@ -152,8 +152,8 @@ final class BrewDeskUITests: XCTestCase {
         app.launchArguments.append("-UITestSkipGates")
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: 8))
-        app.tabBars.buttons["tab-spots"].tap()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: 8))
+        app.spotsTab.tap()
         let top = try XCTUnwrap(app.firstMapPin(), "Spots rendered no venue pins")
         top.pin.tap()
         XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 3))
@@ -207,8 +207,8 @@ final class BrewDeskUITests: XCTestCase {
         ]
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: 8))
-        app.tabBars.buttons["tab-spots"].tap()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: 8))
+        app.spotsTab.tap()
         let top = try XCTUnwrap(app.firstMapPin(), "Spots rendered no venue pins")
         top.pin.tap()
         XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 3))

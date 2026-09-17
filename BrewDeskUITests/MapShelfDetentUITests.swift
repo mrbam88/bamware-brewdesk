@@ -164,10 +164,10 @@ final class MapShelfDetentUITests: XCTestCase {
         XCTAssertGreaterThan(settledShelfTop(app), height * 0.78, "shelf did not collapse to peek")
 
         // brewdesk#117: Nearby is gone — Saved is the round trip now.
-        XCTAssertTrue(app.tabBars.buttons["tab-saved"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["tab-saved"].tap()
+        XCTAssertTrue(app.savedTab.waitForExistence(timeout: wait))
+        app.savedTab.tap()
         XCTAssertTrue(app.navigationBars["Saved"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["tab-spots"].tap()
+        app.spotsTab.tap()
 
         XCTAssertTrue(shelf(app).waitForExistence(timeout: wait), "shelf missing after tab round trip")
         XCTAssertGreaterThan(
@@ -186,7 +186,7 @@ final class MapShelfDetentUITests: XCTestCase {
         for y: CGFloat in [0.98, 0.10, 0.65] {
             dragGrabber(app, toNormalizedY: y)
             XCTAssertTrue(
-                app.tabBars.buttons["tab-saved"].isHittable,
+                app.savedTab.isHittable,
                 "tab bar unreachable after dragging shelf toward y=\(y)"
             )
         }

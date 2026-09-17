@@ -36,8 +36,8 @@ final class ReportBlockUITests: XCTestCase {
     // sheet), not a Nearby-list push — Nearby no longer exists.
     @MainActor
     private func openFixtureRoastersDetail(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["tab-spots"].tap()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
+        app.spotsTab.tap()
         let pin = app.mapPin(named: "Fixture Roasters")
         XCTAssertTrue(pin.waitForExistence(timeout: wait))
         pin.tap()

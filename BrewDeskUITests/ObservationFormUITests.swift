@@ -34,8 +34,8 @@ final class ObservationFormUITests: XCTestCase {
     // that opens venue detail now (a sheet, not a list push).
     @MainActor
     private func openSpots(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["tab-spots"].tap()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
+        app.spotsTab.tap()
     }
 
     @MainActor
