@@ -1,7 +1,8 @@
 import Foundation
 
 /// What this launch was configured with — the one place every `-UITest*` /
-/// `-brewdesk.*` launch argument gets parsed (bd#101).
+/// `-brewdesk.*` launch argument (plus the one environment-variable seam,
+/// `isUITestHost`) gets parsed (bd#101).
 ///
 /// Before this type, 15 production sites each ran their own
 /// `ProcessInfo.processInfo.arguments` scan and picked their own
@@ -55,30 +56,44 @@ public struct LaunchEnvironment: Sendable, Equatable {
     /// pins the clock the venue-detail open-now badge is judged against.
     /// `nil` when absent or unparseable.
     public let fixedNow: Date?
+    /// True whenever this process was launched under XCTest — covers UI
+    /// test runs that pass no `-UITest*` flag at all, e.g. a real,
+    /// non-scenario functional test that exercises the production API
+    /// (`testSaveCafeFromDetails`). Xcode sets `XCTestConfigurationFilePath`
+    /// in the environment of every app-under-test process, host or UI
+    /// test alike; a production install never has it. `scenario == nil`
+    /// alone (the pre-existing seam most call sites use) is NOT sufficient
+    /// for a check that must hold for every automated run, this one
+    /// included (brewdesk#160's review prompt).
+    public let isUITestHost: Bool
 
     /// Every UI-test flag absent — the real-world default for every launch
     /// that isn't a UI test.
     public static let production = LaunchEnvironment(arguments: [])
 
     /// App-entry convenience ONLY. Reads `ProcessInfo.processInfo
-    /// .arguments` — the one production call site that does. Every other
-    /// module takes a `LaunchEnvironment` value instead of calling this.
+    /// .arguments`/`.environment` — the one production call site that
+    /// does. Every other module takes a `LaunchEnvironment` value instead
+    /// of calling this.
     public static var current: LaunchEnvironment {
-        LaunchEnvironment(arguments: ProcessInfo.processInfo.arguments)
+        LaunchEnvironment(
+            arguments: ProcessInfo.processInfo.arguments,
+            environmentVariables: ProcessInfo.processInfo.environment
+        )
     }
 
     /// Unknown `-UITestScenario` names `assertionFailure` (a no-op outside
     /// Debug — see the stdlib's `assertionFailure`) so a typo in a UI test
     /// launch argument is caught in development rather than silently
     /// falling back to the live rail.
-    public init(arguments: [String]) {
-        self.init(arguments: arguments, assertOnUnknownScenario: true)
+    public init(arguments: [String], environmentVariables: [String: String] = [:]) {
+        self.init(arguments: arguments, environmentVariables: environmentVariables, assertOnUnknownScenario: true)
     }
 
     /// Non-asserting variant so tests can exercise the "unknown scenario
     /// name → nil" contract without tripping `assertionFailure` in a
     /// Debug-configured test host.
-    init(arguments: [String], assertOnUnknownScenario: Bool) {
+    init(arguments: [String], environmentVariables: [String: String] = [:], assertOnUnknownScenario: Bool) {
         let scenarioName = Self.value(after: "-UITestScenario", in: arguments)
         let scenario = scenarioName.flatMap(ScenarioVenueService.Scenario.init(rawValue:))
         if let scenarioName, scenario == nil, assertOnUnknownScenario {
@@ -99,6 +114,7 @@ public struct LaunchEnvironment: Sendable, Equatable {
             .flatMap(Self.parseOldStylePlistArray)
         fixedNow = Self.value(after: "-brewdesk.uitest-fixed-now", in: arguments)
             .flatMap(Self.parseFixedNow)
+        isUITestHost = environmentVariables["XCTestConfigurationFilePath"] != nil
     }
 
     /// The token immediately following `flag`, if any — the `-key value`

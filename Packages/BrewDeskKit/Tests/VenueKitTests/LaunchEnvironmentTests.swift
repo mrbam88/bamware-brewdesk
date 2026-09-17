@@ -25,6 +25,7 @@ import Testing
         #expect(environment.storeSurfaceGatedOverride == false)
         #expect(environment.savedVenueIDs == nil)
         #expect(environment.fixedNow == nil)
+        #expect(environment.isUITestHost == false)
     }
 
     @Test func productionConstantMatchesEmptyArguments() {
@@ -163,6 +164,20 @@ import Testing
             arguments: ["-brewdesk.uitest-fixed-now", "not-a-date"]
         )
         #expect(environment.fixedNow == nil)
+    }
+
+    // MARK: - UI test host (XCTestConfigurationFilePath, brewdesk#160)
+
+    @Test func xcTestConfigurationEnvVarMarksUITestHost() {
+        let environment = LaunchEnvironment(
+            arguments: [],
+            environmentVariables: ["XCTestConfigurationFilePath": "/tmp/whatever.xctestconfiguration"]
+        )
+        #expect(environment.isUITestHost)
+    }
+
+    @Test func noEnvironmentVariablesIsNotAUITestHost() {
+        #expect(LaunchEnvironment(arguments: []).isUITestHost == false)
     }
 
     // MARK: - Order independence
