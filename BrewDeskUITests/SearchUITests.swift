@@ -138,10 +138,74 @@ final class SearchUITests: XCTestCase {
 
         field.tap()
         XCTAssertEqual(app.keyboards.count, 1, "keyboard did not return on refocus")
-        let doneButton = app.descendants(matching: .any)["search-done"].firstMatch
-        XCTAssertTrue(doneButton.waitForExistence(timeout: wait), "keyboard Done button missing")
-        doneButton.tap()
-        XCTAssertEqual(app.keyboards.count, 0, "Done button did not dismiss the keyboard")
-        XCTAssertEqual(field.value as? String, "Gre", "Done dismiss must keep the typed text")
+        // brewdesk#158: the app ships a "Cancel" trailing control while the
+        // search field has focus (`search-cancel`, `CafeMapScreen.swift`'s
+        // `searchHeader`) — there is no separate keyboard "Done" button, and
+        // this identifier was stale (never shipped as `search-done`).
+        let cancelButton = app.descendants(matching: .any)["search-cancel"].firstMatch
+        XCTAssertTrue(cancelButton.waitForExistence(timeout: wait), "search Cancel control missing")
+        cancelButton.tap()
+        XCTAssertEqual(app.keyboards.count, 0, "Cancel did not dismiss the keyboard")
+        XCTAssertEqual(field.value as? String, "Gre", "Cancel dismiss must keep the typed text")
+    }
+
+    /// brewdesk#158 — search moves the camera to its results (critique
+    /// finding 9: a one-result search left the map showing an unrelated
+    /// neighborhood with no pin in view).
+    ///
+    /// `mapPin(named:)` alone can't prove this: "Fixture Roasters" matches
+    /// its predicate twice at once — the shelf's horizontal rail card
+    /// (`DiscoveryShelfCard`, always on screen and never filtered by
+    /// viewport — see its `model.venues.prefix(12)` rail) *and* the real
+    /// MapKit annotation, and `mapPin(named:)` deliberately treats either as
+    /// "on screen" (its doc comment in `UITestHelpers.swift`). So instead
+    /// this counts raw matches: 2 means both the shelf card and the map pin
+    /// exist, 1 means only the shelf card does (the map pin was culled off
+    /// the current viewport — see `MapAnnotationPlanner`). Every fixture
+    /// venue already sits inside the default launch camera (see the other
+    /// tests above, which never pan first), so this pans away first to
+    /// drive the count to 1, then searches and asserts it returns to 2 —
+    /// only possible if the search itself moved the camera back onto the
+    /// result.
+    @MainActor
+    func testSearchMovesCameraToOffScreenResult() throws {
+        let app = launchSpots()
+
+        func matchCount() -> Int {
+            app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Roasters,")).count
+        }
+        func poll(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+            let deadline = Date().addingTimeInterval(timeout)
+            repeat {
+                if condition() { return true }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            } while Date() < deadline
+            return condition()
+        }
+
+        XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitForExistence(timeout: wait))
+
+        // Pan far away, staying clear of the header (top) and shelf card
+        // (bottom half at the default medium detent — same clear zone
+        // `testSearchKeyboardDismissesOnMapTapAndDone` taps), and let the
+        // settle-driven re-plan (brewdesk#157) cull the pin.
+        let window = app.windows.firstMatch
+        let panStart = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.42))
+        let panEnd = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.20))
+        for _ in 0..<10 {
+            panStart.press(forDuration: 0.05, thenDragTo: panEnd)
+        }
+        XCTAssertTrue(poll(timeout: wait) { matchCount() == 1 },
+                      "panning away did not cull the map pin (got \(matchCount()) matches, want 1 — shelf card only)")
+
+        let field = searchField(app)
+        field.tap()
+        field.typeText("Roasters")
+
+        XCTAssertTrue(poll(timeout: wait) { matchCount() == 2 },
+                      "search did not bring the map pin back onto the panned-away viewport " +
+                      "(got \(matchCount()) matches, want 2 — shelf card + map pin)")
+        XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitUntilHittable(timeout: wait),
+                      "search-centered result pin is not hittable")
     }
 }
