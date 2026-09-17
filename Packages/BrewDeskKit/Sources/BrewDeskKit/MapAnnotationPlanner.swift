@@ -9,8 +9,16 @@ public struct VenueCluster: Identifiable, Hashable, Sendable {
     public let latitude: Double
     public let longitude: Double
     public let count: Int
-    /// Highest Work Fit inside the cell — lets styling stay score-forward.
+    /// Highest Work Fit among the cell's OBSERVED venues (bd#159) — a
+    /// venue with no real evidence never sets this, so a cell of entirely
+    /// unobserved venues can't paint itself with a fabricated tier color.
+    /// Meaningless when `hasObservedVenue` is false; callers must check
+    /// that first.
     public let bestScore: Int
+    /// True when at least one venue in the cell is observed. Drives whether
+    /// the cluster pill tints by `bestScore` or renders the neutral
+    /// "not checked yet" treatment (bd#159).
+    public let hasObservedVenue: Bool
 
     public var coordinate: CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
@@ -130,16 +138,21 @@ public enum MapAnnotationPlanner {
     /// cell's centroid. Deterministic output order (by id).
     public static func clusters(for venues: [Venue], spanLongitude: Double) -> [VenueCluster] {
         let cell = clusterCellDegrees(spanLongitude: spanLongitude)
-        var buckets: [String: (latSum: Double, lngSum: Double, count: Int, bestScore: Int)] = [:]
+        var buckets: [String: (latSum: Double, lngSum: Double, count: Int, bestScore: Int, hasObserved: Bool)] = [:]
         for venue in venues {
             let latIndex = Int((venue.lat / cell).rounded(.down))
             let lngIndex = Int((venue.lng / cell).rounded(.down))
             let key = "cluster-\(latIndex)-\(lngIndex)-\(Int(log2(cell).rounded()))"
-            var bucket = buckets[key] ?? (0, 0, 0, 0)
+            var bucket = buckets[key] ?? (0, 0, 0, 0, false)
             bucket.latSum += venue.lat
             bucket.lngSum += venue.lng
             bucket.count += 1
-            bucket.bestScore = max(bucket.bestScore, venue.workScore)
+            // Unobserved venues never vote for `bestScore` (bd#159) — a
+            // cell can't paint itself with a fabricated tier color.
+            if venue.isObserved {
+                bucket.bestScore = bucket.hasObserved ? max(bucket.bestScore, venue.workScore) : venue.workScore
+                bucket.hasObserved = true
+            }
             buckets[key] = bucket
         }
         return buckets
@@ -149,7 +162,8 @@ public enum MapAnnotationPlanner {
                     latitude: bucket.latSum / Double(bucket.count),
                     longitude: bucket.lngSum / Double(bucket.count),
                     count: bucket.count,
-                    bestScore: bucket.bestScore
+                    bestScore: bucket.bestScore,
+                    hasObservedVenue: bucket.hasObserved
                 )
             }
             .sorted { $0.id < $1.id }

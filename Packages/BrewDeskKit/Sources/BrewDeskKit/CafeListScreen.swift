@@ -134,7 +134,7 @@ struct VenueRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ScoreBadge(score: venue.workScore)
+            ScoreBadge(venue: venue)
             VStack(alignment: .leading, spacing: 3) {
                 Text(venue.name)
                     .font(.headline)
@@ -173,10 +173,17 @@ struct VenueRow: View {
         .padding(.vertical, 6)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(venue.name), Work Fit \(venue.workScore), \(venue.neighborhood), " +
+            "\(venue.name), \(scoreAccessibilityPhrase), \(venue.neighborhood), " +
             "Wi-Fi \(localizedAttributeValue(venue.attributes.wifi.value)), " +
             "outlets \(localizedAttributeValue(venue.attributes.outlets.value))"
         )
+    }
+
+    /// "Work Fit 84" when the venue has real evidence, "not checked yet"
+    /// when `workScore` is the engine's flat neutral fallback (bd#159) —
+    /// VoiceOver must never read that neutral number as a score.
+    private var scoreAccessibilityPhrase: String {
+        venue.isObserved ? "Work Fit \(venue.workScore)" : "not checked yet"
     }
 
     /// Laptop hostility is shown openly, never hidden: red "No laptops" for

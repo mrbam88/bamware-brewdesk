@@ -63,6 +63,12 @@ public enum BrewDeskPalette {
     /// Replaces the old teal `ocean` (unused after the tier re-map onto
     /// green→sage→sand→destructive).
     public static let sand = hex(secondaryRamp[2])
+    /// Neutral grey fill for a venue with no Work Fit evidence (bd#159):
+    /// deliberately outside the great/good/mixed/weak tier ramp and never
+    /// red or green, so "not checked yet" can never be misread as a score
+    /// (founder is red-green colorblind). Static, like the tier fills — it
+    /// sits behind fixed white badge/pin text in both appearances.
+    public static let unobserved = Color(red: 0.58, green: 0.58, blue: 0.60)
     /// Muted secondary-text tone (light mode only; dark mode is
     /// `secondaryText` below — "sand becomes text-secondary" in dark).
     /// Between ramp steps 2 and 3: step 3 alone (`#897746`) undershoots

@@ -248,6 +248,22 @@ public struct CafeMapScreen: View {
         }
     }
 
+    // MARK: - Spoken labels (brewdesk#159)
+
+    /// Pin label contract: "<name>, <score phrase>, <neighborhood>". UI tests
+    /// match on the "<name>," prefix; VoiceOver must never read the engine's
+    /// neutral fallback number for a venue nobody has checked.
+    static func pinLabel(for venue: Venue) -> String {
+        let score = venue.isObserved ? "Work Fit \(venue.workScore)" : "not checked yet"
+        return "\(venue.name), \(score), \(venue.neighborhood)"
+    }
+
+    static func clusterLabel(for cluster: VenueCluster) -> String {
+        cluster.hasObservedVenue
+            ? "\(cluster.count) venues, best Work Fit \(cluster.bestScore)"
+            : "\(cluster.count) venues, not checked yet"
+    }
+
     // MARK: - Search-driven camera fit (brewdesk#158)
 
     /// Cancels any pending fit and, for a non-empty query, schedules one
@@ -417,7 +433,7 @@ public struct CafeMapScreen: View {
             VenueScorePin(venue: venue, isSelected: isSelected)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(venue.name), Work Fit \(venue.workScore), \(venue.neighborhood)")
+        .accessibilityLabel(Self.pinLabel(for: venue))
         .accessibilityValue(isSelected ? "Selected" : "Not selected")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -429,7 +445,7 @@ public struct CafeMapScreen: View {
             VenueScoreDot(venue: venue)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(venue.name), Work Fit \(venue.workScore), \(venue.neighborhood)")
+        .accessibilityLabel(Self.pinLabel(for: venue))
     }
 
     /// Tapping a cluster zooms one representation step in on it.
@@ -457,7 +473,7 @@ public struct CafeMapScreen: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("map-cluster")
-        .accessibilityLabel("\(cluster.count) venues, best Work Fit \(cluster.bestScore)")
+        .accessibilityLabel(Self.clusterLabel(for: cluster))
         .accessibilityHint("Zooms in to show them")
     }
 

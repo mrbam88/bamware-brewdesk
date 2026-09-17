@@ -28,8 +28,11 @@ public final class VenuesModel {
     /// What the UI shows: the loaded list with the active filters and search
     /// applied. Inclusive filter semantics live in `VenueFilter` (brewdesk#77);
     /// debounced type-to-search matching lives in `VenueSearch` (brewdesk#78).
+    /// Ordering last: `VenueOrdering` stably partitions observed venues
+    /// before unobserved ones, so a search's match rank still wins inside
+    /// each group (brewdesk#159).
     public var venues: [Venue] {
-        VenueSearch.apply(activeSearchText, to: filter.apply(to: loadedVenues))
+        VenueOrdering.observedFirst(VenueSearch.apply(activeSearchText, to: filter.apply(to: loadedVenues)))
     }
 
     private var filter: VenueFilter {

@@ -17,17 +17,30 @@ extension ScoreTier {
     }
 }
 
+/// Score-or-"not checked yet" badge (bd#159). Takes the venue rather than a
+/// bare score so it can render the honest neutral state on its own —
+/// `!venue.isObserved` means `venue.workScore` is the engine's flat neutral
+/// fallback (ve#64), not a measurement, and must never be printed as if it
+/// were one. The neutral state uses a grey fill, never red/green (founder
+/// is red-green colorblind), and VoiceOver never reads the number.
 struct ScoreBadge: View {
-    let score: Int
+    let venue: Venue
 
     var body: some View {
-        Text("\(score)")
-            .font(BrewDeskFont.label(.subheadline))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(ScoreTier(score: score).color, in: Capsule())
-            .accessibilityLabel("Work Fit \(score) out of 100")
+        Group {
+            if venue.isObserved {
+                Text("\(venue.workScore)")
+                    .accessibilityLabel("Work Fit \(venue.workScore) out of 100")
+            } else {
+                Text("Not checked yet")
+                    .accessibilityLabel("Not checked yet")
+            }
+        }
+        .font(BrewDeskFont.label(.subheadline))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(venue.isObserved ? ScoreTier(score: venue.workScore).color : BrewDeskPalette.unobserved, in: Capsule())
     }
 }
 

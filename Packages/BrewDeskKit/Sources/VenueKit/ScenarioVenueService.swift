@@ -104,6 +104,21 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             workScore: 52,
             laptopPolicy: "discouraged",
             venueType: "cafe"
+        ),
+        // bd#159: every claim is an `estimate` — `Venue.isObserved` is
+        // false, so this venue must render "Not checked yet" everywhere
+        // instead of `workScore`, and sort after the three venues above in
+        // `model.venues`. `workScore` (52) matches the neutral fallback
+        // ve#64 actually returns for unobserved NYC venues, on purpose —
+        // it's the same number Roasters/Reading Room/Corner Cafe could
+        // never legitimately show as their OWN measured score. Seating
+        // stays "some" like the other fixtures so the honest-zero filter
+        // test (`FilterUITests`) still empties out at a "Plenty" floor.
+        unobservedFixtureVenue(
+            id: "fixture-unchecked",
+            name: "Fixture Unchecked Spot",
+            lat: 40.7368, lng: -73.9852,
+            neighborhood: "Union Square"
         )
     ]
 
@@ -148,7 +163,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
 
     public static let fixtureHealth = HealthResponse(
         ok: true,
-        venueCount: 3,
+        venueCount: fixtureVenues.count,
         seededAt: "2026-08-01T00:00:00Z",
         observationCount: 9
     )
@@ -369,6 +384,45 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             website: website,
             phone: phone,
             email: email
+        )
+    }
+
+    /// bd#159 fixture venue: every scored claim is `source: "estimate"`, so
+    /// `Venue.isObserved` is false — the deterministic stand-in for a venue
+    /// the engine has never actually checked, as opposed to `baselineVenue`
+    /// below (OSM-sourced, still counts as observed at confidence 0.4).
+    private static func unobservedFixtureVenue(
+        id: String,
+        name: String,
+        lat: Double,
+        lng: Double,
+        neighborhood: String
+    ) -> Venue {
+        let observedAt = "2026-08-01T00:00:00Z"
+        return Venue(
+            id: id,
+            name: name,
+            lat: lat,
+            lng: lng,
+            address: "1 Fixture Place",
+            neighborhood: neighborhood,
+            borough: "Manhattan",
+            hoursRaw: nil,
+            vertical: "cafe",
+            attributes: VenueAttributes(
+                wifi: Claim(value: "unknown", source: "estimate", confidence: 0.3, observedAt: observedAt),
+                outlets: Claim(value: "unknown", source: "estimate", confidence: 0.3, observedAt: observedAt),
+                laptopPolicy: Claim(value: "unrestricted", source: "estimate", confidence: 0.3, observedAt: observedAt),
+                noise: Claim(value: "unknown", source: "estimate", confidence: 0.3, observedAt: observedAt),
+                // Matches the other fixtures' "some" so a "Plenty" seating
+                // floor still empties the list honestly (`FilterUITests`).
+                seating: Claim(value: "some", source: "estimate", confidence: 0.3, observedAt: observedAt)
+            ),
+            vibeTags: ["fixture"],
+            workScore: 52,
+            lastVerified: nil,
+            distanceM: 260,
+            venueType: "cafe"
         )
     }
 
