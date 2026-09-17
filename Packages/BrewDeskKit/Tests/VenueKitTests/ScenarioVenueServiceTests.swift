@@ -10,8 +10,8 @@ import Testing
         let service = ScenarioVenueService(scenario: .fixtureOK)
 
         let venues = try await service.fetchVenues(query)
-        #expect(venues.map(\.id) == ["fixture-roasters", "fixture-library", "fixture-corner"])
-        #expect(try await service.fetchHealth()?.venueCount == 3)
+        #expect(venues.map(\.id) == ["fixture-roasters", "fixture-library", "fixture-corner", "fixture-unchecked"])
+        #expect(try await service.fetchHealth()?.venueCount == 4)
         #expect(try await service.fetchVenue(id: "fixture-library").name == "Fixture Reading Room")
 
         let photos = try await service.fetchPhotos(venueId: "fixture-roasters")
@@ -27,7 +27,7 @@ import Testing
 
         // Venue + health paths behave like fixtureOK.
         let venues = try await service.fetchVenues(query)
-        #expect(venues.map(\.id) == ["fixture-roasters", "fixture-library", "fixture-corner"])
+        #expect(venues.map(\.id) == ["fixture-roasters", "fixture-library", "fixture-corner", "fixture-unchecked"])
         #expect(try await service.fetchHealth()?.ok == true)
         #expect(try await service.fetchVenue(id: "fixture-roasters").name == "Fixture Roasters")
 
@@ -47,12 +47,25 @@ import Testing
     }
 
     @Test func fixturesCarryHumanProvenanceAndRoundTrip() throws {
-        for venue in ScenarioVenueService.fixtureVenues {
+        // bd#159: "fixture-unchecked" is deliberately all-`estimate` — the
+        // one fixture venue with no human/curated provenance behind it.
+        for venue in ScenarioVenueService.fixtureVenues where venue.id != "fixture-unchecked" {
             #expect(venue.attributes.wifi.source == "curated")
             #expect(venue.attributes.wifi.observedAt.count >= 10)
             let data = try JSONEncoder().encode(venue)
             #expect(try JSONDecoder().decode(Venue.self, from: data) == venue)
         }
+    }
+
+    /// bd#159: `fixture-unchecked` is the one venue whose claims are all
+    /// `estimate` — `isObserved` must be false, and it must still round-trip
+    /// through Codable like every other fixture.
+    @Test func unobservedFixtureIsNotObservedAndRoundTrips() throws {
+        let venue = try #require(ScenarioVenueService.fixtureVenues.first { $0.id == "fixture-unchecked" })
+        #expect(venue.isObserved == false)
+        #expect(venue.attributes.wifi.isEstimate)
+        let data = try JSONEncoder().encode(venue)
+        #expect(try JSONDecoder().decode(Venue.self, from: data) == venue)
     }
 
     @Test func engineDownThrowsHTTP500Everywhere() async {
@@ -72,8 +85,8 @@ import Testing
     @Test func offlineThenRecoversFailsExactlyOnce() async throws {
         let service = ScenarioVenueService(scenario: .offlineThenRecovers)
         await #expect(throws: URLError(.notConnectedToInternet)) { try await service.fetchVenues(query) }
-        #expect(try await service.fetchVenues(query).count == 3)
-        #expect(try await service.fetchVenues(query).count == 3)
+        #expect(try await service.fetchVenues(query).count == 4)
+        #expect(try await service.fetchVenues(query).count == 4)
         #expect(try await service.fetchHealth()?.ok == true)
         // A fresh instance starts over — the counter is per service, not global.
         await #expect(throws: URLError(.notConnectedToInternet)) {
@@ -89,11 +102,11 @@ import Testing
 
     @Test func photoScenariosLeaveVenuesHealthy() async throws {
         let empty = ScenarioVenueService(scenario: .photosEmpty)
-        #expect(try await empty.fetchVenues(query).count == 3)
+        #expect(try await empty.fetchVenues(query).count == 4)
         #expect(try await empty.fetchPhotos(venueId: "fixture-roasters").isEmpty)
 
         let failing = ScenarioVenueService(scenario: .photosFail)
-        #expect(try await failing.fetchVenues(query).count == 3)
+        #expect(try await failing.fetchVenues(query).count == 4)
         await #expect(throws: VenueAPIError.http(statusCode: 500)) {
             try await failing.fetchPhotos(venueId: "fixture-roasters")
         }

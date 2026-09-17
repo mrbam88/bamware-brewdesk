@@ -211,13 +211,17 @@ public struct VenueDetailScreen: View {
 
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
-                    ScoreBadge(score: venue.workScore)
+                    ScoreBadge(venue: venue)
                     locationSummary
                 }
                 VStack(alignment: .leading, spacing: 10) {
-                    ScoreBadge(score: venue.workScore)
+                    ScoreBadge(venue: venue)
                     locationSummary
                 }
+            }
+
+            if !venue.isObserved {
+                unobservedExplanation
             }
 
             if !venue.vibeTags.isEmpty {
@@ -245,6 +249,26 @@ public struct VenueDetailScreen: View {
                 .stroke(BrewDeskPalette.espresso.opacity(0.08), lineWidth: 1)
         )
         .accessibilityElement(children: .contain)
+    }
+
+    /// One-line honesty note for a venue with no real evidence behind its
+    /// score (bd#159): `workScore` is the engine's flat neutral fallback
+    /// (ve#64), not a measurement. The "Been here? Rate it." half only
+    /// appears when the store surface isn't gated (bd#67) — same gate as
+    /// `ObservationFormEntrySection` below, which is where that rating
+    /// actually happens; this line just points at it, it does not add a
+    /// second entry point.
+    private var unobservedExplanation: some View {
+        Text(unobservedExplanationText)
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .accessibilityIdentifier("unobserved-explanation")
+    }
+
+    private var unobservedExplanationText: String {
+        let notChecked = String(localized: "We haven't checked this one yet.")
+        guard !StoreSurface.isGated else { return notChecked }
+        return notChecked + " " + String(localized: "Been here? Rate it.")
     }
 
     private var locationSummary: some View {

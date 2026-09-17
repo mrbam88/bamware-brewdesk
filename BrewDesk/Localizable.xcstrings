@@ -145,6 +145,16 @@
         }
       }
     },
+    "Been here? Rate it.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Estuviste aquí? Califícalo."
+          }
+        }
+      }
+    },
     "Bookmark a spot from Explore or Nearby to keep it here.": {
       "extractionState": "stale",
       "localizations": {
@@ -860,6 +870,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ruido"
+          }
+        }
+      }
+    },
+    "Not checked yet": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aún no revisado"
           }
         }
       }
@@ -1687,6 +1707,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "TRABAJA SIN ADIVINAR"
+          }
+        }
+      }
+    },
+    "We haven't checked this one yet.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todavía no hemos revisado este lugar."
           }
         }
       }

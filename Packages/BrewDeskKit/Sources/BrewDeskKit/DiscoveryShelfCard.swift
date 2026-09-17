@@ -325,7 +325,7 @@ struct DiscoveryShelfCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            "\(venue.name), Work Fit \(venue.workScore), \(venue.neighborhood)"
+            "\(venue.name), \(venue.isObserved ? "Work Fit \(venue.workScore)" : "not checked yet"), \(venue.neighborhood)"
         )
     }
 
@@ -336,19 +336,33 @@ struct DiscoveryShelfCard: View {
     private func venueCard(_ venue: Venue, fillsWidth: Bool) -> some View {
         HStack(spacing: 12) {
             VStack(spacing: 3) {
-                Text("\(venue.workScore)")
-                    .font(.title2.monospacedDigit().bold())
-                Text("WORK FIT")
-                    .font(.caption2.weight(.heavy))
-                    .tracking(0.5)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                if venue.isObserved {
+                    Text("\(venue.workScore)")
+                        .font(.title2.monospacedDigit().bold())
+                    Text("WORK FIT")
+                        .font(.caption2.weight(.heavy))
+                        .tracking(0.5)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                } else {
+                    // Not a score — the engine's flat neutral fallback
+                    // (ve#64) with no real evidence behind it (bd#159).
+                    Text("Not checked yet")
+                        .font(.caption2.weight(.heavy))
+                        .tracking(0.5)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.7)
+                        .multilineTextAlignment(.center)
+                }
             }
-            .foregroundStyle(venue.scoreTier.color)
+            .foregroundStyle(venue.isObserved ? venue.scoreTier.color : BrewDeskPalette.unobserved)
             .padding(.horizontal, 8)
             .padding(.vertical, 12)
             .frame(minWidth: scoreTileMinWidth, minHeight: scoreTileMinHeight)
-            .background(venue.scoreTier.color.opacity(0.14), in: RoundedRectangle(cornerRadius: 14))
+            .background(
+                (venue.isObserved ? venue.scoreTier.color : BrewDeskPalette.unobserved).opacity(0.14),
+                in: RoundedRectangle(cornerRadius: 14)
+            )
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(venue.name)

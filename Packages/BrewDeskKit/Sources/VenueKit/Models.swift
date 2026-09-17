@@ -160,6 +160,33 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
     /// rather than curated/researched sources (ve#46). Drives the
     /// `ProvenanceStamp` "OSM baseline · updated <date>" wording (bd#108).
     public var isOSMBaseline: Bool { tier == "osm-baseline" }
+
+    /// True when at least one scored claim (Wi-Fi, outlets, laptop policy,
+    /// noise, seating) is not an `estimate` and carries confidence ≥ 0.4.
+    /// Mirrors bamware-venue-engine ve#64 ("Stop 0.3-confidence estimates
+    /// from driving Work Fit"): the engine now treats `estimate` claims and
+    /// anything under 0.4 confidence as not counting toward the score, so
+    /// every venue with no real evidence lands on the same flat neutral
+    /// `workScore` (52 in NYC, 50–55 on OSM-baseline metros). `false` here
+    /// means `workScore` is that neutral fallback, not a measurement — the
+    /// UI must show "Not checked yet" instead of the number (bd#159).
+    ///
+    /// This is a client-side approximation of the engine's own rule; if the
+    /// engine ships an explicit field for this, prefer it and keep this
+    /// computation as the fallback for older payloads.
+    public var isObserved: Bool {
+        let scoredClaims: [Claim?] = [
+            attributes.laptopPolicy,
+            attributes.seating,
+            attributes.wifi,
+            attributes.outlets,
+            attributes.noise,
+        ]
+        return scoredClaims.contains { claim in
+            guard let claim else { return false }
+            return !claim.isEstimate && claim.confidence >= 0.4
+        }
+    }
 }
 
 /// A response's coverage for the queried viewport (ve#46, bd#108):

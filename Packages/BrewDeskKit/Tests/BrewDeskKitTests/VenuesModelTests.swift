@@ -49,7 +49,7 @@ import VenueKit
         try await api.waitForRequest(key: "any")
 
         #expect(model.phase == .loading)
-        #expect(model.venues.count == 3)
+        #expect(model.venues.count == 4)
         #expect(model.isShowingSnapshot)
         #expect(model.snapshotBanner == .loading)
 
@@ -69,7 +69,7 @@ import VenueKit
         guard case .failed = model.phase else {
             Issue.record("expected .failed, got \(model.phase)"); return
         }
-        #expect(model.venues.count == 3)
+        #expect(model.venues.count == 4)
         #expect(model.isShowingSnapshot)
         #expect(model.snapshotBanner == .offline)
     }
@@ -104,7 +104,7 @@ import VenueKit
         await model.load(model.request)
         #expect(model.phase == .loaded)
         #expect(model.snapshotBanner == nil)
-        #expect(model.venues.map(\.id) == ["fixture-roasters", "fixture-library", "fixture-corner"])
+        #expect(model.venues.map(\.id) == ["fixture-roasters", "fixture-library", "fixture-corner", "fixture-unchecked"])
     }
 
     @Test func withoutASnapshotColdStartIsUnchanged() async throws {

@@ -73,6 +73,109 @@ import Testing
     }
 }
 
+/// `Venue.isObserved` (bd#159): mirrors bamware-venue-engine ve#64 — a venue
+/// counts as observed only when at least one scored claim (wifi, outlets,
+/// laptopPolicy, noise, seating) is not an `estimate` and has confidence
+/// ≥ 0.4. Everything else (estimate-only, low-confidence-only) is the
+/// engine's flat neutral fallback score, not a measurement.
+@Suite struct VenueIsObservedTests {
+    private static let observedAt = "2026-08-01T00:00:00Z"
+
+    private static func claim(value: String = "fast", source: String, confidence: Double) -> Claim {
+        Claim(value: value, source: source, confidence: confidence, observedAt: observedAt)
+    }
+
+    private static func venue(
+        wifi: Claim,
+        outlets: Claim? = nil,
+        laptopPolicy: Claim? = nil,
+        noise: Claim? = nil,
+        seating: Claim? = nil
+    ) -> Venue {
+        let fallback = claim(source: "estimate", confidence: 0.2)
+        return Venue(
+            id: "v",
+            name: "Test Venue",
+            lat: 40.7,
+            lng: -74.0,
+            address: nil,
+            neighborhood: "SoHo",
+            borough: "Manhattan",
+            hoursRaw: nil,
+            vertical: "cafe",
+            attributes: VenueAttributes(
+                wifi: wifi,
+                outlets: outlets ?? fallback,
+                laptopPolicy: laptopPolicy ?? fallback,
+                noise: noise ?? fallback,
+                seating: seating
+            ),
+            vibeTags: [],
+            workScore: 52,
+            lastVerified: nil,
+            distanceM: nil
+        )
+    }
+
+    @Test func estimateOnlyVenueIsNotObserved() {
+        let v = Self.venue(
+            wifi: Self.claim(source: "estimate", confidence: 0.9),
+            outlets: Self.claim(source: "estimate", confidence: 0.9),
+            laptopPolicy: Self.claim(source: "estimate", confidence: 0.9),
+            noise: Self.claim(source: "estimate", confidence: 0.9)
+        )
+        #expect(v.isObserved == false)
+    }
+
+    @Test func lowConfidenceVenueIsNotObserved() {
+        // Real sources, but every one under the 0.4 floor.
+        let v = Self.venue(
+            wifi: Self.claim(source: "osm", confidence: 0.3),
+            outlets: Self.claim(source: "curated", confidence: 0.1),
+            laptopPolicy: Self.claim(source: "agent", confidence: 0.39),
+            noise: Self.claim(source: "osm", confidence: 0.2)
+        )
+        #expect(v.isObserved == false)
+    }
+
+    @Test func oneCuratedClaimMakesItObserved() {
+        // Everything else is a low-confidence estimate; one curated claim
+        // at high confidence is enough.
+        let v = Self.venue(
+            wifi: Self.claim(source: "estimate", confidence: 0.2),
+            outlets: Self.claim(source: "curated", confidence: 0.85)
+        )
+        #expect(v.isObserved)
+    }
+
+    @Test func osmWifiAtHalfConfidenceIsObserved() {
+        // Not an estimate, and above the 0.4 floor — counts even though the
+        // source is the OSM baseline tier, not curated/agent research.
+        let v = Self.venue(wifi: Self.claim(source: "osm", confidence: 0.5))
+        #expect(v.isObserved)
+    }
+
+    @Test func exactlyAtTheConfidenceFloorIsObserved() {
+        let v = Self.venue(wifi: Self.claim(source: "osm", confidence: 0.4))
+        #expect(v.isObserved)
+    }
+
+    @Test func seatingAloneCanMakeItObserved() {
+        // seating is optional and absent on v1 payloads — a real claim
+        // there still counts toward isObserved like any other scored claim.
+        let v = Self.venue(
+            wifi: Self.claim(source: "estimate", confidence: 0.2),
+            seating: Self.claim(source: "field_visit", confidence: 0.7)
+        )
+        #expect(v.isObserved)
+    }
+
+    @Test func absentSeatingNeverCountsAgainstObserved() {
+        let v = Self.venue(wifi: Self.claim(source: "curated", confidence: 0.9), seating: nil)
+        #expect(v.isObserved)
+    }
+}
+
 @Suite struct SchemaV2WireTests {
     @Test func v2WireNamesAreCamelCase() {
         let query = VenueQuery(seatingMinimum: .some, venueType: .park)
