@@ -1,5 +1,6 @@
 import BamwareUI
 import MapKit
+import StoreKit
 import SwiftUI
 import VenueKit
 
@@ -9,6 +10,7 @@ public struct VenueDetailScreen: View {
     @Environment(\.venuePhotoService) private var photoService
     @Environment(\.openURL) private var openURL
     @Environment(\.launchEnvironment) private var launchEnvironment
+    @Environment(\.requestReview) private var requestReview
     private let venue: Venue
     @Bindable private var savedVenues: SavedVenuesStore
     @State private var photos: [VenuePhoto] = []
@@ -605,7 +607,17 @@ public struct VenueDetailScreen: View {
         .accessibilityHint("Opens walking directions in Apple Maps")
 
         Button {
+            let wasSaved = savedVenues.contains(venue.id)
             savedVenues.toggle(venue.id)
+            // Only a save (not an un-save) counts toward the rating prompt
+            // (#160), and never under any UI-test automation — including a
+            // real, non-scenario functional run like
+            // `testSaveCafeFromDetails`, so `isUITestRun` rather than the
+            // narrower `scenario == nil` seam `openDirections()` uses above.
+            if !wasSaved, !launchEnvironment.isUITestRun,
+                ReviewPromptPolicy().recordSaveAndShouldPrompt() {
+                requestReview()
+            }
         } label: {
             actionLabel(
                 savedVenues.contains(venue.id) ? "saved_action_title" : "save_action_title",

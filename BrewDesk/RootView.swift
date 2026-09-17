@@ -26,6 +26,10 @@ struct RootView: View {
         self.venueDetails = venueDetails
         let environment = LaunchEnvironment.current
         self.environment = environment
+        // Baseline for the review-prompt "never on first launch day" rule
+        // (#160); idempotent, so only the very first launch of an install
+        // actually writes it.
+        ReviewPromptPolicy().recordFirstLaunchIfNeeded()
         self.uiTestTakeoutURL = environment.scenario == nil ? nil : UITestScenario.takeoutFixtureURL()
         self.snapshot = (environment.scenario == nil || environment.seedSnapshot) ? VenueSnapshot.load() : []
         _flow = State(initialValue: AppFlowStore())
