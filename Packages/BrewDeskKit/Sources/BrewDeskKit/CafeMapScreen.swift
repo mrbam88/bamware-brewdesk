@@ -41,17 +41,22 @@ public struct CafeMapScreen: View {
     }
 
     public var body: some View {
-        let plan = MapAnnotationPlanner.plan(
-            venues: model.venues,
-            region: visibleRegion ?? Self.region(lat: model.centerLat, lng: model.centerLng)
-        )
-        // Camera tracking WITHOUT `.onMapCameraChange`: measured on-simulator
-        // (brewdesk#54), merely attaching that modifier cost ~1.5–2% of frame
-        // time to per-frame camera bookkeeping. Instead the camera region is
-        // recovered on demand — a gesture ending schedules one debounced
-        // `MapProxy` corner conversion after momentum settles, and
-        // programmatic moves (cluster zoom, recenter) write the region they
-        // already know. Mid-gesture frames never touch SwiftUI state.
+        let plan = MapAnnotationPlanner.plan(venues: model.venues, region: visibleRegion)
+        // Camera tracking (brewdesk#54 / PR #61): the region is recovered on
+        // demand — a gesture ending schedules one debounced `MapProxy` corner
+        // conversion after momentum settles, and programmatic moves (cluster
+        // zoom, recenter) write the region they already know. Mid-gesture
+        // frames never touch SwiftUI state.
+        //
+        // PR #61 measured "merely attaching `.onMapCameraChange` ≈ +1.5–2%
+        // hitch time" and left it off. brewdesk#157 re-adds it at
+        // `frequency: .onEnd` (below) because `MapUserLocationButton` moves
+        // the camera with no gesture at all, so nothing else can refresh
+        // `visibleRegion` after a locate tap. Re-measured 2026-09-17 on the
+        // same harness (Release, iPhone 17 Pro Max sim, dot zoom): baseline
+        // hitchRatio 0.083–0.115 without the modifier, 0.067–0.084 with it —
+        // inside run-to-run noise. If `MapPerformanceUITests` ever regresses,
+        // this callback is the first suspect.
         MapReader { proxy in
             GeometryReader { geometry in
                 Map(position: $position) {
@@ -65,6 +70,9 @@ public struct CafeMapScreen: View {
                             pinButton(for: selected, isSelected: true)
                         }
                     }
+                }
+                .onMapCameraChange(frequency: .onEnd) { context in
+                    refreshVisibleRegion(context.region)
                 }
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 1)
@@ -88,6 +96,18 @@ public struct CafeMapScreen: View {
                     DragGesture(minimumDistance: 0)
                         .onChanged { _ in searchFocused = false }
                 )
+                // brewdesk#157: a search clear, filter change, or any other
+                // venue-list change must never ride on a `visibleRegion` that
+                // was captured for a different list. No gesture accompanies
+                // this, so there's no settle to wait for — resync straight
+                // from the current camera image; if the proxy can't convert
+                // yet, `MapAnnotationPlanner`'s own un-culled fallback covers
+                // the render in the meantime.
+                .onChange(of: model.venues) { _, _ in
+                    if let region = Self.cameraRegion(proxy: proxy, size: geometry.size) {
+                        visibleRegion = region
+                    }
+                }
             }
         }
         .mapControls {
@@ -198,6 +218,16 @@ public struct CafeMapScreen: View {
     }
 
     // MARK: - Camera-driven re-planning
+
+    /// Applies a settled camera region reported by `.onMapCameraChange` —
+    /// the catch-all for camera moves no gesture handler here observes (the
+    /// locate button chief among them, brewdesk#157). Gated by the same
+    /// hysteresis as `scheduleReplan` so a settle this callback and a
+    /// settle a gesture handler already captured don't double re-plan.
+    private func refreshVisibleRegion(_ region: MKCoordinateRegion) {
+        guard Self.needsReplan(from: visibleRegion, to: region) else { return }
+        visibleRegion = region
+    }
 
     /// One re-plan per settled gesture. A fling keeps the camera decelerating
     /// long after touch-up, and re-planning mid-animation is itself a visible

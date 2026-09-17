@@ -240,28 +240,53 @@ struct DiscoveryShelfCard: View {
     @ViewBuilder
     private var venueContentSwitch: some View {
         if model.venues.isEmpty {
-            // Only a *loaded* empty result is an empty state; while loading
-            // or failed the overlay owns the message and the shelf stays quiet.
-            if model.phase == .loaded {
-                ContentUnavailableView {
-                    Label("No spots in this view", systemImage: "cup.and.saucer")
-                } description: {
-                    Text("Clear a filter or try another search.")
-                } actions: {
-                    Button("Browse NYC") { model.browseCoverageCenter() }
-                        .buttonStyle(.borderedProminent)
-                        .accessibilityIdentifier("map-browse-nyc")
-                }
-                .frame(height: 170)
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("map-state-empty")
-            }
+            emptyContent
         } else if isSearchFocused || detent == .full {
             fullList
                 .transition(.opacity)
         } else {
             horizontalRail
                 .transition(.opacity)
+        }
+    }
+
+    /// brewdesk#157: every phase gets an intentional shelf body when there's
+    /// nothing to list — a bare `EmptyView()` here collapsed the card to the
+    /// grabber alone, reading as a broken shelf even while the map overlay
+    /// (`CafeMapScreen.loadStatus`) correctly showed its own loading/error
+    /// state above it. Identifiers here are distinct from the overlay's
+    /// `map-state-loading` / `map-state-error` — both can be on screen at
+    /// once, and `DegradedStateTests` keys off the overlay's.
+    @ViewBuilder
+    private var emptyContent: some View {
+        switch model.phase {
+        case .loaded:
+            ContentUnavailableView {
+                Label("No spots in this view", systemImage: "cup.and.saucer")
+            } description: {
+                Text("Clear a filter or try another search.")
+            } actions: {
+                Button("Browse NYC") { model.browseCoverageCenter() }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("map-browse-nyc")
+            }
+            .frame(height: 170)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("map-state-empty")
+        case .idle, .loading:
+            ProgressView("Finding work spots…")
+                .frame(height: 170)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("shelf-state-loading")
+        case .failed:
+            ContentUnavailableView {
+                Label("Spot service unavailable", systemImage: "wifi.exclamationmark")
+            } description: {
+                Text("Check your connection and try again.")
+            }
+            .frame(height: 170)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("shelf-state-error")
         }
     }
 

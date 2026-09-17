@@ -69,16 +69,40 @@ public enum MapAnnotationPlanner {
     /// default zoom) — per-frame pan cost scales with hosted annotation views
     /// before anything else, so fewer, denser pills IS the perf fix (#54/#55).
     public static let targetCellsAcross = 1.5
+    /// Cluster-grid span used only when the camera region is genuinely
+    /// unknown (brewdesk#157) — the same span the map screen's initial
+    /// camera opens with, so a cold-start plan groups venues the same way
+    /// the first real region would.
+    public static let fallbackSpanLongitude = 0.035
 
-    public static func plan(venues: [Venue], region: MKCoordinateRegion) -> MapAnnotationPlan {
-        let visible = culled(venues, region: region)
+    /// - Parameter region: the current camera viewport, or `nil` when it has
+    ///   never been observed (cold start before the first camera settle) or a
+    ///   `MapProxy` conversion failed. Either way this must never render as
+    ///   an empty plan while `venues` is non-empty (brewdesk#157) — a stale
+    ///   or unknown region falls back to the un-culled venue list instead of
+    ///   silently hiding every pin.
+    public static func plan(venues: [Venue], region: MKCoordinateRegion?) -> MapAnnotationPlan {
+        let visible = candidates(venues: venues, region: region)
         if visible.count <= pinLimit { return .pins(visible) }
         if visible.count <= dotLimit { return .dots(Array(visible.prefix(dotBudget))) }
         // Cluster the WHOLE dataset, not the culled set: the grid is absolute,
         // so at an unchanged zoom every pan yields the identical cluster list —
         // zero annotation churn — and the pill count stays bounded by the grid
         // coarseness, not the venue count.
-        return .clusters(clusters(for: venues, spanLongitude: region.span.longitudeDelta))
+        return .clusters(clusters(for: venues, spanLongitude: region?.span.longitudeDelta ?? fallbackSpanLongitude))
+    }
+
+    /// The venues to draw individually before the pin/dot/cluster threshold
+    /// applies. Un-culled whenever the region is unknown, and un-culled
+    /// whenever a KNOWN region culls every venue away while venues actually
+    /// exist — that second case is a stale or mismatched `visibleRegion`
+    /// (search cleared, filter changed, camera moved with no gesture), not a
+    /// genuinely empty viewport, and brewdesk#157 is exactly that the map
+    /// must never go pinless while the header count is non-zero.
+    static func candidates(venues: [Venue], region: MKCoordinateRegion?) -> [Venue] {
+        guard let region else { return venues }
+        let culledVenues = culled(venues, region: region)
+        return (culledVenues.isEmpty && !venues.isEmpty) ? venues : culledVenues
     }
 
     /// Venues inside the region padded by `cullMargin` on every side.

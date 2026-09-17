@@ -218,6 +218,50 @@ struct MapAnnotationPlannerTests {
         #expect(CafeMapScreen.needsReplan(from: current, to: zoomOut))
     }
 
+    // MARK: - Stale/unknown region fallback (brewdesk#157)
+
+    @Test func planFallsBackToUnculledVenuesWhenRegionIsUnknown() {
+        // No camera has settled yet (cold start, or every `MapProxy`
+        // conversion has failed) — a nil region must plan against every
+        // venue, never an empty list.
+        let venues = grid(count: 10)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: nil)
+        guard case .pins(let pinned) = plan else {
+            Issue.record("expected pins, got \(plan)")
+            return
+        }
+        #expect(Set(pinned.map(\.id)) == Set(venues.map(\.id)))
+    }
+
+    @Test func planFallsBackToUnculledVenuesWhenTheKnownRegionExcludesEveryVenue() {
+        // A region that legitimately covers none of the venues (stale after
+        // a search clear, a filter change, or a locate-button move with no
+        // gesture to trigger a re-plan) must not render as zero pins while
+        // venues exist — brewdesk#157's core symptom.
+        let venues = grid(count: 10)
+        let staleRegion = region(lat: 41.5, lng: -74.5, span: 0.01)
+        #expect(MapAnnotationPlanner.culled(venues, region: staleRegion).isEmpty, "test setup: region must exclude every venue")
+
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: staleRegion)
+        guard case .pins(let pinned) = plan else {
+            Issue.record("expected pins, got \(plan)")
+            return
+        }
+        #expect(Set(pinned.map(\.id)) == Set(venues.map(\.id)))
+    }
+
+    @Test func planNeverFallsBackWhenTheRegionGenuinelyHasNoVenues() {
+        // An empty `venues` input (e.g. a genuinely empty dataset) must stay
+        // empty — the fallback only rescues a non-empty list a bad region
+        // culled to nothing, never an honest zero.
+        let plan = MapAnnotationPlanner.plan(venues: [], region: region())
+        guard case .pins(let pinned) = plan else {
+            Issue.record("expected pins, got \(plan)")
+            return
+        }
+        #expect(pinned.isEmpty)
+    }
+
     // MARK: - Plan helpers
 
     @Test func planKnowsWhichVenuesItRendersIndividually() {

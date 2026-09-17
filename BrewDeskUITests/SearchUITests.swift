@@ -84,6 +84,37 @@ final class SearchUITests: XCTestCase {
         XCTAssertTrue(app.mapPin(named: "Fixture Reading Room").exists)
     }
 
+    /// brewdesk#157 — clearing a search must never leave the map pinless
+    /// while the shelf collapses too. A stale `visibleRegion` used to make
+    /// the viewport-culled annotation plan return zero pins after the
+    /// clear (nothing re-planned off a search-driven data change), and the
+    /// shelf's own empty-body bug meant it stayed blank rather than showing
+    /// its loading/empty state — only a relaunch brought pins back.
+    @MainActor
+    func testClearingSearchRestoresMapPinsAndShelfCards() throws {
+        let app = launchSpots()
+
+        let field = searchField(app)
+        field.tap()
+        field.typeText("Roast")
+        XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitForExistence(timeout: wait))
+        XCTAssertTrue(app.mapPin(named: "Fixture Reading Room").waitForNonExistence(timeout: wait),
+                      "search did not narrow the list before the clear")
+
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: "Roast".count))
+
+        // The bug: the map went pinless and the shelf collapsed after the
+        // clear, and only a relaunch brought them back.
+        XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitForExistence(timeout: wait),
+                      "clearing the search left the map pinless (brewdesk#157)")
+        XCTAssertTrue(app.mapPin(named: "Fixture Reading Room").waitForExistence(timeout: wait))
+        XCTAssertTrue(app.mapPin(named: "Fixture Corner Cafe").waitForExistence(timeout: wait))
+        XCTAssertTrue(app.descendants(matching: .any)["map-discovery-shelf"].exists,
+                      "discovery shelf missing after the search clear")
+        XCTAssertFalse(app.descendants(matching: .any)["map-state-empty"].exists,
+                       "shelf still showed its empty state after the clear restored venues")
+    }
+
     /// brewdesk#87 — the map search field had no way to resign focus. A map
     /// tap must dismiss the keyboard without losing what was typed, and the
     /// keyboard's Done button must do the same after refocusing.
