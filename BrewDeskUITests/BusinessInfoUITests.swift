@@ -42,8 +42,8 @@ final class BusinessInfoUITests: XCTestCase {
     // sheet), not a Nearby-list push — Nearby no longer exists.
     @MainActor
     private func openDetail(_ app: XCUIApplication, venueName: String) {
-        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["tab-spots"].tap()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
+        app.spotsTab.tap()
         let pin = app.mapPin(named: venueName)
         XCTAssertTrue(pin.waitForExistence(timeout: wait))
         pin.tap()

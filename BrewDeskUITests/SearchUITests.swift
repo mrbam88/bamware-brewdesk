@@ -22,8 +22,8 @@ final class SearchUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-UITestSkipGates", "-UITestScenario", "fixtureOK"]
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["tab-spots"].tap()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
+        app.spotsTab.tap()
         XCTAssertTrue(app.descendants(matching: .any)["map-header-card"].waitForExistence(timeout: wait))
         return app
     }
