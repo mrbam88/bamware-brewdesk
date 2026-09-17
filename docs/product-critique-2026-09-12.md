@@ -11,6 +11,18 @@ in the session job dir; key frames are reproduced in the companion web page.
 Caveat: the `main` build has the store surface gate OFF, so Sign In, "Rate this
 visit" and Contact & Content Rules are visible here but are not in build 19.
 
+> **Corrections, 2026-09-16 (after a code read for the 1.0.1 tickets).**
+> - Finding 8, "search text never clears", is **retracted**. The app persists the
+>   query nowhere (`VenuesModel.searchQuery` is plain observable state). The capture
+>   tool appended text to the field and the app was never truly terminated.
+> - Finding 14, "blank tiles on the Use Union Square path", is **not an app bug**:
+>   plain `Map(position:)`, no mapStyle or placeholder. MapKit tiles had not loaded
+>   on the simulator. Re-check on a physical device during 1.0.1 release QA.
+> - Findings 7 and 9 are confirmed with root causes: tickets #157 and #158.
+> - Since venue-engine#64 (2026-09-15) estimates no longer drive the score, so
+>   findings 1–4 now show up in the app as a flat neutral 52: ticket #159.
+> Release epic: #162.
+
 ## The one-line verdict
 
 The app's promise ("every score shows its work") is stronger than its data. In
