@@ -73,9 +73,9 @@ struct ProvenanceStamp: View {
            let date = Self.observationDate(of: newest) {
             Label {
                 if Self.isOSMBaseline(tier: tier, source: newest.source) {
-                    Text("OSM baseline · updated \(date, format: .dateTime.month(.abbreviated).day())")
+                    Text("OSM baseline · updated \(date, format: Self.dayStyle(month: .abbreviated))")
                 } else {
-                    Text("Updated \(date, format: .dateTime.month(.abbreviated).day()) · \(Self.sourceKind(of: newest))")
+                    Text("Updated \(date, format: Self.dayStyle(month: .abbreviated)) · \(Self.sourceKind(of: newest))")
                 }
             } icon: {
                 Image(systemName: Self.humanSources.contains(newest.source)
@@ -86,8 +86,8 @@ struct ProvenanceStamp: View {
             .foregroundStyle(Self.humanSources.contains(newest.source) ? BrewDeskPalette.mossText : .secondary)
             .accessibilityLabel(
                 Self.isOSMBaseline(tier: tier, source: newest.source)
-                    ? Text("OSM baseline · updated \(date, format: .dateTime.month(.wide).day())")
-                    : Text("Updated \(date, format: .dateTime.month(.wide).day()), \(Self.sourceKind(of: newest))")
+                    ? Text("OSM baseline · updated \(date, format: Self.dayStyle(month: .wide))")
+                    : Text("Updated \(date, format: Self.dayStyle(month: .wide)), \(Self.sourceKind(of: newest))")
             )
             .accessibilityIdentifier("provenance-stamp")
         }
@@ -125,6 +125,19 @@ struct ProvenanceStamp: View {
 
     /// Sources where a human stands behind the claim — these earn the seal.
     static let humanSources: Set<String> = ["curated", "field_visit", "site_visit", "speed_test", "owner"]
+
+    /// Calendar-day render pinned to UTC, matching `dayFormatter`'s UTC parse.
+    /// `observedAt` is a calendar date, not an instant: rendering the parsed
+    /// midnight-UTC value in the device zone printed "Jul 31" for
+    /// "2026-08-01" everywhere west of Greenwich (brewdesk#142; first seen in
+    /// the #30 screenshot review).
+    nonisolated static func dayStyle(
+        month: Date.FormatStyle.Symbol.Month, locale: Locale = .autoupdatingCurrent
+    ) -> Date.FormatStyle {
+        var style = Date.FormatStyle(locale: locale).month(month).day()
+        style.timeZone = TimeZone(identifier: "UTC")!
+        return style
+    }
 
     nonisolated static let dayFormatter: DateFormatter = {
         let formatter = DateFormatter()
