@@ -42,21 +42,21 @@ public struct CafeMapScreen: View {
 
     public var body: some View {
         let plan = MapAnnotationPlanner.plan(venues: model.venues, region: visibleRegion)
-        // Camera tracking WITHOUT PER-FRAME `.onMapCameraChange` work
-        // (brewdesk#54): measured on-simulator, merely attaching that
-        // modifier at its default frequency cost ~1.5–2% of frame time to
-        // per-frame camera bookkeeping. The camera region is instead
-        // recovered on demand — a gesture ending schedules one debounced
-        // `MapProxy` corner conversion after momentum settles, and
-        // programmatic moves (cluster zoom, recenter) write the region they
-        // already know. Mid-gesture frames never touch SwiftUI state.
+        // Camera tracking (brewdesk#54 / PR #61): the region is recovered on
+        // demand — a gesture ending schedules one debounced `MapProxy` corner
+        // conversion after momentum settles, and programmatic moves (cluster
+        // zoom, recenter) write the region they already know. Mid-gesture
+        // frames never touch SwiftUI state.
         //
-        // brewdesk#157: `MapUserLocationButton` moves the camera with none of
-        // those gestures, so nothing ever refreshed `visibleRegion` after a
-        // locate tap — a `.onMapCameraChange(frequency: .onEnd)` callback
-        // (below) covers exactly that gap. `.onEnd` only fires once the
-        // camera is at rest, never mid-frame, so it stays outside the
-        // per-frame cost this comment warns against.
+        // PR #61 measured "merely attaching `.onMapCameraChange` ≈ +1.5–2%
+        // hitch time" and left it off. brewdesk#157 re-adds it at
+        // `frequency: .onEnd` (below) because `MapUserLocationButton` moves
+        // the camera with no gesture at all, so nothing else can refresh
+        // `visibleRegion` after a locate tap. Re-measured 2026-09-17 on the
+        // same harness (Release, iPhone 17 Pro Max sim, dot zoom): baseline
+        // hitchRatio 0.083–0.115 without the modifier, 0.067–0.084 with it —
+        // inside run-to-run noise. If `MapPerformanceUITests` ever regresses,
+        // this callback is the first suspect.
         MapReader { proxy in
             GeometryReader { geometry in
                 Map(position: $position) {
