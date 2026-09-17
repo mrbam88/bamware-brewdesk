@@ -66,6 +66,10 @@ import Testing
         #expect(values["sort"] == "distance")
         #expect(values["limit"] == "100")
         #expect(values["q"] == "coffee")
+        // brewdesk#154: coordinates leave via the viewport header, not the URL.
+        #expect(values["lat"] == nil)
+        #expect(values["lng"] == nil)
+        #expect(query.viewportHeaderValue == "\(40.73),\(-73.99)")
     }
 }
 

@@ -14,22 +14,23 @@ can send:
 
 | Flow | Request | Host | Location-bearing params |
 | --- | --- | --- | --- |
-| Map / Nearby list | `GET /v1/venues?sort&limit&radius_m&lat&lng[&filters]` | engine | `lat`, `lng` — the **map-query centre** (see below) |
+| Map / Nearby list | `GET /v1/venues?sort&limit&radius_m[&filters]` + header `X-BrewDesk-Viewport: <lat>,<lng>` | engine | header only — the **map-query centre** (see below). Not in the URL. |
 | Stat strip | `GET /v1/health` | engine | none |
 | Detail | `GET /v1/venues/{id}` | engine | none |
 | Photo strip / viewer (list) | `GET /v1/venues/{id}/photos` | engine | none |
 | Photo strip / viewer (bytes) | `GET <photoUri>` via `AsyncImage` | `lh3.googleusercontent.com` | none — opaque Google photo URI, no place_id, no coordinates |
 | Neighborhood chips | `GET /v1/neighborhoods` | engine | none |
-| Import from Takeout | `GET /v1/venues?sort&limit=200&radius_m` | engine | none |
-| *(not reachable in v1 UI)* speed test | `POST /v1/observations` `{venueId,kind,mbpsDown}`; probe `GET /v1/venues?limit&_speed_test_nonce` | engine | none |
+| Import from Takeout | `GET /v1/venues?sort&limit=200&radius_m` | engine | none — no viewport header |
+| *(not reachable in v1 UI)* speed test | `POST /v1/observations` `{venueId,kind,mbpsDown}`; probe `GET /v1/venues?limit&_speed_test_nonce` | engine | none — no viewport header |
 | Rate this visit (observation form, brewdesk#47) | `POST /v1/venues/{id}/observations` `{submittedBy, answers:{laptopFriendlyToday,seatsAvailable,outletsWorking,noise}}` — enum values only, no free text | engine | none |
 
-The complete query vocabulary `VenueQuery` can emit is
-`sort limit radius_m lat lng wifi_min outlets_min minSeating venueType laptops
-neighborhood q`; only `lat`/`lng` can carry a location. A test fails if that
-set changes.
+The complete URL query vocabulary `VenueQuery` can emit is
+`sort limit radius_m wifi_min outlets_min minSeating venueType laptops
+neighborhood q`. None of those names can carry a location. Coordinates travel
+only as `X-BrewDesk-Viewport: <lat>,<lng>` (engine #16 / brewdesk#154). A test
+fails if that split changes.
 
-### What `lat`/`lng` contain
+### What the viewport header contains
 
 | Location state | Value sent | Why |
 | --- | --- | --- |
@@ -79,18 +80,21 @@ position.
   *Search Params* (Vercel docs, *Runtime Logs → Log details*, updated
   2026-08-03), kept **1 h on Hobby / 1 day on Pro / 30 days with
   Observability Plus**. No log drain is configured (`vercel.json` has no
-  logging config). Transient platform retention of a map-query centre is
-  consistent with Apple's real-time-processing carve-out; re-assess if the
-  plan changes, a log drain is added, or any analytics/crash SDK is introduced.
-- Follow-up (tracked separately): move the viewport coordinate out of the
-  query string (request header or `POST` body), which Vercel request logs do
-  not retain, once #27's `VenueAPI` changes have merged.
+  logging config). Listing fetch (brewdesk#154 / engine #16) sends the
+  map-query centre as `X-BrewDesk-Viewport`, which Vercel request logs do not
+  retain; Search Params on that path are filters only (`sort`, `limit`,
+  `radius_m`, amenity mins, …). Re-assess if a log drain is added, headers
+  start being retained, or any analytics/crash SDK is introduced.
+- The engine still accepts query-string `lat`/`lng` for older clients. This
+  app no longer sends them. The privacy position in bamware-ai
+  `docs/brewdesk-go-live.md` (not in this repo) should cite the header
+  channel once a follow-up lands there.
 
 ## Tests
 
 | Suite | Target | Runs | Proves |
 | --- | --- | --- | --- |
-| `PrivacyRequestAuditTests` | `VenueKitTests` | package tests (CI on every PR) | per-flow host + param audit via `RecordingURLProtocol` injected into `VenueAPI(session:)`; denied → anchor only; granted → engine only; photo URLs coordinate-free; wire vocabulary closed |
+| `PrivacyRequestAuditTests` | `VenueKitTests` | package tests (CI on every PR) | per-flow host + param audit via `RecordingURLProtocol` injected into `VenueAPI(session:)`; listing coords travel only as `X-BrewDesk-Viewport` (never in the query string); denied → anchor only; granted → engine only; photo URLs coordinate-free; wire vocabulary closed |
 | `VenuesModelPrivacyTests` | `BrewDeskKitTests` | package tests (CI) | anchor when no location; any granted coordinate (including far from NYC) is the only other value sent |
 | `ObservationSubmissionTests` | `VenueKitTests` | package tests (CI) | observation submit reaches only the engine; body is exactly `{submittedBy, answers}` with enum-string values (no free text, no coordinates under any plausible key) |
 | `PrivacyClaimTests` | `BrewDeskTests` (host app) | Release app unit tests (CI step "Release app unit tests (privacy audit)") | shipped `PrivacyInfo.xcprivacy` = no tracking / no collected data / UserDefaults CA92.1 only; When-In-Use location only; Release endpoint is HTTPS production with no ATS exception; fallback query = Union Square |
