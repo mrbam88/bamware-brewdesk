@@ -23,7 +23,12 @@ public struct CafeMapScreen: View {
     /// `DragGesture`/`MagnifyGesture` handlers below) — brewdesk#158's
     /// search-fit camera move must never fight a gesture the user's finger
     /// is still driving.
-    @State private var isMapInteracting = false
+    ///
+    /// Held in a plain reference box, NOT as observed `@State` value: the
+    /// gesture `onChanged` handlers fire every frame of a pan, and the
+    /// brewdesk#54 invariant is that mid-gesture frames never invalidate this
+    /// body (each evaluation re-runs the annotation planner).
+    @State private var mapInteraction = MapInteractionFlag()
     /// Debounced search→camera fit (brewdesk#158). Cancelled and
     /// rescheduled on every keystroke; only the settled query moves the
     /// camera.
@@ -85,17 +90,17 @@ public struct CafeMapScreen: View {
                 }
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 1)
-                        .onChanged { _ in isMapInteracting = true }
+                        .onChanged { _ in mapInteraction.isActive = true }
                         .onEnded { _ in
-                            isMapInteracting = false
+                            mapInteraction.isActive = false
                             scheduleReplan(proxy: proxy, size: geometry.size)
                         }
                 )
                 .simultaneousGesture(
                     MagnifyGesture()
-                        .onChanged { _ in isMapInteracting = true }
+                        .onChanged { _ in mapInteraction.isActive = true }
                         .onEnded { _ in
-                            isMapInteracting = false
+                            mapInteraction.isActive = false
                             scheduleReplan(proxy: proxy, size: geometry.size)
                         }
                 )
@@ -258,7 +263,7 @@ public struct CafeMapScreen: View {
             guard !Task.isCancelled else { return }
             // Superseded by further typing, or the user is mid-gesture —
             // never yank the camera out from under a drag/pinch in flight.
-            guard model.searchQuery == query, !isMapInteracting else { return }
+            guard model.searchQuery == query, !mapInteraction.isActive else { return }
             let results = model.venues
             guard !results.isEmpty,
                   let region = Self.searchFitRegion(for: results, mapHeight: mapHeight, shelfClearance: shelfClearance)
@@ -629,4 +634,11 @@ public struct CafeMapScreen: View {
     private func coordinate(of venue: Venue) -> CLLocationCoordinate2D {
         CLLocationCoordinate2D(latitude: venue.lat, longitude: venue.lng)
     }
+}
+
+/// Unobserved mutable flag for "a finger is driving the map right now"
+/// (brewdesk#158). A class so writing it never invalidates a SwiftUI body.
+@MainActor
+private final class MapInteractionFlag {
+    var isActive = false
 }
