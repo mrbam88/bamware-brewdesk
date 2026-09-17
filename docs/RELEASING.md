@@ -95,6 +95,11 @@ are FORBIDDEN for store archives: they leave no trace in git, so the
 submitted binary's state is invisible to history. Every store archive must
 be reproducible from a tagged commit:
 
+0. On `main`, BEFORE cutting the branch: refresh the bundled first-paint
+   snapshot (`sh scripts/refresh-venue-snapshot.sh`), commit it via a normal
+   PR, and only then cut from the merged commit. A stale snapshot makes the
+   first screen reshuffle into different venues a second after launch
+   (brewdesk#161).
 1. Cut a release branch from the exact main commit being shipped:
    `git checkout -b release/1.0.3 main`
 2. Commit the flip ON THE BRANCH — set `STORE_SURFACE_GATED = YES` in
