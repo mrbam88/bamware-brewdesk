@@ -118,10 +118,10 @@ xcodebuild -project BrewDesk.xcodeproj -scheme BrewDesk \
 `RecordingURLProtocol` is never registered globally; it only sees sessions it
 creates, so it cannot interfere with other suites in the same host.
 
-## Known stale comments (not changed here — #27 owns `VenueAPI.swift`)
+## Photo source (corrected — brewdesk#156)
 
-`VenueAPI.absolutePhotoURL` and the "Places proxy" comments in `VenueAPI.swift`
-/ `Models.swift` describe a same-origin `/media` proxy; production returns
-Google's `photoUri` verbatim, so that branch is dead and the client loads
-photo bytes from `lh3.googleusercontent.com`. The audit above reflects the
-real behaviour.
+`VenueAPI.absolutePhotoURL` and the `VenuePhoto` comments in `VenueAPI.swift`
+/ `Models.swift` used to describe a same-origin `/media` proxy. Production
+returns Google's `photoUri` verbatim, so that branch is dead and the client
+loads photo bytes from `lh3.googleusercontent.com`. The comments now match;
+the audit above reflects the real behaviour.

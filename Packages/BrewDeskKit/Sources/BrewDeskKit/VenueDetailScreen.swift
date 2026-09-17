@@ -205,9 +205,17 @@ public struct VenueDetailScreen: View {
 
     private var hero: some View {
         VStack(alignment: .leading, spacing: 14) {
-            SmartText(venue.name, theme: theme)
-                .font(.largeTitle.bold())
-                .fixedSize(horizontal: false, vertical: true)
+            // The nav bar already shows the venue name as the sheet's own
+            // title (bd#119); a second large-type copy here duplicated it
+            // in screenshot QA (bd#142). This zero-size proxy keeps a
+            // `.isHeader` VoiceOver landmark inside the scrollable content
+            // — the Headings rotor still finds the venue name here — without
+            // printing it on screen a second time.
+            Text(venue.name)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("venue-detail-heading")
+                .frame(width: 0, height: 0)
+                .clipped()
 
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {

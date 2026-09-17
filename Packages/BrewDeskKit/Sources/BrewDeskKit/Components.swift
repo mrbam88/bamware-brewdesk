@@ -186,7 +186,8 @@ struct ClaimRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "\(title), \(displayValue), \(sourceLabel), " +
-            "\(claim.confidencePercent) percent confidence, observed \(claim.observedAt.prefix(10))"
+            "\(claim.confidencePercent) percent confidence, observed " +
+            "\(ProvenanceDateFormatter.friendly(claim.observedAt))"
         )
     }
 
@@ -231,15 +232,17 @@ struct ClaimRow: View {
         }
     }
 
-    /// "Curated · 75% confidence · 2026-08-01" — shared by the per-row line
+    /// "Curated · 75% confidence · Aug 1, 2026" — shared by the per-row line
     /// and the Workability card's single card-level stamp (brewdesk#119).
+    /// The date renders through `ProvenanceDateFormatter`, never the raw
+    /// "2026-08-01" the engine sends (brewdesk#142).
     static func provenanceLine(for claim: Claim) -> String {
         String(
             format: String(localized: "%1$@ · %2$lld%% confidence · %3$@"),
             locale: .current,
             sourceLabel(for: claim.source),
             claim.confidencePercent,
-            String(claim.observedAt.prefix(10))
+            ProvenanceDateFormatter.friendly(claim.observedAt)
         )
     }
 }

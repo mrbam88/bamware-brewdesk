@@ -275,9 +275,11 @@ public struct ObservationResponse: Codable, Sendable {
     public let venue: Venue
 }
 
-/// One display-only venue photo served through the engine's Places proxy.
-/// `url` is absolute by the time it leaves VenueAPI; attribution must be
-/// shown when present (Google Places licensing).
+/// One display-only venue photo. Production photo bytes load verbatim from
+/// Google (`photoUri`, host `lh3.googleusercontent.com`) — there is no
+/// same-origin Places proxy (brewdesk#156). `url` is absolute by the time it
+/// leaves VenueAPI; attribution must be shown when present (Google Places
+/// licensing).
 public struct VenuePhoto: Codable, Hashable, Identifiable, Sendable {
     public let url: String
     public let attribution: String?
