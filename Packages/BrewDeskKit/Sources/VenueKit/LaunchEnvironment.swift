@@ -55,6 +55,16 @@ public struct LaunchEnvironment: Sendable, Equatable {
     /// pins the clock the venue-detail open-now badge is judged against.
     /// `nil` when absent or unparseable.
     public let fixedNow: Date?
+    /// True when ANY `-UITest…` launch argument is present — the one seam
+    /// that holds for every automated UI run, scenario or live. Every UI
+    /// test that can reach user flows passes at least one (`-UITestSkipGates`
+    /// for the live-rail tests such as `testSaveCafeFromDetails`). Used where
+    /// `scenario == nil` is too narrow (brewdesk#160's rating prompt: the
+    /// save counter persists on a simulator across runs, and a system rating
+    /// sheet mid-test would block taps). Deliberately NOT an environment
+    /// variable: `XCTestConfigurationFilePath` exists in the test-runner
+    /// process, not in an app launched by XCUITest.
+    public let isUITestRun: Bool
 
     /// Every UI-test flag absent — the real-world default for every launch
     /// that isn't a UI test.
@@ -99,6 +109,7 @@ public struct LaunchEnvironment: Sendable, Equatable {
             .flatMap(Self.parseOldStylePlistArray)
         fixedNow = Self.value(after: "-brewdesk.uitest-fixed-now", in: arguments)
             .flatMap(Self.parseFixedNow)
+        isUITestRun = arguments.contains { $0.hasPrefix("-UITest") }
     }
 
     /// The token immediately following `flag`, if any — the `-key value`
