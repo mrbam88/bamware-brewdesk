@@ -41,17 +41,22 @@ public struct CafeMapScreen: View {
     }
 
     public var body: some View {
-        let plan = MapAnnotationPlanner.plan(
-            venues: model.venues,
-            region: visibleRegion ?? Self.region(lat: model.centerLat, lng: model.centerLng)
-        )
-        // Camera tracking WITHOUT `.onMapCameraChange`: measured on-simulator
-        // (brewdesk#54), merely attaching that modifier cost ~1.5–2% of frame
-        // time to per-frame camera bookkeeping. Instead the camera region is
+        let plan = MapAnnotationPlanner.plan(venues: model.venues, region: visibleRegion)
+        // Camera tracking WITHOUT PER-FRAME `.onMapCameraChange` work
+        // (brewdesk#54): measured on-simulator, merely attaching that
+        // modifier at its default frequency cost ~1.5–2% of frame time to
+        // per-frame camera bookkeeping. The camera region is instead
         // recovered on demand — a gesture ending schedules one debounced
         // `MapProxy` corner conversion after momentum settles, and
         // programmatic moves (cluster zoom, recenter) write the region they
         // already know. Mid-gesture frames never touch SwiftUI state.
+        //
+        // brewdesk#157: `MapUserLocationButton` moves the camera with none of
+        // those gestures, so nothing ever refreshed `visibleRegion` after a
+        // locate tap — a `.onMapCameraChange(frequency: .onEnd)` callback
+        // (below) covers exactly that gap. `.onEnd` only fires once the
+        // camera is at rest, never mid-frame, so it stays outside the
+        // per-frame cost this comment warns against.
         MapReader { proxy in
             GeometryReader { geometry in
                 Map(position: $position) {
@@ -65,6 +70,9 @@ public struct CafeMapScreen: View {
                             pinButton(for: selected, isSelected: true)
                         }
                     }
+                }
+                .onMapCameraChange(frequency: .onEnd) { context in
+                    refreshVisibleRegion(context.region)
                 }
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 1)
@@ -88,6 +96,18 @@ public struct CafeMapScreen: View {
                     DragGesture(minimumDistance: 0)
                         .onChanged { _ in searchFocused = false }
                 )
+                // brewdesk#157: a search clear, filter change, or any other
+                // venue-list change must never ride on a `visibleRegion` that
+                // was captured for a different list. No gesture accompanies
+                // this, so there's no settle to wait for — resync straight
+                // from the current camera image; if the proxy can't convert
+                // yet, `MapAnnotationPlanner`'s own un-culled fallback covers
+                // the render in the meantime.
+                .onChange(of: model.venues) { _, _ in
+                    if let region = Self.cameraRegion(proxy: proxy, size: geometry.size) {
+                        visibleRegion = region
+                    }
+                }
             }
         }
         .mapControls {
@@ -198,6 +218,16 @@ public struct CafeMapScreen: View {
     }
 
     // MARK: - Camera-driven re-planning
+
+    /// Applies a settled camera region reported by `.onMapCameraChange` —
+    /// the catch-all for camera moves no gesture handler here observes (the
+    /// locate button chief among them, brewdesk#157). Gated by the same
+    /// hysteresis as `scheduleReplan` so a settle this callback and a
+    /// settle a gesture handler already captured don't double re-plan.
+    private func refreshVisibleRegion(_ region: MKCoordinateRegion) {
+        guard Self.needsReplan(from: visibleRegion, to: region) else { return }
+        visibleRegion = region
+    }
 
     /// One re-plan per settled gesture. A fling keeps the camera decelerating
     /// long after touch-up, and re-planning mid-animation is itself a visible
