@@ -612,9 +612,9 @@ public struct VenueDetailScreen: View {
             // Only a save (not an un-save) counts toward the rating prompt
             // (#160), and never under any UI-test automation — including a
             // real, non-scenario functional run like
-            // `testSaveCafeFromDetails`, so `isUITestHost` rather than the
+            // `testSaveCafeFromDetails`, so `isUITestRun` rather than the
             // narrower `scenario == nil` seam `openDirections()` uses above.
-            if !wasSaved, !launchEnvironment.isUITestHost,
+            if !wasSaved, !launchEnvironment.isUITestRun,
                 ReviewPromptPolicy().recordSaveAndShouldPrompt() {
                 requestReview()
             }

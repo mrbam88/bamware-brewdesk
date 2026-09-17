@@ -25,7 +25,7 @@ import Testing
         #expect(environment.storeSurfaceGatedOverride == false)
         #expect(environment.savedVenueIDs == nil)
         #expect(environment.fixedNow == nil)
-        #expect(environment.isUITestHost == false)
+        #expect(environment.isUITestRun == false)
     }
 
     @Test func productionConstantMatchesEmptyArguments() {
@@ -166,18 +166,17 @@ import Testing
         #expect(environment.fixedNow == nil)
     }
 
-    // MARK: - UI test host (XCTestConfigurationFilePath, brewdesk#160)
+    // MARK: - UI test run (any -UITest… argument, brewdesk#160)
 
-    @Test func xcTestConfigurationEnvVarMarksUITestHost() {
-        let environment = LaunchEnvironment(
-            arguments: [],
-            environmentVariables: ["XCTestConfigurationFilePath": "/tmp/whatever.xctestconfiguration"]
-        )
-        #expect(environment.isUITestHost)
+    @Test func anyUITestArgumentMarksAUITestRun() {
+        #expect(LaunchEnvironment(arguments: ["BrewDesk", "-UITestSkipGates"]).isUITestRun)
+        #expect(LaunchEnvironment(arguments: ["-UITestScenario", "fixtureOK"]).isUITestRun)
     }
 
-    @Test func noEnvironmentVariablesIsNotAUITestHost() {
-        #expect(LaunchEnvironment(arguments: []).isUITestHost == false)
+    @Test func productionLaunchIsNotAUITestRun() {
+        #expect(LaunchEnvironment(arguments: []).isUITestRun == false)
+        // Other launch arguments (language overrides, -brewdesk.* values) are not UI-test flags.
+        #expect(LaunchEnvironment(arguments: ["-AppleLanguages", "(en)", "-brewdesk.saved-venue-ids", ""]).isUITestRun == false)
     }
 
     // MARK: - Order independence
