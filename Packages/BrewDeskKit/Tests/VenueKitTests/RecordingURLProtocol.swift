@@ -2,6 +2,7 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+@testable import VenueKit
 
 /// Test-only URL loading system plug-in that records every request a
 /// `URLSession` issues and answers it from canned engine fixtures. Install it
