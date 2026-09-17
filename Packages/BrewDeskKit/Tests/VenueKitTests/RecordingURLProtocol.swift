@@ -2,6 +2,7 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
+@testable import VenueKit
 
 /// Test-only URL loading system plug-in that records every request a
 /// `URLSession` issues and answers it from canned engine fixtures. Install it
@@ -28,6 +29,9 @@ final class RecordingURLProtocol: URLProtocol {
         var queryNames: [String] { queryItems.map(\.name) }
         func queryValue(_ name: String) -> String? {
             queryItems.first { $0.name == name }?.value ?? nil
+        }
+        func headerValue(_ name: String) -> String? {
+            headers.first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value
         }
         /// Top-level JSON keys of the body, if the body is a JSON object.
         var bodyKeys: Set<String> {
@@ -71,11 +75,21 @@ final class RecordingURLProtocol: URLProtocol {
 
     override func startLoading() {
         let body = request.httpBody ?? Self.drain(request.httpBodyStream)
+        var headers = request.allHTTPHeaderFields ?? [:]
+        // URLProtocol's allHTTPHeaderFields can omit a field that
+        // value(forHTTPHeaderField:) still returns; pin the privacy header
+        // either way so the audit cannot miss it.
+        if headers.keys.contains(where: {
+            $0.caseInsensitiveCompare(VenueQuery.viewportHeaderName) == .orderedSame
+        }) == false,
+           let viewport = request.value(forHTTPHeaderField: VenueQuery.viewportHeaderName) {
+            headers[VenueQuery.viewportHeaderName] = viewport
+        }
         let entry = Recorded(
             method: request.httpMethod ?? "GET",
             url: request.url!,
             body: body,
-            headers: request.allHTTPHeaderFields ?? [:]
+            headers: headers
         )
         Self.lock.lock()
         Self.recorded.append(entry)

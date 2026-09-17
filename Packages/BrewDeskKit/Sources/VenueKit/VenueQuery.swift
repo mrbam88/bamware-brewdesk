@@ -73,14 +73,19 @@ public struct VenueQuery: Equatable, Sendable {
         self.limit = limit
     }
 
+    /// Engine #16 / brewdesk#154: the map-query centre travels in this
+    /// header, not the URL, so it never lands in Vercel Runtime Log Search
+    /// Params. Wire: `X-BrewDesk-Viewport: <lat>,<lng>`.
+    static let viewportHeaderName = "X-BrewDesk-Viewport"
+
+    /// Query items that travel in the URL. Coordinates are excluded so they
+    /// never appear in platform Search Params (brewdesk#154).
     var urlQueryItems: [URLQueryItem] {
         var items: [URLQueryItem] = [
             .init(name: "sort", value: sort.rawValue),
             .init(name: "limit", value: String(limit)),
             .init(name: "radius_m", value: String(radiusM)),
         ]
-        if let lat { items.append(.init(name: "lat", value: String(lat))) }
-        if let lng { items.append(.init(name: "lng", value: String(lng))) }
         if let wifiMinimum { items.append(.init(name: "wifi_min", value: wifiMinimum.rawValue)) }
         if let outletMinimum { items.append(.init(name: "outlets_min", value: outletMinimum.rawValue)) }
         // v2 wire names are camelCase on the engine (schema.ts VenueQuery).
@@ -90,5 +95,12 @@ public struct VenueQuery: Equatable, Sendable {
         if let neighborhood { items.append(.init(name: "neighborhood", value: neighborhood)) }
         if let search { items.append(.init(name: "q", value: search)) }
         return items
+    }
+
+    /// Value for `viewportHeaderName`. `nil` when either coordinate is
+    /// missing (Takeout import and the speed-test probe send no viewport).
+    var viewportHeaderValue: String? {
+        guard let lat, let lng else { return nil }
+        return "\(lat),\(lng)"
     }
 }

@@ -39,20 +39,20 @@ final class DegradedStateTests: XCTestCase {
     // sheet), not a Nearby-list push.
     @MainActor
     private func openSaved(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["tab-saved"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["tab-saved"].tap()
+        XCTAssertTrue(app.savedTab.waitForExistence(timeout: wait))
+        app.savedTab.tap()
     }
 
     @MainActor
     private func openYou(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["tab-you"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["tab-you"].tap()
+        XCTAssertTrue(app.youTab.waitForExistence(timeout: wait))
+        app.youTab.tap()
     }
 
     @MainActor
     private func openFixtureRoastersDetail(_ app: XCUIApplication) {
-        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["tab-spots"].tap()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
+        app.spotsTab.tap()
         let pin = app.mapPin(named: "Fixture Roasters")
         XCTAssertTrue(pin.waitForExistence(timeout: wait))
         pin.tap()

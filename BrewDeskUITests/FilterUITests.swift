@@ -22,8 +22,8 @@ final class FilterUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments += ["-UITestSkipGates", "-UITestScenario", "fixtureOK"]
         app.launch()
-        XCTAssertTrue(app.tabBars.buttons["tab-spots"].waitForExistence(timeout: wait))
-        app.tabBars.buttons["tab-spots"].tap()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
+        app.spotsTab.tap()
         XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitForExistence(timeout: wait))
         return app
     }
@@ -55,7 +55,14 @@ final class FilterUITests: XCTestCase {
         openFilterMenuIfNeeded(app)
         let toggle = app.switches["filter-laptop-friendly"].firstMatch
         XCTAssertTrue(toggle.waitForExistence(timeout: wait))
-        toggle.tap()
+        // A SwiftUI Toggle's accessibility element spans label + switch; a
+        // centre tap lands on the label and does not flip it on iOS 26. Tap the
+        // trailing edge where the switch lives, then prove it flipped.
+        let before = toggle.value as? String
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        let flipped = NSPredicate(format: "value != %@", before ?? "")
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: flipped, object: toggle)], timeout: wait),
+                       .completed, "laptop-friendly toggle did not flip")
     }
 
     @MainActor
@@ -75,8 +82,10 @@ final class FilterUITests: XCTestCase {
         // zero cafes here); the laptop-hostile cafe drops out.
         XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitForExistence(timeout: wait),
                       "All filters selected emptied the list (brewdesk#77 regression)")
-        XCTAssertFalse(app.mapPin(named: "Fixture Corner Cafe").exists,
-                       "Laptop-discouraged cafe should not pass laptop-friendly")
+        // Wait for the filter to apply: asserting `.exists == false` the instant
+        // the last chip is tapped races the re-plan (brewdesk#166).
+        XCTAssertTrue(app.mapPin(named: "Fixture Corner Cafe").waitForNonExistence(timeout: wait),
+                      "Laptop-discouraged cafe should not pass laptop-friendly")
     }
 
     @MainActor

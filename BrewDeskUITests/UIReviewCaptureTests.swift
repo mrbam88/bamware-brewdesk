@@ -93,7 +93,7 @@ final class UIReviewCaptureTests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["map-discovery-shelf"].waitForExistence(timeout: 10))
 
         // ── 6. Saved (empty state — launched with no saved ids) ────────
-        let savedTab = app.tabBars.buttons["tab-saved"]
+        let savedTab = app.savedTab
         XCTAssertTrue(savedTab.waitForExistence(timeout: 5))
         savedTab.waitUntilHittable()
         savedTab.tap()
@@ -110,8 +110,8 @@ final class UIReviewCaptureTests: XCTestCase {
 
         // ── 8. Methodology (reached from the You tab — Nearby's toolbar
         // entry is gone with the tab) ────────────────────────────────────
-        XCTAssertTrue(app.tabBars.buttons["tab-you"].waitForExistence(timeout: 5))
-        app.tabBars.buttons["tab-you"].tap()
+        XCTAssertTrue(app.youTab.waitForExistence(timeout: 5))
+        app.youTab.tap()
         app.descendants(matching: .any)["methodology-link"].tap()
         XCTAssertTrue(app.navigationBars["How Work Fit works"].waitForExistence(timeout: 5))
         capture(app, "09-methodology")

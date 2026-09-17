@@ -108,6 +108,10 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
     /// substitution (bd#108 removed that; `VenuesModel` now sends whatever
     /// coordinate it was given). `coverage` on the response says whether
     /// that viewport is researched, OSM baseline, or has nothing at all.
+    ///
+    /// Coordinates travel in `X-BrewDesk-Viewport` (engine #16), never in
+    /// the URL query string, so they are not retained as Vercel Search Params
+    /// (brewdesk#154). Filters stay on the query string.
     public func fetchVenuesResult(_ query: VenueQuery) async throws -> VenueLoadResult {
         var comps = URLComponents(
             url: baseURL.appendingPathComponent("/v1/venues"),
@@ -115,7 +119,11 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
         )!
         comps.queryItems = query.urlQueryItems
         guard let url = comps.url else { throw VenueAPIError.badURL }
-        let response = try await get(VenueListResponse.self, from: url)
+        var request = URLRequest(url: url)
+        if let viewport = query.viewportHeaderValue {
+            request.setValue(viewport, forHTTPHeaderField: VenueQuery.viewportHeaderName)
+        }
+        let response = try await get(VenueListResponse.self, request: request)
         return VenueLoadResult(venues: response.venues, coverage: .from(response.resolvedCoverage))
     }
 
@@ -235,7 +243,11 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
     }
 
     private func get<T: Decodable>(_ type: T.Type, from url: URL) async throws -> T {
-        let (data, resp) = try await session.data(from: url)
+        try await get(type, request: URLRequest(url: url))
+    }
+
+    private func get<T: Decodable>(_ type: T.Type, request: URLRequest) async throws -> T {
+        let (data, resp) = try await session.data(for: request)
         try Self.check(resp)
         do {
             return try JSONDecoder().decode(T.self, from: data)

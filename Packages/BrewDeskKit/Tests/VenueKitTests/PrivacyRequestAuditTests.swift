@@ -7,7 +7,9 @@ import Testing
 /// proving, per flow, which host receives coordinates and which never can.
 ///
 /// Facts these tests pin (see docs/PRIVACY-AUDIT.md):
-/// - Coordinates travel ONLY as `lat`/`lng` on `GET {engine}/v1/venues`.
+/// - Coordinates travel ONLY as `X-BrewDesk-Viewport: <lat>,<lng>` on
+///   `GET {engine}/v1/venues` (engine #16 / brewdesk#154). They never appear
+///   in the URL query string or a JSON body (Vercel retains Search Params).
 /// - With location denied the app queries the public Union Square anchor
 ///   (VenuesModel.coverageCenter*), never a device coordinate.
 /// - With location granted, the app now always queries the real coordinate
@@ -67,12 +69,20 @@ import Testing
 
         for request in requests {
             let names = coordinateNames(in: request)
+            #expect(names.isEmpty, "\(request.path) must not carry coordinates in the URL or body")
             if request.path == "/v1/venues" {
-                #expect(names == ["lat", "lng"], "only lat/lng may carry a coordinate")
-                #expect(request.queryValue("lat") == String(Self.anchor.lat))
-                #expect(request.queryValue("lng") == String(Self.anchor.lng))
+                #expect(request.queryValue("lat") == nil)
+                #expect(request.queryValue("lng") == nil)
+                #expect(Set(request.queryNames) == ["sort", "limit", "radius_m"])
+                #expect(
+                    request.headerValue(VenueQuery.viewportHeaderName)
+                        == "\(Self.anchor.lat),\(Self.anchor.lng)"
+                )
             } else {
-                #expect(names.isEmpty, "\(request.path) must not carry coordinates")
+                #expect(
+                    request.headerValue(VenueQuery.viewportHeaderName) == nil,
+                    "\(request.path) must not carry a viewport header"
+                )
             }
         }
     }
@@ -85,6 +95,7 @@ import Testing
         let request = try #require(RecordingURLProtocol.requests.first)
         #expect(request.host == Self.engineHost)
         #expect(coordinateNames(in: request).isEmpty)
+        #expect(request.headerValue(VenueQuery.viewportHeaderName) == nil)
         #expect(Set(request.queryNames) == ["sort", "limit", "radius_m"])
     }
 
@@ -104,14 +115,25 @@ import Testing
         // 1. No request left the device for any host but the venue engine.
         #expect(Set(requests.compactMap(\.host)) == [Self.engineHost])
 
-        // 2. The device coordinate appears in exactly one request: the venue
-        //    query — and only as lat/lng.
+        // 2. The device coordinate appears in exactly one place: the
+        //    X-BrewDesk-Viewport header on GET /v1/venues. It must not leak
+        //    into any URL or body (Vercel Search Params / request logs).
         let digits = [String(device.lat), String(device.lng), "40.748", "73.985"]
-        let carrying = requests.filter { request in digits.contains { request.contains($0) } }
-        #expect(carrying.count == 1)
-        #expect(carrying.first?.method == "GET")
-        #expect(carrying.first?.path == "/v1/venues")
-        #expect(carrying.first.map(coordinateNames) == ["lat", "lng"])
+        let leakedInURLOrBody = requests.filter { request in digits.contains { request.contains($0) } }
+        #expect(leakedInURLOrBody.isEmpty)
+
+        let listing = try #require(requests.first { $0.method == "GET" && $0.path == "/v1/venues" })
+        #expect(coordinateNames(in: listing).isEmpty)
+        #expect(listing.queryValue("lat") == nil)
+        #expect(listing.queryValue("lng") == nil)
+        #expect(Set(listing.queryNames) == ["sort", "limit", "radius_m"])
+        #expect(
+            listing.headerValue(VenueQuery.viewportHeaderName)
+                == "\(device.lat),\(device.lng)"
+        )
+        #expect(
+            requests.filter { $0.headerValue(VenueQuery.viewportHeaderName) != nil }.count == 1
+        )
 
         // 3. Photo URLs point at a third-party (Google) host that is NOT the
         //    engine — and those URLs carry neither coordinates nor the device
@@ -150,12 +172,14 @@ import Testing
         let probe = try #require(requests.first { $0.method == "GET" })
         #expect(probe.path == "/v1/venues")
         #expect(Set(probe.queryNames) == ["limit", "_speed_test_nonce"])
+        #expect(probe.headerValue(VenueQuery.viewportHeaderName) == nil)
     }
 
     // MARK: Wire vocabulary guard
 
     /// The complete set of query names `VenueQuery` can emit. Adding a name
-    /// here is a privacy review: which ones can carry a location?
+    /// here is a privacy review: none of these may carry a location
+    /// (coordinates travel only in `X-BrewDesk-Viewport`).
     @Test func queryVocabularyIsClosed() {
         let everything = VenueQuery(
             lat: 1, lng: 2, radiusM: 3,
@@ -165,10 +189,17 @@ import Testing
         )
         let names = Set(everything.urlQueryItems.map(\.name))
         #expect(names == [
-            "sort", "limit", "radius_m", "lat", "lng",
+            "sort", "limit", "radius_m",
             "wifi_min", "outlets_min", "minSeating", "venueType", "laptops",
             "neighborhood", "q",
         ])
-        #expect(names.intersection(Self.coordinateKeys) == ["lat", "lng"])
+        #expect(names.intersection(Self.coordinateKeys).isEmpty)
+        #expect(everything.viewportHeaderValue == "\(1.0),\(2.0)")
+    }
+
+    @Test func viewportHeaderIsOmittedWithoutBothCoordinates() {
+        #expect(VenueQuery(lat: 1, lng: nil).viewportHeaderValue == nil)
+        #expect(VenueQuery(lat: nil, lng: 2).viewportHeaderValue == nil)
+        #expect(VenueQuery().viewportHeaderValue == nil)
     }
 }
