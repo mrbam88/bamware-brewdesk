@@ -55,7 +55,14 @@ final class FilterUITests: XCTestCase {
         openFilterMenuIfNeeded(app)
         let toggle = app.switches["filter-laptop-friendly"].firstMatch
         XCTAssertTrue(toggle.waitForExistence(timeout: wait))
-        toggle.tap()
+        // A SwiftUI Toggle's accessibility element spans label + switch; a
+        // centre tap lands on the label and does not flip it on iOS 26. Tap the
+        // trailing edge where the switch lives, then prove it flipped.
+        let before = toggle.value as? String
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        let flipped = NSPredicate(format: "value != %@", before ?? "")
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: flipped, object: toggle)], timeout: wait),
+                       .completed, "laptop-friendly toggle did not flip")
     }
 
     @MainActor
