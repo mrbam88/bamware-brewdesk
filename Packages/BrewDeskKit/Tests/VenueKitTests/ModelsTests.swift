@@ -155,6 +155,16 @@ import Testing
         #expect(v.isObserved)
     }
 
+    @Test func unknownValueNeverCountsAsObserved() {
+        // A confident, non-estimate claim that says "unknown" is still no
+        // observation — it must not earn the venue a printed score.
+        let v = Self.venue(
+            wifi: Self.claim(value: "unknown", source: "osm", confidence: 0.9),
+            outlets: Self.claim(value: "unknown", source: "curated", confidence: 0.8)
+        )
+        #expect(v.isObserved == false)
+    }
+
     @Test func exactlyAtTheConfidenceFloorIsObserved() {
         let v = Self.venue(wifi: Self.claim(source: "osm", confidence: 0.4))
         #expect(v.isObserved)

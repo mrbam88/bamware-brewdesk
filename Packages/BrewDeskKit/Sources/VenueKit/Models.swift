@@ -184,7 +184,9 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         ]
         return scoredClaims.contains { claim in
             guard let claim else { return false }
-            return !claim.isEstimate && claim.confidence >= 0.4
+            // A claim whose value is literally "unknown" is the absence of an
+            // observation, whatever its source or confidence says.
+            return !claim.isEstimate && claim.confidence >= 0.4 && claim.value != "unknown"
         }
     }
 }

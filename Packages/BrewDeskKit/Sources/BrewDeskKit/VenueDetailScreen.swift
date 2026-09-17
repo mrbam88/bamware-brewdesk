@@ -636,7 +636,10 @@ public struct VenueDetailScreen: View {
     }
 
     private var shareText: String {
-        "\(venue.name) · Work Fit \(venue.workScore) · \(venue.neighborhood)"
+        // Never share the neutral fallback number as if it were a rating (#159).
+        venue.isObserved
+            ? "\(venue.name) · Work Fit \(venue.workScore) · \(venue.neighborhood)"
+            : "\(venue.name) · \(venue.neighborhood)"
     }
 
     private func openDirections() {
