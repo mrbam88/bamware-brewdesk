@@ -106,18 +106,20 @@ final class AccountFlowUITests: XCTestCase {
     // MARK: - Sign in with Apple / Google appear at equal prominence
 
     @MainActor
-    func testSignInScreenOffersAppleAtEqualProminenceToEmail() {
-        // Google is hidden: no GIDClientID is configured tonight (Human-only
-        // handoff, see the PR description) — `AccountModel.availableProviders`
-        // hides it, and `SocialButtonsLayout` re-enforces "never Google
-        // without Apple" independently (BamwareAccountUI's own contract).
-        // Apple must still appear. Never tapped here: it would present a
-        // real system ASAuthorizationController sheet XCUITest cannot
-        // drive deterministically.
+    func testSignInScreenOffersAppleAtEqualProminenceToGoogleAndEmail() {
+        // GIDClientID is configured (vault /bamware/brewdesk/google-ios-client-id,
+        // 2026-09-19), so Google is offered — and Guideline 4.8 requires Apple
+        // beside it at equal prominence (`SocialButtonsLayout` enforces the
+        // pairing; this pins the rendered result). Never tapped here: both
+        // present real system sheets XCUITest cannot drive deterministically.
         let app = launch()
         openSignIn(app)
-        XCTAssertTrue(element(app, "account-sign-in-apple").waitForExistence(timeout: wait))
-        XCTAssertFalse(element(app, "account-sign-in-google").exists)
+        let apple = element(app, "account-sign-in-apple")
+        let google = element(app, "account-sign-in-google")
+        XCTAssertTrue(apple.waitForExistence(timeout: wait))
+        XCTAssertTrue(google.waitForExistence(timeout: wait), "Google button missing although GIDClientID is configured")
+        XCTAssertEqual(apple.frame.width, google.frame.width, accuracy: 1, "Apple and Google buttons must be the same width (4.8)")
+        XCTAssertEqual(apple.frame.height, google.frame.height, accuracy: 1, "Apple and Google buttons must be the same height (4.8)")
         XCTAssertTrue(element(app, "account-sign-in-email").exists)
         // BrewDesk's own copy sits above the package's sign-in form.
         XCTAssertTrue(element(app, "account-sign-in-value-prop").exists)
