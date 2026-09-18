@@ -1,10 +1,12 @@
 import XCTest
 
-/// Optional accounts (brewdesk#48, Apple 1.2). Deterministic via
-/// `-UITestScenario`: auth resolves to the in-process `AuthScenarioService`
-/// (seeded `tester@bamware.com` / `BrewDesk1!`) and the session store is
-/// in-memory, so every launch starts signed out. Entry point: the Saved tab
-/// toolbar ("account-entry").
+/// Optional accounts (brewdesk#48, Apple 1.2; re-pointed at the shared
+/// `BamwareAccountUI` package's screens for bamware-brewdesk#174, C9).
+/// Deterministic via `-UITestScenario`: auth resolves to the in-process
+/// `AuthScenarioService` (seeded `tester@bamware.com` / `Tester1!`) and the
+/// session store is in-memory, so every launch starts signed out. Entry
+/// point: the You tab's "Your account" row opens a sheet hosting the
+/// package's `SignInScreen`/`AccountScreen`.
 final class AccountFlowUITests: XCTestCase {
     private let wait: TimeInterval = 10
 
@@ -42,6 +44,17 @@ final class AccountFlowUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["You"].waitForExistence(timeout: wait))
     }
 
+    /// Taps the "Your account" row (signed out: "Sign In or Create
+    /// Account") to open the package's `SignInScreen` sheet.
+    @MainActor
+    private func openSignIn(_ app: XCUIApplication) {
+        openAccount(app)
+        let entry = element(app, "account-entry")
+        XCTAssertTrue(entry.waitForExistence(timeout: wait))
+        entry.tap()
+        XCTAssertTrue(element(app, "account-sign-in-header").waitForExistence(timeout: wait))
+    }
+
     @MainActor
     private func type(_ app: XCUIApplication, into identifier: String, text: String) {
         let field = element(app, identifier)
@@ -50,11 +63,23 @@ final class AccountFlowUITests: XCTestCase {
         field.typeText(text)
     }
 
+    /// Reveals the package's email/password form behind "Continue with
+    /// Email" — the package's low-emphasis path (Apple/Google are the
+    /// default), matching `SignInScreen`'s documented shape.
+    @MainActor
+    private func revealEmailForm(_ app: XCUIApplication) {
+        let continueWithEmail = element(app, "account-sign-in-email")
+        XCTAssertTrue(continueWithEmail.waitForExistence(timeout: wait))
+        continueWithEmail.tap()
+        XCTAssertTrue(element(app, "account-sign-in-email-field").waitForExistence(timeout: wait))
+    }
+
     @MainActor
     private func signInSeeded(_ app: XCUIApplication) {
-        type(app, into: "account-email-field", text: "tester@bamware.com")
-        type(app, into: "account-password-field", text: "BrewDesk1!")
-        element(app, "account-submit").tap()
+        revealEmailForm(app)
+        type(app, into: "account-sign-in-email-field", text: "tester@bamware.com")
+        type(app, into: "account-sign-in-password-field", text: "Tester1!")
+        element(app, "account-sign-in-submit").tap()
         XCTAssertTrue(element(app, "account-signed-in").waitForExistence(timeout: wait))
     }
 
@@ -74,8 +99,28 @@ final class AccountFlowUITests: XCTestCase {
         XCTAssertTrue(element(app, "saved-state-empty").waitForExistence(timeout: wait))
 
         // You tab is there too — offered, never forced.
-        app.youTab.tap()
-        XCTAssertTrue(element(app, "account-mode-toggle").waitForExistence(timeout: wait))
+        openAccount(app)
+        XCTAssertTrue(element(app, "account-entry").exists)
+    }
+
+    // MARK: - Sign in with Apple / Google appear at equal prominence
+
+    @MainActor
+    func testSignInScreenOffersAppleAtEqualProminenceToEmail() {
+        // Google is hidden: no GIDClientID is configured tonight (Human-only
+        // handoff, see the PR description) — `AccountModel.availableProviders`
+        // hides it, and `SocialButtonsLayout` re-enforces "never Google
+        // without Apple" independently (BamwareAccountUI's own contract).
+        // Apple must still appear. Never tapped here: it would present a
+        // real system ASAuthorizationController sheet XCUITest cannot
+        // drive deterministically.
+        let app = launch()
+        openSignIn(app)
+        XCTAssertTrue(element(app, "account-sign-in-apple").waitForExistence(timeout: wait))
+        XCTAssertFalse(element(app, "account-sign-in-google").exists)
+        XCTAssertTrue(element(app, "account-sign-in-email").exists)
+        // BrewDesk's own copy sits above the package's sign-in form.
+        XCTAssertTrue(element(app, "account-sign-in-value-prop").exists)
     }
 
     // MARK: - Sign up → sign out → sign in
@@ -83,27 +128,36 @@ final class AccountFlowUITests: XCTestCase {
     @MainActor
     func testSignUpSignOutSignInRoundTrip() {
         let app = launch()
-        openAccount(app)
+        openSignIn(app)
+        revealEmailForm(app)
 
         // Create an account.
-        app.buttons["Create Account"].firstMatch.tap()
-        type(app, into: "account-name-field", text: "New Taster")
-        type(app, into: "account-email-field", text: "new@bamware.com")
-        type(app, into: "account-password-field", text: "FlatWhite11!")
-        element(app, "account-submit").tap()
+        element(app, "account-sign-in-mode-toggle").tap()
+        type(app, into: "account-sign-in-name-field", text: "New Taster")
+        type(app, into: "account-sign-in-email-field", text: "new@bamware.com")
+        type(app, into: "account-sign-in-password-field", text: "FlatWhite11!")
+        element(app, "account-sign-in-submit").tap()
 
+        // Success dismisses the sign-in sheet back to the You tab, whose
+        // "Your account" row now opens the signed-in `AccountScreen`.
+        let entry = element(app, "account-entry")
+        XCTAssertTrue(entry.waitForExistence(timeout: wait))
+        entry.tap()
         let signedIn = element(app, "account-signed-in")
         XCTAssertTrue(signedIn.waitForExistence(timeout: wait))
         XCTAssertTrue(signedIn.label.contains("new@bamware.com"))
 
-        // Sign out returns to the signed-out form.
+        // Sign out: the sheet auto-dismisses (no longer signed in).
         element(app, "account-sign-out").tap()
-        XCTAssertTrue(element(app, "account-submit").waitForExistence(timeout: wait))
+        XCTAssertTrue(entry.waitForExistence(timeout: wait))
 
         // Sign back in as the registered account (in-process auth world).
-        type(app, into: "account-email-field", text: "new@bamware.com")
-        type(app, into: "account-password-field", text: "FlatWhite11!")
-        element(app, "account-submit").tap()
+        entry.tap()
+        revealEmailForm(app)
+        type(app, into: "account-sign-in-email-field", text: "new@bamware.com")
+        type(app, into: "account-sign-in-password-field", text: "FlatWhite11!")
+        element(app, "account-sign-in-submit").tap()
+        entry.tap()
         XCTAssertTrue(element(app, "account-signed-in").waitForExistence(timeout: wait))
     }
 
@@ -112,13 +166,14 @@ final class AccountFlowUITests: XCTestCase {
     @MainActor
     func testWrongPasswordShowsFriendlyErrorAndStaysSignedOut() {
         let app = launch()
-        openAccount(app)
+        openSignIn(app)
+        revealEmailForm(app)
 
-        type(app, into: "account-email-field", text: "tester@bamware.com")
-        type(app, into: "account-password-field", text: "WrongPass99!")
-        element(app, "account-submit").tap()
+        type(app, into: "account-sign-in-email-field", text: "tester@bamware.com")
+        type(app, into: "account-sign-in-password-field", text: "WrongPass99!")
+        element(app, "account-sign-in-submit").tap()
 
-        XCTAssertTrue(element(app, "account-error").waitForExistence(timeout: wait))
+        XCTAssertTrue(element(app, "account-sign-in-error").waitForExistence(timeout: wait))
         XCTAssertTrue(app.staticTexts["Invalid email or password."].exists)
         XCTAssertFalse(element(app, "account-signed-in").exists)
     }

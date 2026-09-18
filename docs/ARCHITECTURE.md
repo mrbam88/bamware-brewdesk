@@ -30,7 +30,9 @@ BrewDeskKit product
 ├── SavedVenuesStore
 ├── VenueKit
 ├── BamwareCore
-└── BamwareUI
+├── BamwareUI
+├── BamwareAccounts / BamwareAccountsGoogle
+└── BamwareAccountUI
 
 VenueKit product
 ├── immutable Sendable domain values
@@ -103,6 +105,21 @@ one source of truth.
 Actors are for shared mutable state with independent lifetime. Main-actor UI
 models do not need to become actors merely because they call async functions.
 
+## Shared bamware-ios packages
+
+`Packages/BrewDeskKit/Package.swift` pins `bamware-ios` to an exact
+revision (`BamwareAccounts`, `BamwareAccountsGoogle`, `BamwareAccountUI` as
+of bamware-brewdesk#174/C9). `BrewDeskDevelopment.xcworkspace` substitutes
+the pin for the sibling `../bamware-ios` checkout for local development
+against unreleased shared-package changes — **that substitution needs the
+sibling checkout at or ahead of the pinned revision
+(`202681cc270d79173bdd73c2d23f8513e9f8acca`) to build**; an older sibling
+checkout is missing the account packages entirely. This could not be
+verified when bamware-brewdesk#174 landed because the sibling checkout in
+that environment was stale and behind the pin — say so rather than silently
+skip it. `xcodebuild -project BrewDesk.xcodeproj` (the remote pin) is
+unaffected either way.
+
 ## Configuration
 
 `VenueAPI.defaultBaseURL` is selected at compile time:
@@ -115,6 +132,12 @@ accept a runtime environment switch that could leak into a store archive.
 
 `VenueAPI` uses a 15-second request timeout so a stalled engine becomes an
 explicit error state with Retry instead of a long spinner.
+
+`BrewDeskAccountTenant.defaultAuthBaseURL` (`AccountComposition.swift`)
+mirrors the same Debug/Release split for `bamware-auth-service`: Debug talks
+to a local `pnpm dev` instance, Release to the deployed dev-stage Lambda.
+`BamwareAccounts` itself holds no base URL or tenant constant — every value
+flows in through the app-owned `AccountTenantConfig` this file builds.
 
 UI tests may pass `-UITestScenario <name>` / `-UITestLocationDenied`
 (`UITestScenario` in the app target) to swap in `ScenarioVenueService`

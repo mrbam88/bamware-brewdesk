@@ -74,48 +74,42 @@ Monitor it with:
 gh run watch --repo mrbam88/bamware-brewdesk
 ```
 
-## Store-submission surface gate (brewdesk#67)
+## Store-submission surface gate — removed (bamware-brewdesk#174, C9)
 
-The App Store submission binary must be an accountless app matching the
-"Data Not Collected" privacy label, so the store archive hides the Account
-entry, photo report/block actions, and the observation entry card. This is a
-build *configuration* flag, not `#if DEBUG` — TestFlight and the store both
-build Release.
+The `STORE_SURFACE_GATED` build setting / `BDStoreSurfaceGated` Info.plist
+key / `StoreSurface.isGated` mechanism described in earlier revisions of
+this doc is gone. brewdesk#67's accountless-submission strategy is retired:
+BrewDesk now ships accounts (Apple, Google, email via the shared
+`BamwareAccounts`/`BamwareAccountUI` packages), report/block, and the
+observation entry card in every build, store submission included — there is
+no longer a build that hides them. The App Privacy label changes
+accordingly; see `submission/1.1/metadata/privacy-label.md` for the answers
+Bilal enters in App Store Connect (Human-only — no App Store action was
+taken by this ticket).
 
-- Mechanism: `STORE_SURFACE_GATED` build setting (default `NO` in every
-  checked-in configuration) → `BDStoreSurfaceGated` key in the merged
-  Info.plist (`BrewDesk-Store-Info.plist`) → read at runtime by
-  `StoreSurface.isGated` in BrewDeskKit.
-- TestFlight rail: unchanged. Plain `Release` keeps every feature ON.
+Store archives now follow the same `xcodebuild archive` command as before,
+with no `STORE_SURFACE_GATED` override and no separate release-branch flip —
+a store archive is just a normal signed `Release` archive from `main` (still
+cut a release branch per the usual TestFlight/build-number discipline; there
+is simply no longer a build-setting commit to make on it).
 
-### Release-branch flow (REQUIRED — decided by Bilal 2026-08-30)
+## Human-only handoff for accounts (bamware-brewdesk#174, C9)
 
-Command-line overrides (`STORE_SURFACE_GATED=YES` on the archive command)
-are FORBIDDEN for store archives: they leave no trace in git, so the
-submitted binary's state is invisible to history. Every store archive must
-be reproducible from a tagged commit:
+Before the next TestFlight/store build ships real sign-in:
 
-0. On `main`, BEFORE cutting the branch: refresh the bundled first-paint
-   snapshot (`sh scripts/refresh-venue-snapshot.sh`), commit it via a normal
-   PR, and only then cut from the merged commit. A stale snapshot makes the
-   first screen reshuffle into different venues a second after launch
-   (brewdesk#161).
-1. Cut a release branch from the exact main commit being shipped:
-   `git checkout -b release/1.0.3 main`
-2. Commit the flip ON THE BRANCH — set `STORE_SURFACE_GATED = YES` in
-   `BrewDesk.xcodeproj/project.pbxproj` as a normal one-line commit
-   ("release: gate store surface for 1.0.3 submission").
-3. Archive from the branch with NO build-setting overrides:
-   `xcodebuild archive -project BrewDesk.xcodeproj -scheme BrewDesk -destination 'generic/platform=iOS' -allowProvisioningUpdates`
-4. Verify before upload: the exported app's Info.plist contains
-   `BDStoreSurfaceGated = YES`, and `StoreSurfaceGateUITests` passes on the
-   branch.
-5. After Apple assigns the build number, tag the archived commit:
-   `git tag store/1.0.3-buildN && git push --tags`
-6. Push the branch. It is retired after approval — never merged back, never
-   long-lived. `main` NEVER carries the flip; the next submission cuts a
-   fresh branch.
-
-Result: `git diff main..store/1.0.3-buildN` shows exactly what the reviewer
-received — one commit, one setting. A long-lived "store" branch is equally
-forbidden: permanent divergence is how real feature drift starts.
+- **Sign in with Apple**: add the "Sign in with Apple" capability to the
+  `io.bamware.brewdesk` App ID in the Apple Developer portal (Certificates,
+  Identifiers & Profiles). `BrewDesk/BrewDesk.entitlements` and the Xcode
+  project's `CODE_SIGN_ENTITLEMENTS` setting are already wired — signing/
+  provisioning/team were not touched by this ticket (hard stop) and
+  "Automatically manage signing" should pick up the capability on next
+  build once the App ID has it, but that account-portal step is Human-only.
+- **Google sign-in**: provision an iOS OAuth client id in Google Cloud for
+  this app, then fill in `GIDClientID` and the `CFBundleURLTypes` reversed-
+  client-id placeholder in both `BrewDesk-Debug-Info.plist` and
+  `BrewDesk-Store-Info.plist` (each has a `TODO(Bilal)` comment marking the
+  exact keys). Until then the Google button stays hidden —
+  `AccountModel.availableProviders` omits it when no client id is
+  configured, so this is safe to ship as-is.
+- **Privacy label**: enter the answers in `submission/1.1/metadata/
+  privacy-label.md` into App Store Connect's App Privacy questionnaire.

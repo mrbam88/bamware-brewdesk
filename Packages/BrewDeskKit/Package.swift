@@ -1,4 +1,8 @@
 // swift-tools-version: 6.2
+// Package Traits (SE-0450, used below to opt this app into the real
+// GoogleSignIn-iOS SDK via BamwareAccountsGoogle's `GoogleSignIn` trait)
+// only need tools-version 6.1+ — this manifest was already on 6.2 for
+// `.defaultIsolation` below, so no bump was needed for bamware-brewdesk#174.
 import PackageDescription
 
 let package = Package(
@@ -9,10 +13,16 @@ let package = Package(
         .library(name: "VenueKit", targets: ["VenueKit"])
     ],
     dependencies: [
-        // Pin until bamware-ios publishes semantic-version tags.
+        // Pinned to the bamware-ios revision that contains B5-B8
+        // (BamwareAccounts, BamwareAccountsGoogle, BamwareAccountUI,
+        // bamware-brewdesk#174). Pin until bamware-ios publishes
+        // semantic-version tags. `traits: ["GoogleSignIn"]` enables
+        // BamwareAccountsGoogle's optional trait so the real GoogleSignIn-iOS
+        // SDK links (off by default upstream) — see that package's README.
         .package(
             url: "https://github.com/mrbam88/bamware-ios.git",
-            revision: "464bf1daf166de4ef2826d6c81dac18690601dee"
+            revision: "202681cc270d79173bdd73c2d23f8513e9f8acca",
+            traits: ["GoogleSignIn"]
         )
     ],
     targets: [
@@ -29,7 +39,10 @@ let package = Package(
             dependencies: [
                 "VenueKit",
                 .product(name: "BamwareCore", package: "bamware-ios"),
-                .product(name: "BamwareUI", package: "bamware-ios")
+                .product(name: "BamwareUI", package: "bamware-ios"),
+                .product(name: "BamwareAccounts", package: "bamware-ios"),
+                .product(name: "BamwareAccountsGoogle", package: "bamware-ios"),
+                .product(name: "BamwareAccountUI", package: "bamware-ios")
             ],
             swiftSettings: [
                 .defaultIsolation(MainActor.self),

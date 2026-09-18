@@ -136,7 +136,7 @@ struct DiscoveryRootView: View {
 
     private var youTab: some View {
         NavigationStack {
-            AccountScreen()
+            YouTabScreen()
         }
     }
 }

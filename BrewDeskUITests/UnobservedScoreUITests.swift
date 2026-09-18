@@ -154,35 +154,9 @@ final class UnobservedScoreUITests: XCTestCase {
         XCTAssertTrue(explanation.waitForExistence(timeout: wait), "Missing the one-line unobserved explanation")
         XCTAssertTrue(explanation.label.contains("haven't checked"),
                       "Explanation text missing, got: \(explanation.label)")
-        // fixtureOK is never store-surface-gated: the rate-it half of the
-        // line should be present (reuses the existing StoreSurface gate,
-        // never a new one).
+        // brewdesk#174 (C9) removed the store-submission surface gate this
+        // used to reuse — the rate-it half of the line is unconditional now.
         XCTAssertTrue(explanation.label.contains("Rate it"),
-                      "Un-gated launch should still offer the rate-it prompt, got: \(explanation.label)")
-    }
-
-    @MainActor
-    func testUnobservedVenueDetailHidesRateItPromptWhenStoreSurfaceGated() throws {
-        let app = XCUIApplication()
-        app.launchArguments += [
-            "-UITestSkipGates", "-UITestScenario", "fixtureOK",
-            "-UITestStoreSurfaceGated",
-        ]
-        app.launch()
-        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
-        app.spotsTab.tap()
-        dragShelfToFullDetent(app)
-
-        let unchecked = shelfButtons(app).matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Fixture Unchecked Spot,")
-        ).firstMatch
-        XCTAssertTrue(unchecked.waitForExistence(timeout: wait))
-        unchecked.tap()
-        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
-
-        let explanation = app.descendants(matching: .any)["unobserved-explanation"]
-        XCTAssertTrue(explanation.waitForExistence(timeout: wait))
-        XCTAssertFalse(explanation.label.contains("Rate it"),
-                       "Store-surface-gated builds must never offer the rate-it prompt, got: \(explanation.label)")
+                      "Should always offer the rate-it prompt, got: \(explanation.label)")
     }
 }

@@ -81,7 +81,7 @@ final class BrewDeskUITests: XCTestCase {
         // material exemptions elsewhere in this file already document; only
         // page 1's strings are exempted since this audit never swipes.
         //
-        // brewdesk#98 re-tuned the Warm Utilitarian hexes: the "0X / 03"
+        // brewdesk#98 re-tuned the Warm Utilitarian hexes: the "0X / 04"
         // page counter (`bodyTextColor` → `BrewDeskPalette.muted`,
         // `#6B5A44`) now trips the same sampling artifact — measured 6.35:1
         // sampling the audit's own captured pixels ((107,90,68) text on
@@ -94,7 +94,7 @@ final class BrewDeskUITests: XCTestCase {
             return label == "WORK, WITHOUT THE GUESSWORK"
                 || label == "Find nearby spots where the Wi-Fi works, outlets exist, "
                 + "and opening a laptop is actually welcome."
-                || label == "01 / 03"
+                || label == "01 / 04"
         }
         try app.performAccessibilityAudit(
             for: [.dynamicType, .elementDetection, .hitRegion, .sufficientElementDescription, .textClipped, .trait]

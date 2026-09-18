@@ -2,8 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>BDStoreSurfaceGated</key>
-	<string>$(STORE_SURFACE_GATED)</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
@@ -11,6 +9,32 @@
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Your location is used to find work-friendly cafes nearby.</string>
+	<!--
+	Google sign-in (bamware-brewdesk#174, C9) — Human-only setup, see
+	docs/RELEASING.md's Human-only handoff and BamwareAccounts' README
+	("Human-only setup the consuming app must add"). TODO(Bilal): once a
+	Google Cloud OAuth iOS client id is provisioned for this app:
+	  1. Replace REPLACE_WITH_REVERSED_CLIENT_ID below with the
+	     REVERSED_CLIENT_ID from that client's GoogleService-Info.plist
+	     (looks like com.googleusercontent.apps.1234567890-abcdefg).
+	  2. Set the GIDClientID key (also below) to the matching client id,
+	     and pass the same value into AccountTenantConfig.googleClientID
+	     (BrewDeskAccountTenant.googleClientID in AccountComposition.swift
+	     already reads this key — no code change needed).
+	Until then this URL type is inert and the Google button stays hidden
+	(no client id configured -> AccountModel.availableProviders omits it).
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>REPLACE_WITH_REVERSED_CLIENT_ID</string>
+			</array>
+		</dict>
+	</array>
+	<key>GIDClientID</key>
+	<string></string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

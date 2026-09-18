@@ -40,11 +40,12 @@ public struct VenueDetailScreen: View {
                 businessInfo
                 // Structured observation entry (brewdesk#47) — the section
                 // owns its sheet and service resolution; ships in Release.
-                // Store-submission builds hide it (brewdesk#67): the form
-                // sends a per-install UUID the privacy label doesn't declare.
-                if !StoreSurface.isGated {
-                    ObservationFormEntrySection(venue: venue)
-                }
+                // brewdesk#174 (C9): the store-submission surface gate is
+                // gone — accounts, report/block, and this entry now ship in
+                // every build. The submitted per-install UUID is declared
+                // in the App Privacy label (submission/1.1/metadata/
+                // privacy-label.md).
+                ObservationFormEntrySection(venue: venue)
             }
             .padding(.horizontal, 18)
             .padding(.top, 14)
@@ -263,11 +264,11 @@ public struct VenueDetailScreen: View {
 
     /// One-line honesty note for a venue with no real evidence behind its
     /// score (bd#159): `workScore` is the engine's flat neutral fallback
-    /// (ve#64), not a measurement. The "Been here? Rate it." half only
-    /// appears when the store surface isn't gated (bd#67) — same gate as
-    /// `ObservationFormEntrySection` below, which is where that rating
-    /// actually happens; this line just points at it, it does not add a
-    /// second entry point.
+    /// (ve#64), not a measurement. The "Been here? Rate it." half points at
+    /// `ObservationFormEntrySection` below, where that rating actually
+    /// happens; this line does not add a second entry point. Unconditional
+    /// since brewdesk#174 (C9) removed the store-submission surface gate
+    /// this used to check.
     private var unobservedExplanation: some View {
         Text(unobservedExplanationText)
             .font(.footnote)
@@ -276,9 +277,8 @@ public struct VenueDetailScreen: View {
     }
 
     private var unobservedExplanationText: String {
-        let notChecked = String(localized: "We haven't checked this one yet.")
-        guard !StoreSurface.isGated else { return notChecked }
-        return notChecked + " " + String(localized: "Been here? Rate it.")
+        String(localized: "We haven't checked this one yet.")
+            + " " + String(localized: "Been here? Rate it.")
     }
 
     private var locationSummary: some View {

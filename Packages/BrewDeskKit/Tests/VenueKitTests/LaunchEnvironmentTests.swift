@@ -22,7 +22,6 @@ import Testing
         #expect(environment.noPhotos == false)
         #expect(environment.frameStats == false)
         #expect(environment.captureFailures == nil)
-        #expect(environment.storeSurfaceGatedOverride == false)
         #expect(environment.savedVenueIDs == nil)
         #expect(environment.fixedNow == nil)
         #expect(environment.isUITestRun == false)
@@ -84,10 +83,6 @@ import Testing
 
     @Test func frameStatsFlagParses() {
         #expect(LaunchEnvironment(arguments: ["-UITestFrameStats"]).frameStats)
-    }
-
-    @Test func storeSurfaceGatedOverrideFlagParses() {
-        #expect(LaunchEnvironment(arguments: ["-UITestStoreSurfaceGated"]).storeSurfaceGatedOverride)
     }
 
     // MARK: - Capture failures (`-UITestCaptureFailures <n>`)

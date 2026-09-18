@@ -4,6 +4,7 @@
 // DebugEnvironmentStore). `LiveCaptureSubmissionService` drives the VenueKit
 // rail: signed-in check → presign → S3 PUT → confirm → venue-engine intake.
 #if DEBUG
+import BamwareAccounts
 import Foundation
 import VenueKit
 
@@ -93,8 +94,15 @@ public final class LiveCaptureSubmissionService: CaptureSubmissionService {
     private let sessionStore: AccountSessionStore
     private let chain: CaptureUploadChain
 
+    /// `BamwareAccounts.AccountSessionStore` vends no singleton (apps own
+    /// the instance, per its README) — the default here builds the same
+    /// keychain-scoped store a normal (non-scenario) launch's account stack
+    /// uses (`BrewDeskAccountStack`/`AccountSessionPersistenceResolver`),
+    /// so a signed-in user's session is what this prototype sees too.
     public init(
-        sessionStore: AccountSessionStore = .shared,
+        sessionStore: AccountSessionStore = AccountSessionStore(
+            persistence: KeychainSessionStore(service: BrewDeskAccountTenant.keychainService)
+        ),
         chain: CaptureUploadChain = CaptureUploadChain(
             rail: UploadRailAPI(),
             storage: S3ObjectUploader(),

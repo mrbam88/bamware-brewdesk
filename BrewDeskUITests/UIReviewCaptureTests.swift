@@ -51,7 +51,13 @@ final class UIReviewCaptureTests: XCTestCase {
         app.buttons["Continue"].tap()
         XCTAssertTrue(app.staticTexts["Every score shows its work."].waitForExistence(timeout: 3))
         capture(app, "02-onboarding-evidence")
-        app.buttons["Find my work spot"].tap()
+        app.buttons["Continue"].tap()
+
+        // brewdesk#174 (C9): shared account-onboarding step, final page —
+        // skipped here (account sign-in itself is captured elsewhere).
+        let skip = app.descendants(matching: .any)["onboarding-account-skip"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 5))
+        skip.tap()
 
         // ── 2. Location intro ───────────────────────────────────────────
         XCTAssertTrue(app.staticTexts["Start where you are."].waitForExistence(timeout: 3))
