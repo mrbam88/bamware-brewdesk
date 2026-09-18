@@ -8,6 +8,24 @@ public protocol SavedVenuePersisting: AnyObject {
     func saveVenueIDs(_ venueIDs: [String])
 }
 
+/// What the Saved tab's one-line status shows (bamware-brewdesk#175).
+/// `.localOnly` covers both "signed out" and "signed in but not yet/
+/// currently synced" — the tab makes no distinction, no prompts either way.
+public enum SavedVenuesSyncStatus: Equatable, Sendable {
+    case localOnly
+    case synced
+}
+
+/// Optional second conformance for a `SavedVenuePersisting` that also syncs
+/// to a server (`ServerSavedVenuePersistence`). `SavedVenuesStore.syncStatus`
+/// below reads this via a cast so the store itself stays sync-agnostic —
+/// plain local-only persistence (`UserDefaultsSavedVenuePersistence`) simply
+/// doesn't conform, and the store reports `.localOnly` for it.
+@MainActor
+public protocol SavedVenuesSyncStatusReporting: AnyObject {
+    var syncStatus: SavedVenuesSyncStatus { get }
+}
+
 @MainActor
 public final class UserDefaultsSavedVenuePersistence: SavedVenuePersisting {
     private let defaults: UserDefaults
@@ -54,6 +72,23 @@ public final class SavedVenuesStore {
             venueIDs.insert(venueID, at: 0)
         }
         persistence.saveVenueIDs(venueIDs)
+    }
+
+    /// Re-reads `venueIDs` from the underlying persistence without going
+    /// through `toggle`. Needed because `ServerSavedVenuePersistence`'s
+    /// sign-in merge writes straight to the wrapped local store (async, off
+    /// the store's own `venueIDs` mutation path) — the composition root
+    /// calls this afterward so the `@Observable` `venueIDs` UI depends on
+    /// picks up the merged set.
+    public func reload() {
+        venueIDs = persistence.loadVenueIDs()
+    }
+
+    /// The Saved tab's one-line status (bamware-brewdesk#175) — `.localOnly`
+    /// for plain local persistence and for a `ServerSavedVenuePersistence`
+    /// that hasn't (yet) synced; `.synced` once it has.
+    public var syncStatus: SavedVenuesSyncStatus {
+        (persistence as? any SavedVenuesSyncStatusReporting)?.syncStatus ?? .localOnly
     }
 }
 

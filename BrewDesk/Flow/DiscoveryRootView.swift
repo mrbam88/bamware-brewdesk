@@ -16,9 +16,16 @@ struct DiscoveryRootView: View {
     private let venueListing: any VenueListing
     private let venueDetails: any VenueDetailServing
     @State private var model: VenuesModel
-    @State private var savedVenues = SavedVenuesStore()
+    @State private var savedVenues: SavedVenuesStore
+    // nil for scenario/UI-test launches (bamware-brewdesk#175): those keep
+    // plain local `SavedVenuesStore()` persistence, same as before this
+    // ticket, so DegradedStateTests' Saved-tab cases stay deterministic and
+    // make no real network call. Only a normal launch gets the server sync
+    // adapter, and only it needs foreground/appear sync ticks.
+    @State private var savedVenuesSync: ServerSavedVenuePersistence?
     @State private var connectivity = ConnectivityMonitor()
     @State private var selectedTab: DiscoveryTab = .spots
+    @Environment(\.scenePhase) private var scenePhase
 
     init(
         configuration: AppConfiguration,
@@ -32,6 +39,17 @@ struct DiscoveryRootView: View {
         self.venueListing = venueListing
         self.venueDetails = venueDetails
         _model = State(initialValue: VenuesModel(api: venueListing, snapshot: snapshot))
+        if LaunchEnvironment.current.scenario != nil {
+            _savedVenues = State(initialValue: SavedVenuesStore())
+            _savedVenuesSync = State(initialValue: nil)
+        } else {
+            let sync = ServerSavedVenuePersistence(
+                syncing: SavedSpotsSyncClient(),
+                tokenProvider: { await BrewDeskAccountTenant.freshAccessToken() }
+            )
+            _savedVenues = State(initialValue: SavedVenuesStore(persistence: sync))
+            _savedVenuesSync = State(initialValue: sync)
+        }
     }
 
     var body: some View {
@@ -96,6 +114,19 @@ struct DiscoveryRootView: View {
         .onChange(of: connectivity.isOnline) { wasOnline, isOnline in
             guard wasOnline == false, isOnline == true, case .failed = model.phase else { return }
             model.retry()
+        }
+        // Saved-spots sync (bamware-brewdesk#175): first appearance merges
+        // server ∪ local for whoever is signed in (or reports local-only,
+        // no prompt, if nobody is); returning to the foreground flushes the
+        // offline write queue. Both are no-ops when `savedVenuesSync` is
+        // nil (scenario/UI-test launches).
+        .task { await savedVenuesSync?.syncIfNeeded(); savedVenues.reload() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, let savedVenuesSync else { return }
+            Task {
+                await savedVenuesSync.syncIfNeeded()
+                savedVenues.reload()
+            }
         }
         .task(id: request) {
             if let coordinate = locationService.location?.coordinate,

@@ -21,6 +21,7 @@ public struct SavedCafesScreen: View {
 
     public var body: some View {
         content
+            .safeAreaInset(edge: .top) { syncStatusLine }
             .toolbar {
                 // brewdesk#117: the Account entry point moved to the You
                 // tab (AccountScreen is now that tab's root), so Saved's
@@ -93,6 +94,20 @@ public struct SavedCafesScreen: View {
         .task(id: savedVenues.venueIDs) {
             await model.load(venueIDs: savedVenues.venueIDs)
         }
+    }
+
+    /// The Saved tab's one-line sync status (bamware-brewdesk#175) —
+    /// nothing else: no per-spot sync UI, no conflict UI, no nag to sign
+    /// in. `SavedVenuesStore.syncStatus` reports `.localOnly` for both
+    /// "signed out" and "signed in but not synced yet/right now", which is
+    /// exactly what this line is allowed to say.
+    private var syncStatusLine: some View {
+        Text(savedVenues.syncStatus == .synced ? "Synced" : "Local only")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal)
+            .padding(.top, 4)
+            .accessibilityIdentifier("saved-sync-status")
     }
 
     /// Empty state with a way out: "go bookmark a cafe" now carries the

@@ -56,6 +56,19 @@ import VenueKit
         #expect(auth is AuthAPI)
     }
 
+    // MARK: - Account deletion content step (bamware-brewdesk#175)
+
+    @Test func scenarioLaunchGetsTheNoOpContentDeletionService() {
+        let environment = LaunchEnvironment(arguments: ["-UITestScenario", "fixtureOK"])
+        let content = AccountContentDeletionResolver.resolve(environment: environment)
+        #expect(content is NoUserContentService)
+    }
+
+    @Test func normalLaunchGetsTheLiveSavedVenuesContentDeletionService() {
+        let content = AccountContentDeletionResolver.resolve(environment: .production)
+        #expect(content is SavedVenuesAccountContentDeleting)
+    }
+
     @Test func scenarioLaunchGetsInMemorySessionPersistence() {
         let environment = LaunchEnvironment(arguments: ["-UITestScenario", "fixtureOK"])
         let config = BrewDeskAccountTenant.config(environment: environment)

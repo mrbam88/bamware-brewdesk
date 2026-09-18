@@ -54,6 +54,29 @@ public enum BrewDeskAccountTenant {
             googleClientID: googleClientID
         )
     }
+
+    /// A fresh, valid bearer token for a one-off authenticated call made
+    /// outside the You tab's own `AccountModel` — today only
+    /// `ServerSavedVenuePersistence` (bamware-brewdesk#175). Builds a
+    /// throwaway keychain-backed `AccountSessionStore` + `SessionRefresher`
+    /// on every call rather than holding one long-lived: the You tab's own
+    /// `AccountModel` (`BrewDeskAccountStack.makeModel`) is a *different*
+    /// `AccountSessionStore` instance, and re-reading the keychain fresh
+    /// each call is the simplest way this type picks up a sign-in/out done
+    /// there without the two composing a shared session object (same
+    /// fresh-per-call-instance shape `LiveCaptureSubmissionService`
+    /// already uses for its own default `AccountSessionStore`, just with
+    /// `SessionRefresher.validAccessToken()` added on top per this
+    /// ticket's explicit "uses validAccessToken()" instruction). Returns
+    /// `nil` when there is no session, or when refresh itself fails —
+    /// callers can't and don't need to tell those apart: either way there
+    /// is no bearer token, so the caller falls back to local-only.
+    public static func freshAccessToken(environment: LaunchEnvironment = .current) async -> String? {
+        let sessions = AccountSessionStore(persistence: KeychainSessionStore(service: keychainService))
+        guard sessions.session != nil else { return nil }
+        let refresher = SessionRefresher(refreshing: AuthAPI(config: config(environment: environment)), sessions: sessions)
+        return try? await refresher.validAccessToken()
+    }
 }
 
 /// Same `-UITestScenario` launch-argument contract as
@@ -69,6 +92,19 @@ public enum AccountServiceResolver {
             return AuthScenarioService(tenantId: config.tenantId)
         }
         return AuthAPI(config: config)
+    }
+}
+
+/// Account deletion's content step (bamware-brewdesk#175): scenario/UI-test
+/// launches keep the package default `NoUserContentService()` (a no-op) so
+/// AccountDeletionUITests never makes a real network call; a normal launch
+/// gets the live saved-spots DELETE against venue-engine.
+public enum AccountContentDeletionResolver {
+    public static func resolve(environment: LaunchEnvironment = .current) -> any AccountContentDeleting {
+        if environment.scenario != nil {
+            return NoUserContentService()
+        }
+        return SavedVenuesAccountContentDeleting(syncing: SavedSpotsSyncClient())
     }
 }
 
@@ -132,7 +168,8 @@ public enum BrewDeskAccountStack {
         let sessions = AccountSessionStore(
             persistence: AccountSessionPersistenceResolver.resolve(config: config, environment: environment)
         )
-        let model = AccountModel(auth: auth, sessions: sessions)
+        let content = AccountContentDeletionResolver.resolve(environment: environment)
+        let model = AccountModel(auth: auth, content: content, sessions: sessions)
         let socialAuth: any SocialAuthServing = if environment.scenario != nil {
             ScenarioSocialAuthService(tenantId: config.tenantId)
         } else if let liveAuth = auth as? any SocialAuthServing {
