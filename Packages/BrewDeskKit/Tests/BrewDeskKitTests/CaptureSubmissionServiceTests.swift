@@ -3,6 +3,7 @@
 // and launch-argument service resolution, with zero network. Debug-only
 // like the rest of capture (Guideline 2.3.1).
 #if DEBUG
+import BamwareAccounts
 import Foundation
 import Testing
 import UIKit

@@ -1,9 +1,6 @@
 // Push Phase A (brewdesk#93) — tapping the local reminder deep-links to the
 // venue detail. No backend: the payload is just the `venueId` this process
-// scheduled (see `VisitReminderContent.venueIdKey`). `StoreSurface.isGated`
-// needs no special-casing here — `VenueDetailScreen` already hides the
-// observation entry card when gated (brewdesk#67), so routing to detail
-// alone already satisfies "gated → detail only, no observation form".
+// scheduled (see `VisitReminderContent.venueIdKey`).
 import Foundation
 import Observation
 import UserNotifications

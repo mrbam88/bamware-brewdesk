@@ -84,9 +84,9 @@ struct PhotoViewer: View {
             .navigationTitle(Text(verbatim: venueName))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // Moderation menu is store-gated (brewdesk#67): the
-                // submission build ships no report/block surface.
-                if let byline = photo.communityByline, !StoreSurface.isGated {
+                // brewdesk#174 (C9): the store-submission surface gate is
+                // gone — every build ships the report/block surface.
+                if let byline = photo.communityByline {
                     ToolbarItem(placement: .topBarLeading) {
                         Menu {
                             Button {

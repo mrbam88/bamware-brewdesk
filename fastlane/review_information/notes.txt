@@ -1,6 +1,10 @@
-BrewDesk is a free, accountless guide to work-friendly spots (cafés, libraries, parks) for remote and hybrid workers. Researched in depth for New York City, baseline coverage in 50 US metros. No purchases, subscriptions, ads, analytics, accounts, or user-generated content. No credentials or sample files needed.
+BrewDesk is a free guide to work-friendly spots (cafés, libraries, parks) for remote and hybrid workers. Researched in depth for New York City, baseline coverage in 50 US metros. No purchases, subscriptions, or ads. No credentials or sample files needed to review the app — an account is optional everywhere (browsing, saving spots locally, and rating a visit all work signed out).
 
-SETUP: Launch → location intro → allow location, or tap "Use Union Square instead" to review without it. Location is the only permission the app requests. Without location the app shows the full NYC dataset, so it can be reviewed from anywhere.
+ACCOUNTS (bamware-brewdesk#174): optional sign-in with Apple, Google, or email — from the You tab, or the final onboarding page (which has a Skip). Reviewing without one is the default path and is fully supported; nothing in the app requires signing in. In-app account deletion is available (You tab → your account row → Delete Account), a two-step confirm that permanently removes the account and its data from our servers within 24 hours per our published retention policy.
+
+USER-GENERATED CONTENT & MODERATION (Apple 1.2): community photos and structured observations ("rate this visit") are open to anyone, signed in or not. Report any photo from its fullscreen view, or block a contributor to hide their photos on this device (You tab → Contact & Content Rules → also reachable from any community photo's moderation menu). Reports are acted on within 24 hours: the content is removed and the contributor is ejected. Published contact for content concerns: bmalik.ee@gmail.com (You tab → Contact & Content Rules).
+
+SETUP: Launch → onboarding (ends with an optional account step — Skip is fine) → location intro → allow location, or tap "Use Union Square instead" to review without it. Location is the only device permission the app requests. Without location the app shows the full NYC dataset, so it can be reviewed from anywhere.
 
 REVIEWING OUTSIDE NYC: grant location and the map shows real venues near you from baseline coverage with a banner saying the area is baseline data. Engine liveness: https://venuekit-ashen.vercel.app/v1/health (JSON; the bare root is not a product URL).
 
@@ -13,7 +17,7 @@ Also: Directions hands off to Maps; Save adds to the Saved tab; Import parses an
 
 DEVICES TESTED: physical iPhone via TestFlight builds 1–18; Release UI suites incl. a scripted reviewer-flow simulation on iPhone 17 Pro Max and iPad Pro 13-inch (M5), iOS 26. Minimum iOS 17.0.
 
-EXTERNAL SERVICES: our venue data service on Vercel (URL above); OpenStreetMap data (ODbL, attributed in the You tab) incl. an Overpass lookup done by our server; Google Places photos via our server, shown with attribution; Apple MapKit / Core Location; Apple Maps for directions. No auth, payment, ad, analytics, crash-reporting or AI services are called by the app. The dataset is researched offline by our team from public web sources.
+EXTERNAL SERVICES: our venue data service on Vercel (URL above); our account/identity service (bamware-auth-service, called only when the user chooses to sign in) with optional Sign in with Apple / Google; OpenStreetMap data (ODbL, attributed in the You tab) incl. an Overpass lookup done by our server; Google Places photos via our server, shown with attribution; Apple MapKit / Core Location; Apple Maps for directions. No payment, ad, analytics, crash-reporting or AI services are called by the app. The dataset is researched offline by our team from public web sources.
 
 REGIONS: features identical everywhere; data depth differs (NYC researched, 50 US metros baseline with banner, elsewhere live OSM lookup or an explained empty state).
 

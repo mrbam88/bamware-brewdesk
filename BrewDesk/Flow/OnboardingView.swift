@@ -1,3 +1,4 @@
+import BamwareAccountUI
 import BrewDeskKit
 import SwiftUI
 
@@ -52,6 +53,17 @@ struct OnboardingView: View {
         ),
     ]
 
+    /// bamware-brewdesk#174 (C9): the shared `AccountOnboardingStep`
+    /// (`BamwareAccountUI`) is the final onboarding page — one more than
+    /// `pages.count`. It draws its own Continue/Skip; both outcomes finish
+    /// onboarding the same way `page == pages.count - 1`'s button used to
+    /// (spec-gap decision, PR description: the package step has no
+    /// reference to `AccountModel`/`SignInScreen`, so "Continue" here means
+    /// "proceed" rather than jumping straight into a second sign-in form —
+    /// signing in actually happens from the You tab afterward).
+    private var totalPages: Int { pages.count + 1 }
+    private var isOnAccountStep: Bool { page == pages.count }
+
     var body: some View {
         ZStack {
             AppBrand.adaptivePageGradient.ignoresSafeArea()
@@ -61,7 +73,7 @@ struct OnboardingView: View {
                         .font(.caption.bold())
                         .tracking(2.4)
                     Spacer()
-                    Text("0\(page + 1) / 03")
+                    Text("0\(page + 1) / 0\(totalPages)")
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(bodyTextColor)
                 }
@@ -73,11 +85,22 @@ struct OnboardingView: View {
                         onboardingPage(item)
                             .tag(index)
                     }
+                    AccountOnboardingStep(
+                        theme: theme,
+                        title: String(localized: "Sync spots. Get alerts."),
+                        body: YouTabScreen.signInValuePropText,
+                        symbolName: "person.crop.circle.badge.checkmark"
+                    ) { _ in
+                        // Both Continue and Skip finish onboarding — see the
+                        // doc comment above.
+                        onComplete()
+                    }
+                    .tag(pages.count)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
 
                 HStack(spacing: 8) {
-                    ForEach(pages.indices, id: \.self) { index in
+                    ForEach(0..<totalPages, id: \.self) { index in
                         Capsule()
                             .fill(index == page ? theme.primaryColor : theme.primaryColor.opacity(0.15))
                             .frame(width: index == page ? 30 : 8, height: 8)
@@ -86,19 +109,20 @@ struct OnboardingView: View {
                 .animation(reduceMotion ? nil : .snappy, value: page)
                 .accessibilityHidden(true)
 
-                Button(page == pages.count - 1 ? "Find my work spot" : "Continue") {
-                    if page == pages.count - 1 {
-                        onComplete()
-                    } else {
+                // The account step supplies its own Continue/Skip buttons
+                // (`onboarding-account-continue`/`onboarding-account-skip`)
+                // — this bar's own button only drives pages 1-3.
+                if !isOnAccountStep {
+                    Button("Continue") {
                         if reduceMotion {
                             page += 1
                         } else {
                             withAnimation { page += 1 }
                         }
                     }
+                    .buttonStyle(PrimaryActionStyle())
+                    .padding(24)
                 }
-                .buttonStyle(PrimaryActionStyle())
-                .padding(24)
             }
         }
     }

@@ -41,9 +41,6 @@ public struct LaunchEnvironment: Sendable, Equatable {
     /// capture submits. `nil` unless `n` parses as an integer `> 0`
     /// (mirrors the pre-existing resolver contract).
     public let captureFailures: Int?
-    /// `-UITestStoreSurfaceGated` — forces the store-submission surface
-    /// gate ON. One-directional: never turns a gated build's gate off.
-    public let storeSurfaceGatedOverride: Bool
     /// `-brewdesk.saved-venue-ids "(...)"` — the NSArgumentDomain
     /// old-style plist array syntax UI tests actually pass (grepped out of
     /// `BrewDeskUITests`), e.g. `()` or `("fixture-roasters")`. `nil` when
@@ -104,7 +101,6 @@ public struct LaunchEnvironment: Sendable, Equatable {
         captureFailures = Self.value(after: "-UITestCaptureFailures", in: arguments)
             .flatMap(Int.init)
             .flatMap { $0 > 0 ? $0 : nil }
-        storeSurfaceGatedOverride = arguments.contains("-UITestStoreSurfaceGated")
         savedVenueIDs = Self.value(after: "-brewdesk.saved-venue-ids", in: arguments)
             .flatMap(Self.parseOldStylePlistArray)
         fixedNow = Self.value(after: "-brewdesk.uitest-fixed-now", in: arguments)

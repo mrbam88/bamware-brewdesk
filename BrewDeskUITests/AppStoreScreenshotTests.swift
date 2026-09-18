@@ -83,11 +83,6 @@ final class AppStoreScreenshotTests: XCTestCase {
             "-brewdesk.onboarding.complete", "NO",
             "-brewdesk.location-intro.complete", "NO",
             "-UITestNoPhotos",
-            // Store-submission builds hide the Account entry, report/block
-            // actions, and observation entry card (brewdesk#67). Marketing
-            // screenshots must match that shipped surface, not the
-            // TestFlight-only superset (brewdesk#68).
-            "-UITestStoreSurfaceGated",
             "-AppleLanguages", locale.appleLanguage,
             "-AppleLocale", locale.appleLocale,
         ]
@@ -99,7 +94,12 @@ final class AppStoreScreenshotTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[locale.honestHeadline].waitForExistence(timeout: 2))
         capture("04-honest-by-design")
 
-        app.buttons[locale.findMyWorkCafe].tap()
+        app.buttons[locale.continueButton].tap()
+        // brewdesk#174 (C9): shared account-onboarding step, final page —
+        // skipped for the marketing capture (identifier-keyed, locale-safe).
+        let skip = app.descendants(matching: .any)["onboarding-account-skip"]
+        XCTAssertTrue(skip.waitForExistence(timeout: 5))
+        skip.tap()
         XCTAssertTrue(app.staticTexts[locale.startWhereYouAre].waitForExistence(timeout: 2))
         capture("05-location-is-optional")
 

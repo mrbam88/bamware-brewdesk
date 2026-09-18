@@ -4,7 +4,17 @@ import VenueKit
 /// Contact method + content rules (brewdesk#48; Apple 1.2 requires published
 /// contact information and clear UGC rules). Also manages the device-local
 /// blocked-contributors list so a block is always reversible.
-public struct AccountPoliciesScreen: View {
+///
+/// Renamed from the retired `AccountPoliciesScreen.swift`
+/// (bamware-brewdesk#174, C9): this content — a published contact address,
+/// BrewDesk's own UGC rules, and the on-device block list — is not account
+/// session state, and has no equivalent in the shared `BamwareAccountUI`
+/// package (its `AccountPoliciesLinks` is only Privacy/Terms links, already
+/// covered by the You tab's About section below this entry). Kept as-is
+/// under a new name rather than deleted outright, since deleting it would
+/// remove Apple 1.2-required UGC-moderation content with nothing to
+/// replace it.
+public struct ContentPoliciesScreen: View {
     private let blockStore: ContributorBlockStore
     @State private var blockedNames: [String] = []
 

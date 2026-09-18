@@ -10,10 +10,12 @@ pointing at the source of truth.
 - **Scenario** — `ScenarioVenueService.Scenario`: the deterministic fixture
   set (`engineDown`, `offline`, `fixtureOK`, …) a `-UITestScenario` launch
   selects, standing in for the live venue engine in UI and package tests.
-- **StoreSurface** — the App Store submission build's accountless surface
-  gate (Apple 1.2/5.1.1): hides accounts, report/block, and observation
-  entry when `STORE_SURFACE_GATED=YES` or the UI-test override argument
-  forces it on. One-directional — never turns a gated build's gate off.
+- **Accounts** — sign in with Apple, Google, or email via the shared
+  `BamwareAccounts`/`BamwareAccountUI` packages (`../bamware-ios`), composed
+  for this tenant in `BrewDeskKit/AccountComposition.swift`
+  (`BrewDeskAccountTenant`/`BrewDeskAccountStack`). Ships in every build,
+  store submission included — bamware-brewdesk#174 (C9) retired the
+  accountless `StoreSurface` gate brewdesk#67 introduced.
 - **Shelf detent** — the discovery map's honest resting positions (`peek`,
   `medium`, `full`) for the venue shelf overlay card; an in-tab alternative
   to a modal `.sheet` so the tab bar stays reachable at every detent.
