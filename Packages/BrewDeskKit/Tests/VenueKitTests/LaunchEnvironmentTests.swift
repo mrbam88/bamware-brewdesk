@@ -184,6 +184,22 @@ import Testing
         #expect(LaunchEnvironment(arguments: []).forceLaunchReveal == false)
     }
 
+    // MARK: - Freeze launch reveal (`-UITestFreezeLaunchRevealAtMS`, bamware-brewdesk#193)
+
+    @Test func freezeLaunchRevealAtMSParses() {
+        let environment = LaunchEnvironment(arguments: ["-UITestFreezeLaunchRevealAtMS", "500"])
+        #expect(environment.freezeLaunchRevealAtMS == 500)
+    }
+
+    @Test func freezeLaunchRevealAtMSAbsentIsNil() {
+        #expect(LaunchEnvironment(arguments: []).freezeLaunchRevealAtMS == nil)
+    }
+
+    @Test func freezeLaunchRevealAtMSUnparseableIsNil() {
+        let environment = LaunchEnvironment(arguments: ["-UITestFreezeLaunchRevealAtMS", "not-a-number"])
+        #expect(environment.freezeLaunchRevealAtMS == nil)
+    }
+
     // MARK: - Apple feature fixture (`-brewdesk.apple-feature-fixture`, bd#182)
 
     @Test func appleFeatureFixtureParsesNameLatLng() {
