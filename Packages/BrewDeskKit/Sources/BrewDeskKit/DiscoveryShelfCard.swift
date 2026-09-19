@@ -261,10 +261,13 @@ struct DiscoveryShelfCard: View {
     private var emptyContent: some View {
         switch model.phase {
         case .loaded:
+            // bd#192: "No cafés here yet" — distinct from the old generic
+            // "No spots in this view" now that a zero-result viewport can
+            // come from a real "Search this area" fetch, not just a filter.
             ContentUnavailableView {
-                Label("No spots in this view", systemImage: "cup.and.saucer")
+                Label("No cafés here yet", systemImage: "cup.and.saucer")
             } description: {
-                Text("Clear a filter or try another search.")
+                Text("Clear a filter, search a different spot, or try another area.")
             } actions: {
                 Button("Browse NYC") { model.browseCoverageCenter() }
                     .buttonStyle(.borderedProminent)

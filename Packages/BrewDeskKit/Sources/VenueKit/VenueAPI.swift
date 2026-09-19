@@ -109,10 +109,34 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
     /// coordinate it was given). `coverage` on the response says whether
     /// that viewport is researched, OSM baseline, or has nothing at all.
     ///
+    /// bd#192: the highest `limit` this client falls back to when the live
+    /// engine rejects a bigger request — `schema.ts`'s documented cap as of
+    /// this ticket (`limit.max(200)`), so a `VenuesModel.viewportQueryLimit`
+    /// request (500, ahead of the companion server ticket ve#140 raising
+    /// the cap) still degrades to a working map instead of a hard failure
+    /// if this ships before that server change lands.
+    static let fallbackLimit = 200
+
     /// Coordinates travel in `X-BrewDesk-Viewport` (engine #16), never in
     /// the URL query string, so they are not retained as Vercel Search Params
     /// (brewdesk#154). Filters stay on the query string.
+    ///
+    /// bd#192: retries once at `Self.fallbackLimit` on an HTTP 400 when the
+    /// requested `limit` exceeds it — the one, deliberately narrow case a
+    /// stricter-than-expected server `limit` cap must not turn into a
+    /// user-visible failed map. Any other 400 (a genuinely bad query) still
+    /// surfaces as `.http(400)` on the first attempt, unchanged.
     public func fetchVenuesResult(_ query: VenueQuery) async throws -> VenueLoadResult {
+        do {
+            return try await performFetchVenuesResult(query)
+        } catch VenueAPIError.http(let statusCode) where statusCode == 400 && query.limit > Self.fallbackLimit {
+            var fallback = query
+            fallback.limit = Self.fallbackLimit
+            return try await performFetchVenuesResult(fallback)
+        }
+    }
+
+    private func performFetchVenuesResult(_ query: VenueQuery) async throws -> VenueLoadResult {
         var comps = URLComponents(
             url: baseURL.appendingPathComponent("/v1/venues"),
             resolvingAgainstBaseURL: false
