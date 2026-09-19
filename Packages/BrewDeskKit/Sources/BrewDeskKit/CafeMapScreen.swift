@@ -92,6 +92,24 @@ public struct CafeMapScreen: View {
     /// already offers the same "Open Settings" affordance in the header,
     /// this is the same action reachable from the map control itself.
     @State private var showLocationDeniedAlert = false
+    /// bd#192: true from a "Search this area" tap until `model.phase`
+    /// leaves `.loading` — drives the pill's inline progress state. Purely
+    /// a UI affordance; the fetch itself is the same `model.request`
+    /// pipeline every other viewport change already uses.
+    @State private var isSearchingThisArea = false
+    /// bd#192: polls `model.phase` back to `false` once the tap's own fetch
+    /// leaves `.loading` — NOT a `.onChange(of: model.phase)` handler.
+    /// `ScenarioVenueService` (every UI-test fixture) answers with no
+    /// artificial delay, so a `.loading → .loaded` round trip can complete
+    /// inside one SwiftUI render pass; `onChange` only fires by comparing
+    /// the last RENDERED value to the next one; and re-fetches this fast
+    /// never render an intermediate `.loading` frame at all, so `onChange`
+    /// never observes a change and the flag would stay stuck true forever.
+    /// Reading `model.phase` directly, each poll, sidesteps that
+    /// coalescing entirely — a fetch that already finished by the first
+    /// poll clears the flag immediately instead of waiting on an event
+    /// that already happened.
+    @State private var searchAreaFetchTask: Task<Void, Never>?
 
     public init(
         model: VenuesModel,
@@ -106,6 +124,22 @@ public struct CafeMapScreen: View {
 
     public var body: some View {
         let plan = MapAnnotationPlanner.plan(venues: model.venues, region: visibleRegion)
+        // bd#192: purely derived from state already tracked elsewhere —
+        // `isSearchingThisArea` keeps the pill (with its progress state) up
+        // through the tap's own fetch, and once that clears, the pill's
+        // visibility falls straight out of comparing the settled
+        // `visibleRegion` against what `model` actually last queried. No
+        // separate "hide after fetch" flag: `searchThisArea()` updates
+        // `model`'s center/radius to match the region it fetched for, so
+        // the comparison naturally goes false the moment that lands.
+        let showSearchAreaPill = isSearchingThisArea || visibleRegion.map {
+            Self.needsSearchAreaPill(
+                loadedCenterLat: model.centerLat,
+                loadedCenterLng: model.centerLng,
+                loadedRadiusM: model.radiusM,
+                visibleRegion: $0
+            )
+        } == true
         // Camera tracking (brewdesk#54 / PR #61): the region is recovered on
         // demand — a gesture ending schedules one debounced `MapProxy` corner
         // conversion after momentum settles, and programmatic moves (cluster
@@ -241,6 +275,35 @@ public struct CafeMapScreen: View {
                 .accessibilityValue(cameraCenterAccessibilityValue)
                 .allowsHitTesting(false)
         }
+        // bd#192 UI-test seam: exposes what `model` actually last queried
+        // (center + radius), distinct from `map-camera-center`'s live
+        // camera position — `MapSearchAreaUITests` reads this to prove a
+        // "Search this area" tap dispatched a NEW viewport query rather
+        // than just moving the camera. Scenario fixtures (`fixtureOK`, …)
+        // return the same venues regardless of query params, so this is
+        // the only observable proof of a re-query in that harness.
+        .overlay(alignment: .topLeading) {
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier("map-last-query")
+                .accessibilityLabel("Map last query")
+                .accessibilityValue(lastQueryAccessibilityValue)
+                .allowsHitTesting(false)
+        }
+        // bd#192: the "Search this area" pill — top-center of the map,
+        // clear of the search header above it (attached here, before the
+        // outer `.safeAreaInset(edge: .top)` below reserves that header's
+        // space, so this aligns to the MAP's own top edge once that inset
+        // pushes it down, not the screen's absolute top).
+        .overlay(alignment: .top) {
+            if showSearchAreaPill {
+                SearchAreaPill(isSearching: isSearchingThisArea, action: searchThisArea)
+                    .padding(.top, 8)
+                    .transition(.opacity)
+            }
+        }
+        .animation(reduceMotion ? nil : .snappy, value: showSearchAreaPill)
         .alert("Location Access Needed", isPresented: $showLocationDeniedAlert) {
             Button("Open Settings") {
                 if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -413,6 +476,7 @@ public struct CafeMapScreen: View {
             replanTask?.cancel()
             searchFitTask?.cancel()
             gapFillTask?.cancel()
+            searchAreaFetchTask?.cancel()
         }
     }
 
@@ -517,6 +581,12 @@ public struct CafeMapScreen: View {
     /// Settings alert, matching `LocationDeniedBanner`'s existing affordance
     /// rather than doing nothing silently (the original bug report).
     private func handleLocateTap() {
+        // bd#192: locate-me is one of the two moves that refetch without
+        // the "Search this area" pill (the other is the very first load) —
+        // never leave the pill's own progress state stuck on if it was
+        // mid-tap when the user reached for locate-me instead.
+        searchAreaFetchTask?.cancel()
+        isSearchingThisArea = false
         if locationDenied {
             showLocationDeniedAlert = true
             return
@@ -564,6 +634,18 @@ public struct CafeMapScreen: View {
             span: MKCoordinateSpan(latitudeDelta: Self.locateZoomSpan, longitudeDelta: Self.locateZoomSpan)
         )
         visibleRegion = region
+        // bd#192: locate-me "refetches around the user" per the ticket —
+        // the center is already `model.centerLat/Lng` (this IS the user),
+        // so only the radius actually changes here, from whatever the last
+        // viewport query used to the walking-zoom radius this camera move
+        // lands on. Keeps the pill's own comparison in sync too: without
+        // this, a locate tap coming from a much-wider or much-tighter last
+        // query would leave `needsSearchAreaPill` true and the pill would
+        // reappear right after a locate move, which is the one thing the
+        // ticket says must never happen.
+        model.updateViewport(
+            lat: model.centerLat, lng: model.centerLng, radiusM: Self.radiusMeters(for: region)
+        )
         if reduceMotion {
             position = .region(region)
         } else {
@@ -682,6 +764,80 @@ public struct CafeMapScreen: View {
             guard Self.needsReplan(from: visibleRegion, to: region) else { return }
             visibleRegion = region
         }
+    }
+
+    // MARK: - "Search this area" (bd#192)
+
+    /// The pill's tap action: re-fetches for whatever `visibleRegion`
+    /// currently holds. A no-op (never sets `isSearchingThisArea`, never
+    /// shows a spinner with nothing behind it) if the region somehow isn't
+    /// known yet — the pill itself only ever shows once it is.
+    private func searchThisArea() {
+        guard let visibleRegion else { return }
+        searchAreaFetchTask?.cancel()
+        isSearchingThisArea = true
+        stopTrackingUserLocation()
+        model.updateViewport(
+            lat: visibleRegion.center.latitude,
+            lng: visibleRegion.center.longitude,
+            radiusM: Self.radiusMeters(for: visibleRegion)
+        )
+        // Polls rather than observes — see `isSearchingThisArea`'s doc
+        // comment for why a `.onChange(of: model.phase)` handler can miss
+        // a fast fixture/scenario fetch entirely. Bounded so a genuinely
+        // stuck load (network hang past `VenueAPI`'s own 15s timeout)
+        // still clears the pill's progress state instead of spinning
+        // forever.
+        searchAreaFetchTask = Task {
+            for _ in 0..<200 {
+                guard !Task.isCancelled else { return }
+                if model.phase != .loading { break }
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+            guard !Task.isCancelled else { return }
+            isSearchingThisArea = false
+        }
+    }
+
+    /// "<lat>,<lng>,<radiusM>" — what `model` last actually queried with,
+    /// backing the `map-last-query` UI-test seam.
+    private var lastQueryAccessibilityValue: String {
+        String(format: "%.6f,%.6f,%d", model.centerLat, model.centerLng, model.radiusM)
+    }
+
+    /// Half the longer visible side, clamped to `VenuesModel`'s
+    /// viewport-query bounds (bd#192) — the radius both the "Search this
+    /// area" tap and the locate-me refetch request.
+    static func radiusMeters(for region: MKCoordinateRegion) -> Int {
+        let metersPerDegreeLat = 111_320.0
+        let metersPerDegreeLng = metersPerDegreeLat * cos(region.center.latitude * .pi / 180)
+        let heightM = region.span.latitudeDelta * metersPerDegreeLat
+        let widthM = region.span.longitudeDelta * abs(metersPerDegreeLng)
+        let half = max(heightM, widthM) / 2
+        let clamped = min(max(half, Double(VenuesModel.minRadiusM)), Double(VenuesModel.maxRadiusM))
+        return Int(clamped.rounded())
+    }
+
+    /// The pill's own hysteresis (bd#192) — deliberately distinct from
+    /// `needsReplan` below: that one decides when to recompute annotations
+    /// for the SAME result set on every settle; this one decides whether
+    /// the loaded result set might itself be stale for the new viewport,
+    /// checked against `model`'s last-queried center/radius rather than an
+    /// annotation-culling margin. True once the settled region's center has
+    /// moved more than 35% of the loaded radius, or the region's own
+    /// radius-equivalent has changed by more than 2× in either direction.
+    static func needsSearchAreaPill(
+        loadedCenterLat: Double, loadedCenterLng: Double, loadedRadiusM: Int,
+        visibleRegion: MKCoordinateRegion
+    ) -> Bool {
+        guard loadedRadiusM > 0 else { return true }
+        let movedM = VenuesModel.metersBetween(
+            loadedCenterLat, loadedCenterLng,
+            visibleRegion.center.latitude, visibleRegion.center.longitude
+        )
+        let candidateRadiusM = Double(radiusMeters(for: visibleRegion))
+        let radiusRatio = candidateRadiusM / Double(loadedRadiusM)
+        return movedM > Double(loadedRadiusM) * 0.35 || radiusRatio > 2 || radiusRatio < 0.5
     }
 
     /// The region between the map view's corners, via `MapProxy`.

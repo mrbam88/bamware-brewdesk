@@ -86,7 +86,30 @@ public final class VenuesModel {
     /// Deterministic fallback until Core Location supplies a coordinate.
     public private(set) var centerLat = VenuesModel.coverageCenterLat
     public private(set) var centerLng = VenuesModel.coverageCenterLng
-    public let radiusM = 2500
+    /// bd#192 ("Search this area"): the radius actually driving the last
+    /// dispatched query — starts at `defaultRadiusM` and only ever changes
+    /// through `updateViewport(lat:lng:radiusM:)`, the same viewport-driven
+    /// path the map's pill and the locate-me refetch both use.
+    public private(set) var radiusM = VenuesModel.defaultRadiusM
+
+    /// bd#192: fixed radius before any real viewport has been observed —
+    /// the pre-#192 constant, now just the starting point instead of the
+    /// permanent value.
+    public static let defaultRadiusM = 2_500
+    /// bd#192: viewport-derived radius bounds. A citywide zoom-out never
+    /// asks the engine for an unbounded radius; a tight zoom-in never asks
+    /// for less than a still-useful neighborhood radius.
+    public static let minRadiusM = 300
+    public static let maxRadiusM = 3_000
+    /// bd#192 root cause: a fixed `limit: 100` on a 2.5 km query silently
+    /// dropped every hollow/unrated pin past the top 100 by work score once
+    /// a viewport held 1,000+ venues (Manhattan does today). Raised here;
+    /// the live engine's documented cap is 200 as of this ticket
+    /// (bamware-venue-engine `schema.ts`), with a companion server ticket
+    /// (ve#140) raising it to 500 the same day — `VenueAPI` requests this
+    /// higher value and falls back to a safe one if the server hasn't
+    /// deployed the raised cap yet (see `VenueAPI.fetchVenuesResult`).
+    public static let viewportQueryLimit = 500
 
     /// What the engine reported for the last successfully loaded viewport
     /// (ve#46, bd#108) — drives the coverage banner. `.researched` until the
@@ -128,8 +151,18 @@ public final class VenuesModel {
                 lat: centerLat,
                 lng: centerLng,
                 radiusM: radiusM,
+                // Decision (bd#192): kept at the server default rather than
+                // switching to `.distance` for the map fetch. The
+                // companion server ticket (ve#140) commits `sort=work_score`
+                // to returning evidence-backed pins first, then hollow pins
+                // ordered by ascending distance — the same completeness a
+                // client-side distance sort would buy, without a second
+                // local re-sort for the shelf or risking the tested
+                // observed-first/search-match-rank composition order
+                // (`VenueOrdering`, `VenueOrderingTests`) that both the
+                // shelf and the map share via `venues` below.
                 sort: .workScore,
-                limit: 100
+                limit: Self.viewportQueryLimit
             ),
             revision: requestRevision
         )
@@ -152,7 +185,25 @@ public final class VenuesModel {
     public func browseCoverageCenter() {
         centerLat = Self.coverageCenterLat
         centerLng = Self.coverageCenterLng
+        radiusM = Self.defaultRadiusM
         requestRevision &+= 1
+    }
+
+    /// bd#192 ("Search this area" + locate-me): the viewport-driven fetch
+    /// path — unlike `updateCenterIfNeeded` (location-driven recenter
+    /// only), this also carries the radius the current map viewport
+    /// implies, clamped to `minRadiusM...maxRadiusM`. Same "already here"
+    /// no-op contract: returns `false` (and touches nothing) when neither
+    /// the center nor the radius actually changed, so a caller can safely
+    /// call this on every settle without spamming no-op requests.
+    @discardableResult
+    public func updateViewport(lat: Double, lng: Double, radiusM: Int) -> Bool {
+        let clampedRadius = min(max(radiusM, Self.minRadiusM), Self.maxRadiusM)
+        guard centerLat != lat || centerLng != lng || self.radiusM != clampedRadius else { return false }
+        centerLat = lat
+        centerLng = lng
+        self.radiusM = clampedRadius
+        return true
     }
 
     nonisolated static func metersBetween(

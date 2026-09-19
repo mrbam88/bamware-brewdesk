@@ -180,6 +180,49 @@ import VenueKit
         #expect(model.request == updatedRequest)
     }
 
+    // MARK: - Viewport-driven fetch (bd#192)
+
+    @Test func updateViewportClampsRadiusAndChangesTheRequest() {
+        let model = VenuesModel(api: ControlledVenueService())
+        let before = model.request
+
+        #expect(model.updateViewport(lat: 40.71, lng: -74.0, radiusM: 50))
+        #expect(model.radiusM == VenuesModel.minRadiusM)
+        #expect(model.request.query.lat == 40.71)
+        #expect(model.request.query.lng == -74.0)
+        #expect(model.request.query.radiusM == VenuesModel.minRadiusM)
+        #expect(model.request != before)
+
+        #expect(model.updateViewport(lat: 40.71, lng: -74.0, radiusM: 10_000))
+        #expect(model.radiusM == VenuesModel.maxRadiusM)
+    }
+
+    @Test func updateViewportIsANoOpWhenNothingChanged() {
+        let model = VenuesModel(api: ControlledVenueService())
+        model.updateViewport(lat: 40.71, lng: -74.0, radiusM: 800)
+        let settled = model.request
+
+        #expect(!model.updateViewport(lat: 40.71, lng: -74.0, radiusM: 800))
+        #expect(model.request == settled)
+    }
+
+    @Test func requestDefaultsToTheRaisedViewportLimit() {
+        let model = VenuesModel(api: ControlledVenueService())
+        #expect(model.request.query.limit == VenuesModel.viewportQueryLimit)
+    }
+
+    @Test func browseCoverageCenterResetsTheRadiusToo() {
+        let model = VenuesModel(api: ControlledVenueService())
+        model.updateViewport(lat: 40.71, lng: -74.0, radiusM: 400)
+        #expect(model.radiusM == 400)
+
+        model.browseCoverageCenter()
+
+        #expect(model.radiusM == VenuesModel.defaultRadiusM)
+        #expect(model.centerLat == VenuesModel.coverageCenterLat)
+        #expect(model.centerLng == VenuesModel.coverageCenterLng)
+    }
+
     @Test func filterCyclesAreTypedAndDeterministic() {
         let model = VenuesModel(api: ControlledVenueService())
 
