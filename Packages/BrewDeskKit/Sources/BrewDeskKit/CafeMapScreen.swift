@@ -7,9 +7,32 @@ public struct CafeMapScreen: View {
     @Environment(\.locationDenied) private var locationDenied
     @Environment(\.locationUndetermined) private var locationUndetermined
     @Environment(\.requestLocationAccess) private var requestLocationAccess
+    @Environment(\.launchEnvironment) private var launchEnvironment
     @Bindable private var model: VenuesModel
     @Bindable private var savedVenues: SavedVenuesStore
+    /// Transport for the Apple feature card's "Suggest this café" action
+    /// (bd#182). Defaults to the documented no-op stub — see
+    /// `CafeSuggestionContract.swift` for why no real endpoint exists yet.
+    private let cafeSuggesting: any CafeSuggesting
     @State private var selected: Venue?
+    /// The Apple base-map POI label currently selected via `Map`'s own
+    /// selection binding (bd#182) — distinct from `selected`, which is only
+    /// ever one of OUR venues. Reset to `nil` once handled so a repeat tap
+    /// on the same label still fires `onChange`.
+    @State private var appleFeatureSelection: MapFeature?
+    /// Drives `AppleFeatureCard`'s sheet: set once a selected Apple feature
+    /// (or a tapped gap-fill marker) fails to match one of our venues.
+    @State private var appleFeatureCandidate: AppleCafeCandidate?
+    /// Best-effort `MKMapItem` for the current `appleFeatureCandidate`,
+    /// resolved async (`AppleCafeDetailsResolver`) so Directions can hand
+    /// Maps a precise place once it lands; `nil` renders and still works
+    /// (Directions falls back to a plain coordinate placemark).
+    @State private var resolvedAppleMapItem: MKMapItem?
+    /// Grey "unverified" markers from the feature-flagged gap-fill
+    /// (`AppleGapFillService`, default OFF) — never mixed into `plan`'s
+    /// scored pins/dots/clusters, recomputed on every camera settle.
+    @State private var appleGapFillMarkers: [AppleUnverifiedPOI] = []
+    @State private var gapFillTask: Task<Void, Never>?
     /// brewdesk#117: forces the detail sheet to open at `.large` — see the
     /// `.sheet` modifier below for why.
     @State private var detailDetent: PresentationDetent = .large
@@ -48,9 +71,14 @@ public struct CafeMapScreen: View {
     @ScaledMetric(relativeTo: .caption) private var shelfChipRowHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .title2) private var shelfCardBlockHeight: CGFloat = 138
 
-    public init(model: VenuesModel, savedVenues: SavedVenuesStore) {
+    public init(
+        model: VenuesModel,
+        savedVenues: SavedVenuesStore,
+        cafeSuggesting: any CafeSuggesting = NullCafeSuggestionClient()
+    ) {
         self.model = model
         self.savedVenues = savedVenues
+        self.cafeSuggesting = cafeSuggesting
         self._position = State(initialValue: .region(Self.region(lat: model.centerLat, lng: model.centerLng)))
     }
 
@@ -73,7 +101,11 @@ public struct CafeMapScreen: View {
         // this callback is the first suspect.
         MapReader { proxy in
             GeometryReader { geometry in
-                Map(position: $position) {
+                // `selection` (bd#182) binds ONLY Apple's own base-map POI
+                // labels — our pins/dots/clusters keep their existing
+                // Button-driven `selected` flow untouched, so this is a
+                // second, independent selection channel, not a replacement.
+                Map(position: $position, selection: $appleFeatureSelection) {
                     UserAnnotation()
                     annotations(for: plan)
                     // A venue chosen from a dot, cluster zoom-in, or the shelf
@@ -84,6 +116,29 @@ public struct CafeMapScreen: View {
                             pinButton(for: selected, isSelected: true)
                         }
                     }
+                    // Gap-fill (bd#182, feature-flagged, default OFF): grey
+                    // "unverified" Apple POIs shown only while the region is
+                    // thin on our own pins. Never part of `plan` — these
+                    // never compete with or get counted as scored venues.
+                    gapFillAnnotations
+                }
+                // Apple's base-map labels are restricted to food/drink
+                // categories (bd#182) — the only ones this screen makes
+                // selectable/relevant; every other Apple POI label (transit,
+                // parks, shops, …) stays off the map entirely rather than
+                // being selectable-but-ignored.
+                .mapStyle(.standard(pointsOfInterest: .including(Self.selectablePointsOfInterest)))
+                // Suppresses Apple's own callout bubble: our own
+                // `AppleFeatureCard` sheet (driven by the `onChange` below)
+                // is the single source of truth for what a selected feature
+                // looks like, so the system presentation would otherwise
+                // double up on it. A non-empty `Marker` still highlights the
+                // tapped label on the map itself while our sheet is up.
+                .mapFeatureSelectionContent { feature in
+                    Marker(feature.title ?? "", coordinate: feature.coordinate)
+                }
+                .onChange(of: appleFeatureSelection) { _, newValue in
+                    handleAppleFeatureSelection(newValue)
                 }
                 .onMapCameraChange(frequency: .onEnd) { context in
                     refreshVisibleRegion(context.region)
@@ -242,9 +297,45 @@ public struct CafeMapScreen: View {
             position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
             visibleRegion = Self.region(lat: model.centerLat, lng: model.centerLng)
         }
+        // Gap-fill (bd#182): recomputed on every settled camera region —
+        // the same signal `MapAnnotationPlanner` re-plans from — never
+        // during a mid-gesture frame (brewdesk#54 invariant: `visibleRegion`
+        // itself only ever updates post-settle). `MKCoordinateRegion` isn't
+        // Equatable, so `onChange` watches a small Equatable snapshot of it
+        // instead of the region itself.
+        .onChange(of: visibleRegion.map(RegionSnapshot.init)) { _, _ in
+            scheduleGapFill(region: visibleRegion)
+        }
+        .sheet(item: $appleFeatureCandidate, onDismiss: {
+            appleFeatureSelection = nil
+            resolvedAppleMapItem = nil
+        }) { candidate in
+            AppleFeatureCard(
+                candidate: candidate,
+                referenceCoordinate: CLLocationCoordinate2D(latitude: model.centerLat, longitude: model.centerLng),
+                resolvedMapItem: resolvedAppleMapItem,
+                suggesting: cafeSuggesting
+            )
+            .presentationDetents([.height(260), .medium])
+            .presentationDragIndicator(.visible)
+        }
+        // bd#182 UI-test seam: Apple's base-map labels render in the
+        // platform map layer, not the accessibility tree, so
+        // `MapFeatureCardUITests` cannot reliably tap a real one on the
+        // simulator. A launch fixture opens the card directly so its
+        // rendering and actions are still exercised end to end.
+        .task {
+            if let fixture = launchEnvironment.appleFeatureFixture {
+                appleFeatureCandidate = AppleCafeCandidate(
+                    name: fixture.name,
+                    coordinate: CLLocationCoordinate2D(latitude: fixture.lat, longitude: fixture.lng)
+                )
+            }
+        }
         .onDisappear {
             replanTask?.cancel()
             searchFitTask?.cancel()
+            gapFillTask?.cancel()
         }
     }
 
@@ -426,6 +517,21 @@ public struct CafeMapScreen: View {
         }
     }
 
+    /// Split out of the `Map` content builder (bd#182): a `ForEach` here
+    /// alongside `annotations(for:)`'s own inline one and the selected-pin
+    /// overlay made the whole `Map { … }` trailing closure too much for the
+    /// type checker ("unable to type-check this expression in reasonable
+    /// time") — same fix as `annotations(for:)` already being its own
+    /// function rather than inline.
+    @MapContentBuilder
+    private var gapFillAnnotations: some MapContent {
+        ForEach(appleGapFillMarkers) { poi in
+            Annotation("", coordinate: poi.coordinate) {
+                gapFillButton(for: poi)
+            }
+        }
+    }
+
     private func pinButton(for venue: Venue, isSelected: Bool) -> some View {
         Button {
             selected = venue
@@ -475,6 +581,87 @@ public struct CafeMapScreen: View {
         .accessibilityIdentifier("map-cluster")
         .accessibilityLabel(Self.clusterLabel(for: cluster))
         .accessibilityHint("Zooms in to show them")
+    }
+
+    // MARK: - Apple base-map features (bd#182)
+
+    /// Food/drink-only, per the ticket's point-of-interest filter — every
+    /// other Apple POI category (transit, parks, shops, …) is left off the
+    /// base map entirely rather than shown-but-inert.
+    static let selectablePointsOfInterest: [MKPointOfInterestCategory] = [
+        .cafe, .bakery, .restaurant, .foodMarket, .brewery, .winery,
+    ]
+
+    /// `Map`'s own selection binding fired: resolve the tapped feature
+    /// against our venues (`AppleFeatureMatcher`) — a match opens our
+    /// regular venue detail sheet (it IS one of ours, just drawn by Apple's
+    /// free label); no match opens `AppleFeatureCard`. Either way the
+    /// binding resets to `nil` so a repeat tap on the same label still
+    /// fires this `onChange` the next time.
+    private func handleAppleFeatureSelection(_ feature: MapFeature?) {
+        defer { appleFeatureSelection = nil }
+        guard let feature, let name = feature.title, !name.isEmpty else { return }
+        if let matched = AppleFeatureMatcher.matchingVenue(
+            name: name, lat: feature.coordinate.latitude, lng: feature.coordinate.longitude, in: model.venues
+        ) {
+            selected = matched
+            return
+        }
+        resolvedAppleMapItem = nil
+        let candidate = AppleCafeCandidate(
+            name: name, coordinate: feature.coordinate, category: feature.pointOfInterestCategory
+        )
+        appleFeatureCandidate = candidate
+        Task {
+            let item = await AppleCafeDetailsResolver.resolveMapItem(
+                name: name, coordinate: feature.coordinate, feature: feature
+            )
+            // The card may have already been dismissed (or a different
+            // feature selected) by the time this lands.
+            guard appleFeatureCandidate?.id == candidate.id else { return }
+            resolvedAppleMapItem = item
+        }
+    }
+
+    /// A tapped gap-fill marker: already pre-deduped against our venues
+    /// (`AppleGapFillService.fetch`), so this always opens the card — no
+    /// re-matching needed, and no async detail resolution either (a
+    /// gap-fill POI came straight from `MKMapItem` already, but Directions
+    /// works fine off the plain coordinate, so this stays cheap).
+    private func gapFillButton(for poi: AppleUnverifiedPOI) -> some View {
+        Button {
+            resolvedAppleMapItem = nil
+            appleFeatureCandidate = AppleCafeCandidate(name: poi.name, coordinate: poi.coordinate)
+        } label: {
+            AppleUnverifiedPin()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(poi.name), unverified, not yet in BrewDesk")
+        .accessibilityIdentifier("apple-gap-fill-pin")
+    }
+
+    /// Re-evaluates the feature-flagged gap-fill (default OFF) for the
+    /// current `region`: fewer than `AppleGapFillService
+    /// .minimumPinsBeforeGapFill` of our own pins in view triggers an
+    /// on-device `MKLocalPointsOfInterestRequest`. Cancels any in-flight
+    /// fetch first — a fast pan/zoom must never race two of these.
+    private func scheduleGapFill(region: MKCoordinateRegion?) {
+        gapFillTask?.cancel()
+        guard AppleGapFillService.isEnabled, let region else {
+            appleGapFillMarkers = []
+            return
+        }
+        let ourPinCount = MapAnnotationPlanner.culled(model.venues, region: region).count
+        guard AppleGapFillService.shouldGapFill(ourPinCount: ourPinCount) else {
+            appleGapFillMarkers = []
+            return
+        }
+        let venues = model.venues
+        gapFillTask = Task {
+            let markers = await AppleGapFillService.fetch(region: region, excluding: venues)
+            guard !Task.isCancelled else { return }
+            appleGapFillMarkers = markers
+        }
     }
 
     @ViewBuilder
@@ -657,4 +844,20 @@ public struct CafeMapScreen: View {
 @MainActor
 private final class MapInteractionFlag {
     var isActive = false
+}
+
+/// `MKCoordinateRegion` isn't `Equatable`, so the gap-fill `onChange` (bd#182)
+/// watches this small snapshot of it instead.
+private struct RegionSnapshot: Equatable {
+    let lat: Double
+    let lng: Double
+    let latDelta: Double
+    let lngDelta: Double
+
+    init(_ region: MKCoordinateRegion) {
+        lat = region.center.latitude
+        lng = region.center.longitude
+        latDelta = region.span.latitudeDelta
+        lngDelta = region.span.longitudeDelta
+    }
 }

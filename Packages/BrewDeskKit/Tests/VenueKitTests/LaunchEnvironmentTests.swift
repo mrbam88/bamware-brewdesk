@@ -24,6 +24,8 @@ import Testing
         #expect(environment.captureFailures == nil)
         #expect(environment.savedVenueIDs == nil)
         #expect(environment.fixedNow == nil)
+        #expect(environment.appleGapFillEnabled == false)
+        #expect(environment.appleFeatureFixture == nil)
         #expect(environment.isUITestRun == false)
     }
 
@@ -159,6 +161,40 @@ import Testing
             arguments: ["-brewdesk.uitest-fixed-now", "not-a-date"]
         )
         #expect(environment.fixedNow == nil)
+    }
+
+    // MARK: - Apple gap-fill flag (`-UITestAppleGapFill`, bd#182)
+
+    @Test func appleGapFillFlagParses() {
+        #expect(LaunchEnvironment(arguments: ["-UITestAppleGapFill"]).appleGapFillEnabled)
+    }
+
+    @Test func appleGapFillAbsentIsFalse() {
+        #expect(LaunchEnvironment(arguments: []).appleGapFillEnabled == false)
+    }
+
+    // MARK: - Apple feature fixture (`-brewdesk.apple-feature-fixture`, bd#182)
+
+    @Test func appleFeatureFixtureParsesNameLatLng() {
+        let environment = LaunchEnvironment(
+            arguments: ["-brewdesk.apple-feature-fixture", "Corner Café|40.7128|-74.0060"]
+        )
+        #expect(environment.appleFeatureFixture?.name == "Corner Café")
+        #expect(environment.appleFeatureFixture?.lat == 40.7128)
+        #expect(environment.appleFeatureFixture?.lng == -74.0060)
+    }
+
+    @Test func appleFeatureFixtureMalformedIsNil() {
+        #expect(LaunchEnvironment(
+            arguments: ["-brewdesk.apple-feature-fixture", "not-enough-parts"]
+        ).appleFeatureFixture == nil)
+        #expect(LaunchEnvironment(
+            arguments: ["-brewdesk.apple-feature-fixture", "Name|not-a-number|-74.0"]
+        ).appleFeatureFixture == nil)
+    }
+
+    @Test func appleFeatureFixtureAbsentIsNil() {
+        #expect(LaunchEnvironment(arguments: []).appleFeatureFixture == nil)
     }
 
     // MARK: - UI test run (any -UITest… argument, brewdesk#160)
