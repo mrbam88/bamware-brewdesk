@@ -83,6 +83,49 @@ public final class VenuesModel {
     private var searchDebounceTask: Task<Void, Never>?
     private var requestRevision = 0
 
+    /// bd#198 root cause: `VenuesModel` used to have no memory of WHY
+    /// `centerLat/Lng` last changed, so a passive GPS tick
+    /// (`updateCenterIfNeeded`, DiscoveryRootView's location-driven path)
+    /// could silently overwrite a centre the user had just explored via
+    /// "Search this area" or a pan — every later GPS tick did the same,
+    /// snapping the map straight back to the phone's location. This is now
+    /// the single source of truth for whether the current centre is one the
+    /// user explicitly chose.
+    public enum CenterSource: Equatable, Sendable {
+        /// The Union Square fallback, or "Browse NYC" — never overwritten by
+        /// a passive GPS tick once set (see `browseCoverageCenter`).
+        case coverageDefault
+        /// Set by a real location fix — either the cold-start correction or
+        /// an explicit locate-me tap (`centerOnUser`).
+        case userLocation
+        /// Set by `updateViewport` — "Search this area" or any other
+        /// viewport-driven refetch. A passive GPS tick never overwrites this.
+        case exploredViewport
+    }
+    public private(set) var centerSource: CenterSource = .coverageDefault
+    /// True while passive GPS updates (`updateCenterIfNeeded`) are still
+    /// allowed to move the centre — armed by the cold-start first fix and by
+    /// `centerOnUser` (locate-me), disarmed by `updateViewport` and
+    /// `browseCoverageCenter` (bd#198). Distinct from `centerSource` so a
+    /// caller can tell "we're centered on the user" (`centerSource ==
+    /// .userLocation`) apart from "…and we're still tracking them"
+    /// (`followsUser`) — locate-me sets both; a stale `.userLocation` centre
+    /// the user has since panned away from should set neither.
+    public private(set) var followsUser = false
+    /// Cold start ends the moment the first real fix is offered to
+    /// `updateCenterIfNeeded` — before that, ANY fix (however far from the
+    /// current fallback) replaces it unconditionally. Kept `true` by
+    /// `browseCoverageCenter` even on a model that never received a real fix
+    /// yet, so "Browse NYC" is sticky against a stale/delayed GPS answer
+    /// landing right after (bd#198 — the user explicitly asked to look at
+    /// NYC, not wherever they physically are).
+    @ObservationIgnored
+    private var hasAppliedFirstFix = false
+    /// Passive GPS ticks below this distance from the current centre never
+    /// refetch even while following (bd#198) — otherwise ordinary walking
+    /// jitter would re-trigger `DiscoveryRootView`'s request on every fix.
+    public static let followDistanceThresholdM = 150.0
+
     /// Deterministic fallback until Core Location supplies a coordinate.
     public private(set) var centerLat = VenuesModel.coverageCenterLat
     public private(set) var centerLng = VenuesModel.coverageCenterLng
@@ -168,34 +211,74 @@ public final class VenuesModel {
         )
     }
 
-    /// Always accepts a real coordinate — bd#108 removed the >50km-from-NYC
-    /// rejection this used to apply. `false` only means "already centered
-    /// here," not "rejected."
+    /// The passive, location-driven path — `DiscoveryRootView`'s
+    /// `.task(id: request)`/`.onChange(of: locationService.location)` call
+    /// this on every fix. bd#198: unlike `centerOnUser` (an explicit locate-
+    /// me tap), a fix here only moves the centre while that's still safe —
+    /// the cold-start correction (no fix has ever landed) or, afterward,
+    /// only while `centerSource == .userLocation && followsUser` (bd#198;
+    /// `updateViewport`/`browseCoverageCenter` clear `followsUser`, so an
+    /// explored viewport or "Browse NYC" is never overwritten by a later
+    /// tick). Also `false` — a no-op — for a move under
+    /// `followDistanceThresholdM` while following, so ordinary walking
+    /// jitter doesn't refetch on every fix. Always accepts a real coordinate
+    /// once it's allowed to apply at all — bd#108 removed the
+    /// >50km-from-NYC rejection this used to apply.
     @discardableResult
     public func updateCenterIfNeeded(lat: Double, lng: Double) -> Bool {
+        guard !hasAppliedFirstFix || (centerSource == .userLocation && followsUser) else { return false }
+        let isFirstFix = !hasAppliedFirstFix
+        hasAppliedFirstFix = true
+        if isFirstFix {
+            // The cold-start correction always arms following, even on the
+            // near-impossible coincidence that the first real fix lands
+            // exactly on the Union Square fallback — this doesn't depend on
+            // the coordinate actually moving (mirrors `centerOnUser`, which
+            // re-arms following the same way on an explicit locate-me tap).
+            centerSource = .userLocation
+            followsUser = true
+        } else {
+            guard Self.metersBetween(centerLat, centerLng, lat, lng) >= Self.followDistanceThresholdM else {
+                return false
+            }
+        }
         guard centerLat != lat || centerLng != lng else { return false }
         centerLat = lat
         centerLng = lng
+        centerSource = .userLocation
+        followsUser = true
         return true
     }
 
     /// "Browse NYC": snap back to the coverage anchor and re-query. Now a
     /// manual affordance only (the empty/"no cafes" states offer it) — it no
-    /// longer fires automatically for a coordinate far from NYC.
+    /// longer fires automatically for a coordinate far from NYC. bd#198:
+    /// also stops following GPS — the user asked to look at NYC, not
+    /// wherever they physically are — and is sticky against a fix landing
+    /// right after even on a model that has never seen a real fix yet
+    /// (`hasAppliedFirstFix = true` closes the cold-start exception).
     public func browseCoverageCenter() {
         centerLat = Self.coverageCenterLat
         centerLng = Self.coverageCenterLng
         radiusM = Self.defaultRadiusM
+        centerSource = .coverageDefault
+        followsUser = false
+        hasAppliedFirstFix = true
         requestRevision &+= 1
     }
 
-    /// bd#192 ("Search this area" + locate-me): the viewport-driven fetch
-    /// path — unlike `updateCenterIfNeeded` (location-driven recenter
-    /// only), this also carries the radius the current map viewport
-    /// implies, clamped to `minRadiusM...maxRadiusM`. Same "already here"
-    /// no-op contract: returns `false` (and touches nothing) when neither
-    /// the center nor the radius actually changed, so a caller can safely
-    /// call this on every settle without spamming no-op requests.
+    /// bd#192 ("Search this area") + a manual pan that triggers a refetch:
+    /// the viewport-driven fetch path — unlike `updateCenterIfNeeded`
+    /// (passive, location-driven recenter only), this also carries the
+    /// radius the current map viewport implies, clamped to
+    /// `minRadiusM...maxRadiusM`. Same "already here" no-op contract:
+    /// returns `false` (and touches nothing, including `centerSource`) when
+    /// neither the center nor the radius actually changed, so a caller can
+    /// safely call this on every settle without spamming no-op requests.
+    /// bd#198: marks the new centre `.exploredViewport` and stops following
+    /// GPS — a later passive `updateCenterIfNeeded` tick must never
+    /// overwrite a viewport the user just explored (the root cause of
+    /// "Search this area" snapping back to the phone's location).
     @discardableResult
     public func updateViewport(lat: Double, lng: Double, radiusM: Int) -> Bool {
         let clampedRadius = min(max(radiusM, Self.minRadiusM), Self.maxRadiusM)
@@ -203,7 +286,29 @@ public final class VenuesModel {
         centerLat = lat
         centerLng = lng
         self.radiusM = clampedRadius
+        centerSource = .exploredViewport
+        followsUser = false
         return true
+    }
+
+    /// bd#198: the locate-me button's explicit "recenter on me and keep
+    /// following" — distinct from `updateViewport` (which would mark the
+    /// result `.exploredViewport` and stop following) even though both
+    /// carry a lat/lng/radius. Always (re)arms `followsUser = true` and
+    /// `centerSource = .userLocation`, even when the coordinate itself
+    /// didn't change (the map might already be centered on the user, but a
+    /// tap is still an explicit request to resume following their GPS).
+    @discardableResult
+    public func centerOnUser(lat: Double, lng: Double, radiusM: Int) -> Bool {
+        let clampedRadius = min(max(radiusM, Self.minRadiusM), Self.maxRadiusM)
+        let changed = centerLat != lat || centerLng != lng || self.radiusM != clampedRadius
+        centerLat = lat
+        centerLng = lng
+        self.radiusM = clampedRadius
+        centerSource = .userLocation
+        followsUser = true
+        hasAppliedFirstFix = true
+        return changed
     }
 
     nonisolated static func metersBetween(

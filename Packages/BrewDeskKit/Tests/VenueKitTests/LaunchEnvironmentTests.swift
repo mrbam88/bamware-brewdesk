@@ -27,6 +27,7 @@ import Testing
         #expect(environment.appleGapFillEnabled == false)
         #expect(environment.appleFeatureFixture == nil)
         #expect(environment.forceLaunchReveal == false)
+        #expect(environment.fixedLocation == nil)
         #expect(environment.isUITestRun == false)
     }
 
@@ -222,6 +223,25 @@ import Testing
 
     @Test func appleFeatureFixtureAbsentIsNil() {
         #expect(LaunchEnvironment(arguments: []).appleFeatureFixture == nil)
+    }
+
+    // MARK: - Fixed location (bd#198)
+
+    @Test func fixedLocationParsesLatLng() {
+        let environment = LaunchEnvironment(
+            arguments: ["-brewdesk.uitest-fixed-location", "40.7291|-73.9965"]
+        )
+        #expect(environment.fixedLocation?.lat == 40.7291)
+        #expect(environment.fixedLocation?.lng == -73.9965)
+    }
+
+    @Test func fixedLocationMalformedIsNil() {
+        #expect(LaunchEnvironment(
+            arguments: ["-brewdesk.uitest-fixed-location", "not-enough-parts"]
+        ).fixedLocation == nil)
+        #expect(LaunchEnvironment(
+            arguments: ["-brewdesk.uitest-fixed-location", "not-a-number|-73.9965"]
+        ).fixedLocation == nil)
     }
 
     // MARK: - UI test run (any -UITest… argument, brewdesk#160)

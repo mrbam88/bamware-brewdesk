@@ -86,6 +86,19 @@ public struct LaunchEnvironment: Sendable, Equatable {
     /// makes that deterministic. Requires `forceLaunchReveal` to have any
     /// effect. `nil` when absent or unparseable.
     public let freezeLaunchRevealAtMS: Double?
+    /// `-brewdesk.uitest-fixed-location "<lat>|<lng>"` (bd#198): pins
+    /// `LocationService` to this coordinate and, unlike `-UITestLocation*`
+    /// (which only pin `authorizationStatus`), makes it deliver an
+    /// authorized real-looking fix immediately and then re-deliver the same
+    /// coordinate roughly once a second — standing in for real CoreLocation
+    /// periodically re-sending the same fix. `MapLocateButtonUITests`
+    /// documents why a genuinely simulated GPS fix instead needs host-side
+    /// `xcrun simctl location` setup and quietly skips when that isn't
+    /// provisioned; a regression test proving GPS ticks can't overwrite an
+    /// explored viewport needs to run deterministically in CI, so this
+    /// flag exists instead of depending on that. `nil` when absent or
+    /// malformed.
+    public let fixedLocation: FixedLocationFixture?
     /// True when ANY `-UITest…` launch argument is present — the one seam
     /// that holds for every automated UI run, scenario or live. Every UI
     /// test that can reach user flows passes at least one (`-UITestSkipGates`
@@ -145,6 +158,8 @@ public struct LaunchEnvironment: Sendable, Equatable {
         forceLaunchReveal = arguments.contains("-UITestForceLaunchReveal")
         freezeLaunchRevealAtMS = Self.value(after: "-UITestFreezeLaunchRevealAtMS", in: arguments)
             .flatMap(Double.init)
+        fixedLocation = Self.value(after: "-brewdesk.uitest-fixed-location", in: arguments)
+            .flatMap(FixedLocationFixture.init(raw:))
         isUITestRun = arguments.contains { $0.hasPrefix("-UITest") }
     }
 
@@ -201,5 +216,22 @@ public struct AppleFeatureFixture: Sendable, Equatable {
               let lat = Double(parts[1]), let lng = Double(parts[2])
         else { return nil }
         self.init(name: parts[0], lat: lat, lng: lng)
+    }
+}
+
+/// `lat|lng` fixture for `-brewdesk.uitest-fixed-location` (bd#198).
+public struct FixedLocationFixture: Sendable, Equatable {
+    public let lat: Double
+    public let lng: Double
+
+    public init(lat: Double, lng: Double) {
+        self.lat = lat
+        self.lng = lng
+    }
+
+    init?(raw: String) {
+        let parts = raw.components(separatedBy: "|")
+        guard parts.count == 2, let lat = Double(parts[0]), let lng = Double(parts[1]) else { return nil }
+        self.init(lat: lat, lng: lng)
     }
 }

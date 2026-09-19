@@ -128,6 +128,19 @@ struct DiscoveryRootView: View {
                 savedVenues.reload()
             }
         }
+        // bd#198 root cause: `request` changes whenever the viewport does
+        // (a "Search this area" tap, a manual pan), so this task re-runs on
+        // every one of those too — not just on a real location change. It
+        // used to ask `updateCenterIfNeeded` unconditionally here, and that
+        // call used to accept ANY differing coordinate, so a GPS fix that
+        // simply differed from the freshly-explored viewport would win and
+        // overwrite it, then `CafeMapScreen.applyCenterChange()` would move
+        // the camera back to the phone's location — every later GPS tick
+        // repeated it. `updateCenterIfNeeded` now refuses to apply once the
+        // model is `.exploredViewport` (see `VenuesModel.centerSource`), so
+        // this branch only ever "wins" (and skips loading the request
+        // as-is) while the model is still following the user — a request
+        // that came from `updateViewport` is always loaded as-is.
         .task(id: request) {
             if let coordinate = locationService.location?.coordinate,
                model.updateCenterIfNeeded(lat: coordinate.latitude, lng: coordinate.longitude) {
