@@ -26,6 +26,7 @@ import Testing
         #expect(environment.fixedNow == nil)
         #expect(environment.appleGapFillEnabled == false)
         #expect(environment.appleFeatureFixture == nil)
+        #expect(environment.forceLaunchReveal == false)
         #expect(environment.isUITestRun == false)
     }
 
@@ -171,6 +172,16 @@ import Testing
 
     @Test func appleGapFillAbsentIsFalse() {
         #expect(LaunchEnvironment(arguments: []).appleGapFillEnabled == false)
+    }
+
+    // MARK: - Force launch reveal (`-UITestForceLaunchReveal`, bamware-brewdesk#186)
+
+    @Test func forceLaunchRevealFlagParses() {
+        #expect(LaunchEnvironment(arguments: ["-UITestForceLaunchReveal"]).forceLaunchReveal)
+    }
+
+    @Test func forceLaunchRevealAbsentIsFalse() {
+        #expect(LaunchEnvironment(arguments: []).forceLaunchReveal == false)
     }
 
     // MARK: - Apple feature fixture (`-brewdesk.apple-feature-fixture`, bd#182)
