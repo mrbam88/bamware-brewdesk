@@ -113,7 +113,7 @@ of bamware-brewdesk#174/C9). `BrewDeskDevelopment.xcworkspace` substitutes
 the pin for the sibling `../bamware-ios` checkout for local development
 against unreleased shared-package changes — **that substitution needs the
 sibling checkout at or ahead of the pinned revision
-(`202681cc270d79173bdd73c2d23f8513e9f8acca`) to build**; an older sibling
+(`ac444619a96e5e018b33f6c2acf7d6dac0839415`) to build**; an older sibling
 checkout is missing the account packages entirely. This could not be
 verified when bamware-brewdesk#174 landed because the sibling checkout in
 that environment was stale and behind the pin — say so rather than silently
