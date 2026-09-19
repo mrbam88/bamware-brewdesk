@@ -660,6 +660,16 @@
         }
       }
     },
+    "In the press": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En la prensa"
+          }
+        }
+      }
+    },
     "Info": {
       "extractionState": "stale",
       "localizations": {
@@ -1060,6 +1070,16 @@
         }
       }
     },
+    "Opens the article in Safari": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abre el artículo en Safari"
+          }
+        }
+      }
+    },
     "Opens the website in Safari": {
       "extractionState": "stale",
       "localizations": {
@@ -1164,6 +1184,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Muchos enchufes"
+          }
+        }
+      }
+    },
+    "Press research": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Investigación de prensa"
           }
         }
       }
@@ -2102,6 +2132,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Guardados"
+          }
+        }
+      }
+    },
+    "press research": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "investigación de prensa"
           }
         }
       }
