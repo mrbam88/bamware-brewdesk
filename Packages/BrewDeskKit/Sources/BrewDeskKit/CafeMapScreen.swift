@@ -643,7 +643,13 @@ public struct CafeMapScreen: View {
         // query would leave `needsSearchAreaPill` true and the pill would
         // reappear right after a locate move, which is the one thing the
         // ticket says must never happen.
-        model.updateViewport(
+        //
+        // bd#198: `model.centerOnUser`, NOT `model.updateViewport` — the
+        // latter would mark the result `.exploredViewport` and stop
+        // following GPS, which is exactly backwards for a locate-me tap:
+        // this is the one action that should ARM following again after a
+        // "Search this area" tap or a manual pan turned it off.
+        model.centerOnUser(
             lat: model.centerLat, lng: model.centerLng, radiusM: Self.radiusMeters(for: region)
         )
         if reduceMotion {
@@ -692,6 +698,16 @@ public struct CafeMapScreen: View {
             centerOnUser()
             return
         }
+        // bd#198: a `.exploredViewport` centre change — "Search this area"
+        // or a manual pan that triggered a refetch — is only ever set FROM
+        // the camera's own settled position (`searchThisArea()` reads
+        // `visibleRegion.center`), so the camera is already exactly there.
+        // Recentering here would be redundant at best; at worst it resets
+        // the user's zoom to `Self.region`'s fixed span, which reads as
+        // exactly the "snaps back" bug this ticket fixes, just to a
+        // different place. Keep the camera exactly where the user left it —
+        // only the pins (via `model.venues`) change.
+        guard model.centerSource != .exploredViewport else { return }
         position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
         visibleRegion = Self.region(lat: model.centerLat, lng: model.centerLng)
     }

@@ -223,6 +223,108 @@ import VenueKit
         #expect(model.centerLng == VenuesModel.coverageCenterLng)
     }
 
+    // MARK: - Centre source (bd#198)
+    //
+    // Root cause: a passive GPS tick (`updateCenterIfNeeded`) used to accept
+    // ANY differing coordinate unconditionally, so it could silently
+    // overwrite a centre the user had just explored via "Search this area".
+    // `centerSource`/`followsUser` are what now gate that.
+
+    @Test func firstFixOnColdStartAlwaysApplies() {
+        let model = VenuesModel(api: ControlledVenueService())
+        #expect(model.centerSource == .coverageDefault)
+
+        #expect(model.updateCenterIfNeeded(lat: 40.71, lng: -74.0))
+
+        #expect(model.centerLat == 40.71)
+        #expect(model.centerLng == -74.0)
+        #expect(model.centerSource == .userLocation)
+        #expect(model.followsUser)
+    }
+
+    @Test func passiveUpdateAfterUpdateViewportDoesNotMoveTheCentre() {
+        let model = VenuesModel(api: ControlledVenueService())
+        model.updateCenterIfNeeded(lat: 40.71, lng: -74.0)              // cold-start fix
+        model.updateViewport(lat: 40.72, lng: -73.99, radiusM: 500)     // "Search this area"
+        #expect(model.centerSource == .exploredViewport)
+        #expect(!model.followsUser)
+
+        // A GPS tick far enough away that, pre-fix, would have overwritten
+        // the explored viewport outright.
+        #expect(!model.updateCenterIfNeeded(lat: 40.9, lng: -73.5))
+
+        #expect(model.centerLat == 40.72)
+        #expect(model.centerLng == -73.99)
+    }
+
+    @Test func passiveUpdateAfterCenterOnUserDoesMoveTheCentre() {
+        let model = VenuesModel(api: ControlledVenueService())
+        model.updateCenterIfNeeded(lat: 40.71, lng: -74.0)              // cold-start fix
+        model.updateViewport(lat: 40.72, lng: -73.99, radiusM: 500)     // explore away
+        #expect(model.centerOnUser(lat: 40.73, lng: -73.98, radiusM: 400)) // locate-me
+        #expect(model.centerSource == .userLocation)
+        #expect(model.followsUser)
+
+        #expect(model.updateCenterIfNeeded(lat: 40.9, lng: -73.5))
+
+        #expect(model.centerLat == 40.9)
+        #expect(model.centerLng == -73.5)
+    }
+
+    @Test func passiveUpdateAfterBrowseCoverageCenterDoesNotMoveTheCentre() {
+        let model = VenuesModel(api: ControlledVenueService())
+        model.updateCenterIfNeeded(lat: 40.71, lng: -74.0)              // cold-start fix
+        model.browseCoverageCenter()
+        #expect(model.centerSource == .coverageDefault)
+        #expect(!model.followsUser)
+
+        #expect(!model.updateCenterIfNeeded(lat: 40.9, lng: -73.5))
+
+        #expect(model.centerLat == VenuesModel.coverageCenterLat)
+        #expect(model.centerLng == VenuesModel.coverageCenterLng)
+    }
+
+    /// bd#198 spec decision: "Browse NYC" is sticky against GPS even before
+    /// any real fix has ever landed — the cold-start exception is for the
+    /// very first GPS answer, not for every launch that happens to call
+    /// Browse NYC first.
+    @Test func browseCoverageCenterBeforeAnyFixStaysStickyAgainstGPS() {
+        let model = VenuesModel(api: ControlledVenueService())
+        model.browseCoverageCenter()
+
+        #expect(!model.updateCenterIfNeeded(lat: 40.9, lng: -73.5))
+        #expect(model.centerLat == VenuesModel.coverageCenterLat)
+    }
+
+    /// Avoids a refetch storm while walking: a fix under the follow
+    /// threshold, while following, is a no-op rather than a new request.
+    @Test func smallMovesWhileFollowingDoNotRefetch() {
+        let model = VenuesModel(api: ControlledVenueService())
+        // Distinct from `VenuesModel.coverageCenterLat/Lng` on purpose — a
+        // first fix that happened to coincide with the fallback would make
+        // the very next assertion's "did it move" check meaningless.
+        model.updateCenterIfNeeded(lat: 40.71, lng: -74.0)
+
+        #expect(!model.updateCenterIfNeeded(lat: 40.71001, lng: -74.0)) // ~1m
+        #expect(model.centerLat == 40.71)
+
+        #expect(model.updateCenterIfNeeded(lat: 40.7146, lng: -74.0))   // ~510m — over threshold
+        #expect(model.centerLat == 40.7146)
+    }
+
+    @Test func centerOnUserAlwaysReArmsFollowingEvenWithoutMoving() {
+        let model = VenuesModel(api: ControlledVenueService())
+        model.updateCenterIfNeeded(lat: 40.71, lng: -74.0)
+        model.updateViewport(lat: 40.71, lng: -74.0, radiusM: 500) // stays put, but stops following
+        #expect(!model.followsUser)
+
+        // centerOnUser re-arms following even though the coordinate itself
+        // doesn't change — a tap is still an explicit "resume following".
+        _ = model.centerOnUser(lat: 40.71, lng: -74.0, radiusM: 500)
+        #expect(model.centerSource == .userLocation)
+        #expect(model.followsUser)
+    }
+
     @Test func filterCyclesAreTypedAndDeterministic() {
         let model = VenuesModel(api: ControlledVenueService())
 

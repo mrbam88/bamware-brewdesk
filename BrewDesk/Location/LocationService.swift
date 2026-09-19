@@ -18,6 +18,8 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
     private let forcedDenied: Bool
     @ObservationIgnored
     private var forcedUndetermined: Bool
+    @ObservationIgnored
+    private var fixedLocationTickTask: Task<Void, Never>?
 
     var isDenied: Bool {
         authorizationStatus == .denied || authorizationStatus == .restricted
@@ -42,6 +44,22 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
             : (forcedUndetermined ? .notDetermined : manager.authorizationStatus)
         super.init()
         manager.delegate = self
+        // bd#198: `-brewdesk.uitest-fixed-location` — a deterministic UI-
+        // test seam for "the map keeps getting real GPS ticks while the
+        // user is looking at an explored viewport". A genuinely simulated
+        // fix (`xcrun simctl location`) needs host-side setup before
+        // `xcodebuild test` runs (see `MapLocateButtonUITests`'s header,
+        // which skips outright when that isn't provisioned) — this flag
+        // instead delivers an authorized fix immediately and keeps
+        // re-delivering the same coordinate on a timer, so the regression
+        // test this ticket adds can run deterministically in CI. Wins over
+        // `forcedDenied`/`forcedUndetermined`: no UI test combines them.
+        if let fixture = environment.fixedLocation {
+            authorizationStatus = .authorizedWhenInUse
+            location = CLLocation(latitude: fixture.lat, longitude: fixture.lng)
+            startFixedLocationTicking(fixture)
+            return
+        }
         if !forcedDenied, !forcedUndetermined,
            manager.authorizationStatus == .authorizedAlways ||
             manager.authorizationStatus == .authorizedWhenInUse {
@@ -51,6 +69,7 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
 
     deinit {
         updatesTask?.cancel()
+        fixedLocationTickTask?.cancel()
     }
 
     func requestAccess() {
@@ -72,6 +91,21 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
         Task { @MainActor [weak self] in
             guard let self, !self.forcedDenied, !self.forcedUndetermined else { return }
             self.authorizationStatus = status
+        }
+    }
+
+    /// bd#198: re-publishes the fixture coordinate roughly once a second —
+    /// a fresh `CLLocation` (new timestamp) each tick so `Equatable` sees a
+    /// change and `onChange(of: locationService.location)` actually fires,
+    /// the same way real CoreLocation periodically re-delivers a
+    /// stationary fix.
+    private func startFixedLocationTicking(_ fixture: FixedLocationFixture) {
+        fixedLocationTickTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled, let self else { return }
+                self.location = CLLocation(latitude: fixture.lat, longitude: fixture.lng)
+            }
         }
     }
 
