@@ -158,6 +158,19 @@ final class BrewDeskUITests: XCTestCase {
         top.pin.tap()
         XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 3))
 
+        // bd#197: the top card must lead with the café's own name, not the
+        // neighborhood — the heading is real, on-screen text (no longer the
+        // old zero-size VoiceOver-only proxy), so it must have a non-zero
+        // frame, be hittable, and its accessibility label must be exactly
+        // the venue's name (not "<name>, Work Fit N, <neighborhood>" — that
+        // combined label belongs to the map pin/shelf card, not this
+        // heading).
+        let heading = app.descendants(matching: .any)["venue-detail-heading"]
+        XCTAssertTrue(heading.waitForExistence(timeout: 3))
+        XCTAssertTrue(heading.isHittable)
+        XCTAssertFalse(heading.frame.isEmpty, "venue-detail-heading has a zero-size frame")
+        XCTAssertEqual(heading.label, top.name)
+
         // The floating action dock (Directions/Save/Share) is translucent
         // glass; content legitimately scrolls beneath it, and the audit
         // samples those washed-out pixels as contrast failures. Ignore
@@ -212,6 +225,13 @@ final class BrewDeskUITests: XCTestCase {
         let top = try XCTUnwrap(app.firstMapPin(), "Spots rendered no venue pins")
         top.pin.tap()
         XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 3))
+        // bd#197: the name still reads at accessibility XXL — 2-line clamp +
+        // minimumScaleFactor keep it from clipping instead of disappearing
+        // under the giant type size.
+        let heading = app.descendants(matching: .any)["venue-detail-heading"]
+        XCTAssertTrue(heading.waitForExistence(timeout: 3))
+        XCTAssertFalse(heading.frame.isEmpty, "venue-detail-heading has a zero-size frame at XXL")
+        XCTAssertEqual(heading.label, top.name)
         XCTAssertTrue(app.staticTexts["Workability"].exists)
         XCTAssertTrue(app.buttons["Directions"].exists)
         XCTAssertTrue(app.buttons["Save"].exists)
