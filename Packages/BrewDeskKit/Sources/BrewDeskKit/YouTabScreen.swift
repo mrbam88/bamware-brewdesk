@@ -148,8 +148,10 @@ public struct YouTabScreen: View {
     /// are the push platform's D package; both out of this ticket's scope,
     /// but the value prop is the reason to sign in now). Shown twice: as
     /// this section's footer, and again ahead of the sign-in form itself
-    /// (`signInSheetContent`) and on the onboarding step
-    /// (`AccountOnboardingHost`) — one string, three call sites.
+    /// (`signInSheetContent`) — one string, two call sites. (Previously
+    /// also shown as a first-run onboarding page, dropped in
+    /// bamware-brewdesk#184 — a sign-in pitch before anyone had used the
+    /// app once.)
     public static let signInValuePropText =
         "Create an account to keep your saved spots with you across devices and hear about changes to the ones you're watching. Everything else in BrewDesk — browsing, saving locally, rating a visit — works without one."
 
