@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<!-- Google sign-in (BamwareAccountsGoogle): the URL scheme is the reversed
 	     iOS OAuth client id; GIDClientID is the client id. Source of truth:
 	     vault /bamware/brewdesk/google-ios-client-id (bamware-ai docs/secrets.md). -->
