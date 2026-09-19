@@ -20,9 +20,9 @@ typealias BrewDeskMark = BrewDeskKit.BrewDeskMark
 /// Overlays the vector mark at 50% opacity on the real `LaunchMark` raster
 /// asset so a geometry drift is visible at a glance. Alignment was checked
 /// this way while tuning `BrewDeskMarkGeometry`'s constants (see that type's
-/// doc comment) — cup body, dot, and saucer land almost exactly on the
-/// asset; the arcs and handle are close but not pixel-identical, which is
-/// fine for an animated mark judged in motion rather than as a static diff.
+/// doc comment) — every piece, including the arcs and handle re-traced in
+/// #193, now lands within 0.89% mismatched pixels of the real asset over the
+/// whole canvas (down from 15.96% for #186's arc/handle approximation).
 #Preview("Overlay alignment check") {
     ZStack {
         Color("LaunchBackground")
