@@ -3,17 +3,17 @@ import Testing
 @testable import BrewDesk
 
 /// Pure-logic coverage for the cold-launch reveal's stage timing
-/// (bamware-brewdesk#186) — no view, no simulator, no `Timer`/`Task`
-/// involved. `LaunchRevealTimeline.frame(atElapsedMS:)` and
-/// `overlayOpacity(atElapsedMS:)` are plain functions of a `Double`, so
-/// every assertion below is exact and instant.
+/// (bamware-brewdesk#186, polished in #193) — no view, no simulator, no
+/// `Timer`/`Task` involved. `LaunchRevealTimeline.frame(atElapsedMS:)` and
+/// friends are plain functions of a `Double`, so every assertion below is
+/// exact and instant.
 @Suite struct LaunchRevealTimelineTests {
     // MARK: - Frame 0 / start state
 
     @Test func frameZeroIsFullyHidden() {
         let stage = LaunchRevealTimeline.frame(atElapsedMS: 0)
         #expect(stage.bodyOpacity == 0)
-        #expect(stage.bodyScale == 0.96)
+        #expect(stage.bodyScale == 0.97)
         #expect(stage.dotScale == 0)
         #expect(stage.arc1Trim == 0)
         #expect(stage.arc2Trim == 0)
@@ -25,13 +25,15 @@ import Testing
         #expect(LaunchRevealTimeline.overlayOpacity(atElapsedMS: 0) == 1)
     }
 
-    // MARK: - Body settle (0–350ms)
+    @Test func handoffScaleStartsAtOne() {
+        #expect(LaunchRevealTimeline.handoffScale(atElapsedMS: 0) == 1)
+    }
+
+    // MARK: - Body settle (0–320ms, timingCurve(0.2, 0.9, 0.3, 1.0), no overshoot)
 
     @Test func bodyFullyVisibleAtSettleEnd() {
         let stage = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.bodySettleDuration)
-        #expect(stage.bodyOpacity == 1)
-        // A slight overshoot past 1.0 mid-settle, per the design spec's
-        // "spring, slight overshoot" — settled scale itself lands at 1.0.
+        #expect(abs(stage.bodyOpacity - 1) < 0.001)
         #expect(abs(stage.bodyScale - 1.0) < 0.001)
     }
 
@@ -40,7 +42,19 @@ import Testing
         #expect(stage.bodyOpacity > 0 && stage.bodyOpacity < 1)
     }
 
-    // MARK: - Dot pop (300ms start, 180ms long, overshoots to 1.15)
+    @Test func bodyScaleNeverOvershootsPastOne() {
+        // The new curve is a convex combination of control points whose own
+        // y's never exceed 1 (0, 0.9, 1.0, 1) — sampling densely across the
+        // settle window should never show bodyScale drifting past 1.0 by
+        // more than a hair (allow up to 1.5% per the ticket's tolerance).
+        var maxScale = 0.0
+        for ms in stride(from: 0.0, through: LaunchRevealTimeline.bodySettleDuration, by: 5) {
+            maxScale = max(maxScale, LaunchRevealTimeline.frame(atElapsedMS: ms).bodyScale)
+        }
+        #expect(maxScale <= 1.0 + 0.015)
+    }
+
+    // MARK: - Dot pop (250ms start, 140ms long, overshoots to 1.08)
 
     @Test func dotHiddenBeforeItsStart() {
         let stage = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.dotPopStart - 1)
@@ -51,7 +65,7 @@ import Testing
         // 60% through the pop is exactly the overshoot peak in the model.
         let midPop = LaunchRevealTimeline.dotPopStart + LaunchRevealTimeline.dotPopDuration * 0.6
         let stage = LaunchRevealTimeline.frame(atElapsedMS: midPop)
-        #expect(abs(stage.dotScale - 1.15) < 0.001)
+        #expect(abs(stage.dotScale - 1.08) < 0.001)
     }
 
     @Test func dotSettlesToOneAtPopEnd() {
@@ -59,7 +73,7 @@ import Testing
         #expect(abs(stage.dotScale - 1.0) < 0.001)
     }
 
-    // MARK: - Arcs draw on (380/470/560ms, 260ms each)
+    // MARK: - Arcs draw on (300/370/440ms, 220ms each, ease-out)
 
     @Test func arcsAreZeroBeforeTheirOwnStart() {
         let stage = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.arcStarts[0] - 1)
@@ -76,35 +90,77 @@ import Testing
         }
     }
 
-    @Test func arcsStartInAscendingOrder() {
+    @Test func arcsStartInAscendingOrderSeventyMsApart() {
         #expect(LaunchRevealTimeline.arcStarts == LaunchRevealTimeline.arcStarts.sorted())
+        let gaps = zip(LaunchRevealTimeline.arcStarts, LaunchRevealTimeline.arcStarts.dropFirst()).map { $1 - $0 }
+        #expect(gaps == [70, 70])
     }
 
-    // MARK: - Glow pulse (780ms start, 300ms long, one soft peak)
-
-    @Test func glowIsZeroBeforeAndAtItsBoundaries() {
-        #expect(LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.glowStart - 1).glowOpacity == 0)
-        let atEnd = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.glowStart + LaunchRevealTimeline.glowDuration)
-        #expect(atEnd.glowOpacity < 0.001)
+    @Test func markIsFullyDrawnBySevenHundredMS() {
+        let lastArcEnd = LaunchRevealTimeline.arcStarts.last! + LaunchRevealTimeline.arcDuration
+        #expect(lastArcEnd <= 700)
     }
 
-    @Test func glowPeaksAtItsMidpoint() {
-        let midpoint = LaunchRevealTimeline.glowStart + LaunchRevealTimeline.glowDuration / 2
-        let stage = LaunchRevealTimeline.frame(atElapsedMS: midpoint)
-        #expect(abs(stage.glowOpacity - LaunchRevealTimeline.glowPeakOpacity) < 0.001)
+    @Test func arcTrimEasesOutRatherThanLinear() {
+        // Ease-out means more progress happens early than a linear ramp
+        // would give — at 25% through the duration, trim should already be
+        // further along than 25%.
+        let quarterPoint = LaunchRevealTimeline.arcStarts[0] + LaunchRevealTimeline.arcDuration * 0.25
+        let stage = LaunchRevealTimeline.frame(atElapsedMS: quarterPoint)
+        #expect(stage.arc1Trim > 0.25)
     }
 
-    // MARK: - Crossfade out (950ms start, 200ms long)
+    // MARK: - Light sweep (680ms start, 380ms long, once, ease-in-out)
 
-    @Test func overlayIsGoneAfterCrossfadeEnds() {
+    @Test func sweepInactiveBeforeItsWindow() {
+        #expect(!LaunchRevealTimeline.isSweepActive(atElapsedMS: LaunchRevealTimeline.sweepStart - 1))
+        #expect(LaunchRevealTimeline.sweepOpacityProgress(atElapsedMS: LaunchRevealTimeline.sweepStart - 1) == 0)
+    }
+
+    @Test func sweepActiveThroughoutItsWindow() {
+        #expect(LaunchRevealTimeline.isSweepActive(atElapsedMS: LaunchRevealTimeline.sweepStart))
+        #expect(LaunchRevealTimeline.isSweepActive(atElapsedMS: LaunchRevealTimeline.sweepStart + LaunchRevealTimeline.sweepDuration))
+    }
+
+    @Test func sweepInactiveAfterItsWindow() {
+        #expect(!LaunchRevealTimeline.isSweepActive(atElapsedMS: LaunchRevealTimeline.sweepStart + LaunchRevealTimeline.sweepDuration + 1))
+    }
+
+    @Test func sweepProgressReachesOneAtWindowEnd() {
+        let end = LaunchRevealTimeline.sweepStart + LaunchRevealTimeline.sweepDuration
+        #expect(abs(LaunchRevealTimeline.sweepOpacityProgress(atElapsedMS: end) - 1) < 0.001)
+    }
+
+    @Test func sweepStartsAfterTheMarkFinishesDrawing() {
+        let lastArcEnd = LaunchRevealTimeline.arcStarts.last! + LaunchRevealTimeline.arcDuration
+        #expect(LaunchRevealTimeline.sweepStart >= lastArcEnd)
+    }
+
+    // MARK: - Hand-off (900ms start, 220ms long, fade + scale to 1.04)
+
+    @Test func overlayIsGoneAfterHandoffEnds() {
         let end = LaunchRevealTimeline.crossfadeStart + LaunchRevealTimeline.crossfadeDuration
         #expect(LaunchRevealTimeline.overlayOpacity(atElapsedMS: end) == 0)
     }
 
-    @Test func overlayIsPartiallyFadedMidCrossfade() {
+    @Test func overlayIsPartiallyFadedMidHandoff() {
         let mid = LaunchRevealTimeline.crossfadeStart + LaunchRevealTimeline.crossfadeDuration / 2
         let opacity = LaunchRevealTimeline.overlayOpacity(atElapsedMS: mid)
         #expect(opacity > 0 && opacity < 1)
+    }
+
+    @Test func handoffScaleReachesPeakAtHandoffEnd() {
+        let end = LaunchRevealTimeline.crossfadeStart + LaunchRevealTimeline.crossfadeDuration
+        #expect(abs(LaunchRevealTimeline.handoffScale(atElapsedMS: end) - 1.04) < 0.001)
+    }
+
+    @Test func handoffScaleIsMonotonicDuringItsWindow() {
+        var previous = LaunchRevealTimeline.handoffScale(atElapsedMS: LaunchRevealTimeline.crossfadeStart)
+        for ms in stride(from: LaunchRevealTimeline.crossfadeStart, through: LaunchRevealTimeline.crossfadeStart + LaunchRevealTimeline.crossfadeDuration, by: 10) {
+            let scale = LaunchRevealTimeline.handoffScale(atElapsedMS: ms)
+            #expect(scale >= previous - 0.0001)
+            previous = scale
+        }
     }
 
     // MARK: - Hard cap (1200ms regardless)
@@ -115,10 +171,10 @@ import Testing
     }
 
     @Test func hardCapIsAtOrAfterEveryOtherStageEnds() {
-        let crossfadeEnd = LaunchRevealTimeline.crossfadeStart + LaunchRevealTimeline.crossfadeDuration
-        #expect(LaunchRevealTimeline.hardCapMS >= crossfadeEnd)
-        let glowEnd = LaunchRevealTimeline.glowStart + LaunchRevealTimeline.glowDuration
-        #expect(LaunchRevealTimeline.hardCapMS >= glowEnd)
+        let handoffEnd = LaunchRevealTimeline.crossfadeStart + LaunchRevealTimeline.crossfadeDuration
+        #expect(LaunchRevealTimeline.hardCapMS >= handoffEnd)
+        let sweepEnd = LaunchRevealTimeline.sweepStart + LaunchRevealTimeline.sweepDuration
+        #expect(LaunchRevealTimeline.hardCapMS >= sweepEnd)
         for start in LaunchRevealTimeline.arcStarts {
             #expect(LaunchRevealTimeline.hardCapMS >= start + LaunchRevealTimeline.arcDuration)
         }
@@ -143,5 +199,36 @@ import Testing
 
     @Test func negativeElapsedClampsToFrameZero() {
         #expect(LaunchRevealTimeline.frame(atElapsedMS: -500) == LaunchRevealTimeline.frame(atElapsedMS: 0))
+    }
+}
+
+/// Coverage for the pure Bezier-easing helper `LaunchRevealTimeline` uses
+/// for the body settle, isolated from the timeline's own stage assembly.
+@Suite struct CubicBezierEaseTests {
+    private let ease = CubicBezierEase(x1: 0.2, y1: 0.9, x2: 0.3, y2: 1.0)
+
+    @Test func startsAtZeroEndsAtOne() {
+        #expect(ease.solve(0) == 0)
+        #expect(ease.solve(1) == 1)
+    }
+
+    @Test func neverExceedsOne() {
+        for i in stride(from: 0.0, through: 1.0, by: 0.02) {
+            #expect(ease.solve(i) <= 1.0 + 0.0001)
+        }
+    }
+
+    @Test func isMonotonicallyNonDecreasing() {
+        var previous = 0.0
+        for i in stride(from: 0.0, through: 1.0, by: 0.02) {
+            let y = ease.solve(i)
+            #expect(y >= previous - 0.0001)
+            previous = y
+        }
+    }
+
+    @Test func clampsOutOfRangeInput() {
+        #expect(ease.solve(-1) == 0)
+        #expect(ease.solve(2) == 1)
     }
 }

@@ -77,6 +77,15 @@ public struct LaunchEnvironment: Sendable, Equatable {
     /// UI test race a ~1.2s overlay); this flag exists for the one UI test
     /// that specifically asserts the reveal's own behavior.
     public let forceLaunchReveal: Bool
+    /// `-UITestFreezeLaunchRevealAtMS <ms>` (bamware-brewdesk#193) — pins
+    /// `LaunchRevealView` to a single fixed frame instead of advancing with
+    /// real time, and suspends its own auto-dismiss. A screenshot-capture
+    /// seam only: real time (a ~1.2s window, sub-400ms stage transitions)
+    /// is too fast for `simctl io recordVideo` to reliably land a frame on
+    /// a specific stage like "arcs mid-draw" or "light sweep active" — this
+    /// makes that deterministic. Requires `forceLaunchReveal` to have any
+    /// effect. `nil` when absent or unparseable.
+    public let freezeLaunchRevealAtMS: Double?
     /// True when ANY `-UITest…` launch argument is present — the one seam
     /// that holds for every automated UI run, scenario or live. Every UI
     /// test that can reach user flows passes at least one (`-UITestSkipGates`
@@ -134,6 +143,8 @@ public struct LaunchEnvironment: Sendable, Equatable {
         appleFeatureFixture = Self.value(after: "-brewdesk.apple-feature-fixture", in: arguments)
             .flatMap(AppleFeatureFixture.init(raw:))
         forceLaunchReveal = arguments.contains("-UITestForceLaunchReveal")
+        freezeLaunchRevealAtMS = Self.value(after: "-UITestFreezeLaunchRevealAtMS", in: arguments)
+            .flatMap(Double.init)
         isUITestRun = arguments.contains { $0.hasPrefix("-UITest") }
     }
 

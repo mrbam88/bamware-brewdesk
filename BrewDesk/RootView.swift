@@ -70,7 +70,7 @@ struct RootView: View {
             // Purely visual, on top of the real UI above — never gates
             // onboarding, location, or data loading (bamware-brewdesk#186).
             if showLaunchReveal {
-                LaunchRevealView(tint: .white) { showLaunchReveal = false }
+                LaunchRevealView(tint: .white, frozenElapsedMS: environment.freezeLaunchRevealAtMS) { showLaunchReveal = false }
             }
         }
     }

@@ -2,15 +2,27 @@ import SwiftUI
 
 /// Vector geometry for the BrewDesk mark (saucer, cup body, handle, dot,
 /// three signal arcs), traced from `icon-1024-dark.png` / the static
-/// `LaunchMark` asset's pixel proportions (bamware-brewdesk#186).
+/// `LaunchMark` asset's pixel proportions (bamware-brewdesk#186, arcs +
+/// handle re-traced exactly in bamware-brewdesk#193).
 ///
 /// All constants are fractions of the asset's own canvas (360×436, the
 /// `LaunchMark@3x` pixel size) — the same aspect ratio `BrewDeskMark` locks
 /// itself to via `aspectRatio` below, so a shape drawn at any size lands in
-/// the same relative place the raster mark does. Verified by eye against a
-/// 50%-opacity overlay on the real asset (see `BrewDeskMark`'s `#Preview`
-/// in the app target, `BrewDesk/Design/BrewDeskMark.swift`) rather than an
-/// exact bezier trace — good enough for an animated mark, not a pixel diff.
+/// the same relative place the raster mark does.
+///
+/// Cup body, dot, and saucer were pixel-exact from #186 (alpha-channel row/
+/// column scanning). The three arcs and the handle were only a "tuned
+/// parametric approximation" there; #193 re-derived them exactly from
+/// `LaunchMark@3x.png`'s alpha channel — 8-connected-component labeling to
+/// isolate each stroke, then an iterated centerline circle fit (bin pixels
+/// by angle around a rough center, average radius per bin to get a
+/// stroke-width-unbiased centerline point cloud, algebraic circle-fit
+/// those). Rendering this geometry and diffing against the real alpha
+/// (`docs/ui-review-assets/193-launch-polish/geometry-diff-*.png`) gives
+/// 0.89% mismatched pixels over the whole 360×436 canvas, down from 15.96%
+/// for the #186 approximation (target was <1.5%). The fit also revealed the
+/// arcs and handle are stroked with `.butt` caps, not `.round` — see the
+/// `lineCap` on each `.stroke` call in `MarkFace`/`SignalLoopMark` below.
 nonisolated enum BrewDeskMarkGeometry {
     static let canvasW: CGFloat = 360
     static let canvasH: CGFloat = 436
@@ -35,31 +47,64 @@ nonisolated enum BrewDeskMarkGeometry {
     static let saucerL: CGFloat = 1 / canvasW
     static let saucerR: CGFloat = 348 / canvasW
 
-    static let handleCX: CGFloat = 294 / canvasW
-    static let handleCY: CGFloat = 300 / canvasH
-    static let handleR: CGFloat = 50 / canvasW
+    /// Fitted from the handle ring's alpha (#193): center, centerline
+    /// radius, stroke width, and opening angles, all pixel-traced rather
+    /// than eyeballed.
+    static let handleCX: CGFloat = 301.43 / canvasW
+    static let handleCY: CGFloat = 328.18 / canvasH
+    static let handleR: CGFloat = 45.525 / canvasW
     /// Fraction of width — the handle stroke's line width.
-    static let handleLineWidth: CGFloat = 23 / canvasW
+    static let handleLineWidth: CGFloat = 28.05 / canvasW
+    static let handleStartAngleDeg: Double = -113.5
+    static let handleEndAngleDeg: Double = 126.0
 
     /// Three concentric arcs, centered just above the dot, opening upward.
-    static let fanCY: CGFloat = 194 / canvasH
-    static let arcGap: CGFloat = 15 / canvasW
+    /// Center and half-angle re-fit in #193 (half-angle landed on the same
+    /// 58° #186 already had — the eyeballed sweep was right; radius, gap,
+    /// and line width were not).
+    static let fanCX: CGFloat = 174.415 / canvasW
+    static let fanCY: CGFloat = 190.780 / canvasH
+    static let arcGap: CGFloat = 23.27 / canvasW
     /// Fraction of width — each arc stroke's line width.
-    static let arcLineWidth: CGFloat = 20 / canvasW
+    static let arcLineWidth: CGFloat = 35.42 / canvasW
     static let arcHalfAngleDeg: Double = 58
-    static let arcOuterR: CGFloat = 172 / canvasW
+    static let arcOuterR: CGFloat = 172.965 / canvasW
 
     static func point(_ nx: CGFloat, _ ny: CGFloat, in rect: CGRect) -> CGPoint {
         CGPoint(x: rect.minX + nx * rect.width, y: rect.minY + ny * rect.height)
     }
 
+    /// `canvasW`/`canvasH` are `LaunchMark@3x.png`'s pixel size — i.e. 3×
+    /// the actual point size every caller renders `BrewDeskMark` at
+    /// (`LaunchMark.png`, the @1x asset, is 120×145pt; `canvasW/3` = 120).
+    /// Every constant above this point in the file is a *ratio*
+    /// (`raw_px / canvasW`), so shapes scale correctly off `path(in:)`'s
+    /// own `rect` regardless of units — a ratio is unitless. `resolved`
+    /// exists for the one thing that isn't a ratio: `StrokeStyle.lineWidth`
+    /// needs one concrete number, and it has to be in *points*, not @3x
+    /// pixels — hence dividing by `canvasScale` here.
+    private static let canvasScale: CGFloat = 3
+
     /// A fraction-of-width value (e.g. `arcLineWidth`) resolved to a
     /// concrete point size. Shapes above size themselves per-frame off
     /// `path(in:)`'s `rect`, but `StrokeStyle` needs one fixed number —
     /// callers of `BrewDeskMark` size the view explicitly (launch reveal,
-    /// idle indicator), so scaling off the canvas's own width is stable.
+    /// idle indicator) at (or near) the canonical 120×145pt the asset was
+    /// traced from, so scaling off the canvas's own point-equivalent width
+    /// is stable.
+    ///
+    /// bamware-brewdesk#193 found this had been missing the `/ canvasScale`
+    /// step entirely — every fraction here came from pixel-exact alpha
+    /// tracing of the @3x asset, and without it `resolved` handed
+    /// `StrokeStyle` a stroke 3× too wide (e.g. the arcs' real ~35px @3x
+    /// line width resolving to a 35pt stroke instead of ~11.8pt), which
+    /// swallowed the gaps between arcs into a solid fan. #186's original,
+    /// eyeballed constants (not measured off the asset) happened to be
+    /// small enough that the same bug just made the strokes a bit thick
+    /// rather than visibly broken — see `docs/ui-review-assets/
+    /// 193-launch-polish/` for the before/after.
     static func resolved(_ fraction: CGFloat) -> CGFloat {
-        fraction * canvasW
+        fraction * canvasW / canvasScale
     }
 }
 
@@ -111,8 +156,8 @@ struct BrewDeskMarkHandle: Shape {
         path.addArc(
             center: center,
             radius: g.handleR * rect.width,
-            startAngle: .degrees(-100),
-            endAngle: .degrees(100),
+            startAngle: .degrees(g.handleStartAngleDeg),
+            endAngle: .degrees(g.handleEndAngleDeg),
             clockwise: false
         )
         return path
@@ -137,7 +182,7 @@ struct BrewDeskMarkArc: Shape {
 
     func path(in rect: CGRect) -> Path {
         let g = BrewDeskMarkGeometry.self
-        let center = g.point(g.cx, g.fanCY, in: rect)
+        let center = g.point(g.fanCX, g.fanCY, in: rect)
         let step = (g.arcLineWidth + g.arcGap) * rect.width
         let radius = g.arcOuterR * rect.width - CGFloat(2 - index) * step
         var path = Path()
@@ -276,8 +321,12 @@ private struct MarkFace: View {
             ZStack {
                 BrewDeskMarkSaucer()
                 BrewDeskMarkCupBody()
+                // `.butt`, not `.round`: the handle never trims (it settles as
+                // part of the body group, fully drawn from the first frame it's
+                // visible), and the real asset's ring ends flush, not rounded
+                // (#193 alpha trace — see `BrewDeskMarkGeometry`'s doc comment).
                 BrewDeskMarkHandle()
-                    .stroke(tint, style: StrokeStyle(lineWidth: BrewDeskMarkGeometry.resolved(BrewDeskMarkGeometry.handleLineWidth), lineCap: .round))
+                    .stroke(tint, style: StrokeStyle(lineWidth: BrewDeskMarkGeometry.resolved(BrewDeskMarkGeometry.handleLineWidth), lineCap: .butt))
             }
             .foregroundStyle(tint)
             .opacity(stage.bodyOpacity)
@@ -291,9 +340,19 @@ private struct MarkFace: View {
 
     @ViewBuilder
     private func arc(index: Int, trim: Double, glow: Double) -> some View {
+        // `.round` while the trim is still growing (a soft leading tip while
+        // it draws on — bamware-brewdesk#193's "crisper, more polished"
+        // ask), `.butt` the instant it reaches full trim: the real asset's
+        // arc ends are flush, not rounded, so the settled frame (trim == 1)
+        // must render with the geometrically exact cap to stay
+        // pixel-identical to the static `LaunchMark`. The swap is a single
+        // discrete frame right as drawing completes, not a cross-fade — by
+        // then the tip is already at the arc's true endpoint, so there's no
+        // visible pop, just the round overshoot disappearing into the exact
+        // edge.
         BrewDeskMarkArc(index: index)
             .trim(from: 0, to: trim)
-            .stroke(tint, style: StrokeStyle(lineWidth: BrewDeskMarkGeometry.resolved(BrewDeskMarkGeometry.arcLineWidth), lineCap: .round))
+            .stroke(tint, style: StrokeStyle(lineWidth: BrewDeskMarkGeometry.resolved(BrewDeskMarkGeometry.arcLineWidth), lineCap: trim < 1 ? .round : .butt))
             .shadow(color: tint.opacity(glow), radius: 10 * glow)
     }
 }
@@ -320,7 +379,7 @@ private struct SignalLoopMark: View {
                     BrewDeskMarkSaucer()
                     BrewDeskMarkCupBody()
                     BrewDeskMarkHandle()
-                        .stroke(tint, style: StrokeStyle(lineWidth: BrewDeskMarkGeometry.resolved(BrewDeskMarkGeometry.handleLineWidth), lineCap: .round))
+                        .stroke(tint, style: StrokeStyle(lineWidth: BrewDeskMarkGeometry.resolved(BrewDeskMarkGeometry.handleLineWidth), lineCap: .butt))
                 }
                 .foregroundStyle(tint)
 
@@ -339,7 +398,7 @@ private struct SignalLoopMark: View {
         BrewDeskMarkArc(index: index)
             .stroke(
                 tint.opacity(active ? 1 : 0.78),
-                style: StrokeStyle(lineWidth: BrewDeskMarkGeometry.resolved(BrewDeskMarkGeometry.arcLineWidth), lineCap: .round)
+                style: StrokeStyle(lineWidth: BrewDeskMarkGeometry.resolved(BrewDeskMarkGeometry.arcLineWidth), lineCap: .butt)
             )
             .shadow(color: tint.opacity(active ? 0.22 : 0), radius: active ? 6 : 0)
     }
