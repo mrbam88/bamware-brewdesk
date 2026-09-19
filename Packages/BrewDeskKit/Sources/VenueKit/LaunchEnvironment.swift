@@ -70,6 +70,13 @@ public struct LaunchEnvironment: Sendable, Equatable {
     /// this fixture is the seam that exercises the card's rendering and
     /// actions instead. `nil` when absent or malformed.
     public let appleFeatureFixture: AppleFeatureFixture?
+    /// `-UITestForceLaunchReveal` (bamware-brewdesk#186) — the one seam
+    /// that forces `LaunchRevealView` to run even though `isUITestRun` is
+    /// true. Every other `-UITest*` launch skips the reveal outright (it's
+    /// a purely cosmetic cold-launch moment that would otherwise make every
+    /// UI test race a ~1.2s overlay); this flag exists for the one UI test
+    /// that specifically asserts the reveal's own behavior.
+    public let forceLaunchReveal: Bool
     /// True when ANY `-UITest…` launch argument is present — the one seam
     /// that holds for every automated UI run, scenario or live. Every UI
     /// test that can reach user flows passes at least one (`-UITestSkipGates`
@@ -126,6 +133,7 @@ public struct LaunchEnvironment: Sendable, Equatable {
         appleGapFillEnabled = arguments.contains("-UITestAppleGapFill")
         appleFeatureFixture = Self.value(after: "-brewdesk.apple-feature-fixture", in: arguments)
             .flatMap(AppleFeatureFixture.init(raw:))
+        forceLaunchReveal = arguments.contains("-UITestForceLaunchReveal")
         isUITestRun = arguments.contains { $0.hasPrefix("-UITest") }
     }
 

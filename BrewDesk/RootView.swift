@@ -17,6 +17,13 @@ struct RootView: View {
     private let snapshot: [Venue]
     @State private var flow: AppFlowStore
     @State private var locationService: LocationService
+    // Cold-launch only: `@State`'s initial value runs once per `RootView`
+    // instance, which is exactly "was this launch cold" — a warm
+    // foreground re-renders the existing instance's `body`, it doesn't
+    // create a new one. `false` for a scenario/screenshot-mode launch and
+    // for any UI test that isn't the one dedicated reveal test
+    // (bamware-brewdesk#186); see `LaunchRevealView`.
+    @State private var showLaunchReveal: Bool
 
     init(
         venueListing: any VenueListing = VenueAPI(),
@@ -34,28 +41,43 @@ struct RootView: View {
         self.snapshot = (environment.scenario == nil || environment.seedSnapshot) ? VenueSnapshot.load() : []
         _flow = State(initialValue: AppFlowStore())
         _locationService = State(initialValue: LocationService(environment: environment))
+        _showLaunchReveal = State(initialValue: RootView.launchRevealEligible(environment))
     }
 
     var body: some View {
-        Group {
-            if environment.skipGates {
-                discovery
-            } else if !flow.onboardingComplete {
-                OnboardingView(configuration: configuration) { flow.finishOnboarding() }
-            } else if flow.locationIntroComplete {
-                discovery
-            } else {
-                LocationPermissionView(locationService: locationService) {
-                    flow.finishLocationIntro()
+        ZStack {
+            Group {
+                if environment.skipGates {
+                    discovery
+                } else if !flow.onboardingComplete {
+                    OnboardingView(configuration: configuration) { flow.finishOnboarding() }
+                } else if flow.locationIntroComplete {
+                    discovery
+                } else {
+                    LocationPermissionView(locationService: locationService) {
+                        flow.finishLocationIntro()
+                    }
                 }
             }
+            // Matches the LaunchScreen's LaunchBackground asset color so the
+            // very first rendered frame carries the branded green straight
+            // through into SwiftUI — no white flash between the system
+            // launch screen and whichever gate (onboarding/location/
+            // discovery) draws first (#133).
+            .background(Color("LaunchBackground").ignoresSafeArea())
+            .environment(\.launchEnvironment, environment)
+
+            // Purely visual, on top of the real UI above — never gates
+            // onboarding, location, or data loading (bamware-brewdesk#186).
+            if showLaunchReveal {
+                LaunchRevealView(tint: .white) { showLaunchReveal = false }
+            }
         }
-        // Matches the LaunchScreen's LaunchBackground asset color so the very
-        // first rendered frame carries the branded green straight through
-        // into SwiftUI — no white flash between the system launch screen and
-        // whichever gate (onboarding/location/discovery) draws first (#133).
-        .background(Color("LaunchBackground").ignoresSafeArea())
-        .environment(\.launchEnvironment, environment)
+    }
+
+    private static func launchRevealEligible(_ environment: LaunchEnvironment) -> Bool {
+        guard environment.scenario == nil, !environment.noPhotos else { return false }
+        return !environment.isUITestRun || environment.forceLaunchReveal
     }
 
     @ViewBuilder
