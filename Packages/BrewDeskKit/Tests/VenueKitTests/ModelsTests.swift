@@ -43,6 +43,15 @@ import Testing
         #expect(claim.isMeasured)
     }
 
+    // bd#180: "agent" used to fall through sourceLabel's `default: source`
+    // and leak the raw wire value into the UI.
+    @Test func agentSourceLabelIsPressResearch() {
+        let claim = Claim(
+            value: "fast", source: "agent", confidence: 0.6, observedAt: "2026-08-03"
+        )
+        #expect(claim.sourceLabel == "press research")
+    }
+
     @Test func typedQuerySerializesToBackendContract() {
         let query = VenueQuery(
             lat: 40.73,
@@ -229,6 +238,64 @@ import Testing
         #expect(v2.attributes.seating?.value == "plenty")
         #expect(v2.attributes.outdoorSeating?.value == "yes")
         #expect(v2.email == "hello@spot.example")
+    }
+
+    // MARK: - News links (ve#103, bd#180)
+
+    @Test func venueDecodesWithoutNewsAsNil() throws {
+        let json = """
+        {"id":"v1","name":"Spot","lat":40.7,"lng":-74.0,"address":null,
+         "neighborhood":"SoHo","borough":"Manhattan","hoursRaw":null,"vertical":"cafe",
+         "attributes":{
+           "wifi":{"value":"fast","source":"agent","confidence":0.8,"observedAt":"2026-08-15T00:00:00Z"},
+           "outlets":{"value":"some","source":"agent","confidence":0.7,"observedAt":"2026-08-15T00:00:00Z"},
+           "laptopPolicy":{"value":"unrestricted","source":"agent","confidence":0.7,"observedAt":"2026-08-15T00:00:00Z"},
+           "noise":{"value":"moderate","source":"agent","confidence":0.6,"observedAt":"2026-08-15T00:00:00Z"}
+         },
+         "vibeTags":[],"workScore":80,"lastVerified":null}
+        """
+        let venue = try JSONDecoder().decode(Venue.self, from: Data(json.utf8))
+        #expect(venue.news == nil)
+    }
+
+    @Test func venueDecodesNewsLinksWhenPresent() throws {
+        let json = """
+        {"id":"v1","name":"Spot","lat":40.7,"lng":-74.0,"address":null,
+         "neighborhood":"SoHo","borough":"Manhattan","hoursRaw":null,"vertical":"cafe",
+         "attributes":{
+           "wifi":{"value":"fast","source":"agent","confidence":0.8,"observedAt":"2026-08-15T00:00:00Z"},
+           "outlets":{"value":"some","source":"agent","confidence":0.7,"observedAt":"2026-08-15T00:00:00Z"},
+           "laptopPolicy":{"value":"unrestricted","source":"agent","confidence":0.7,"observedAt":"2026-08-15T00:00:00Z"},
+           "noise":{"value":"moderate","source":"agent","confidence":0.6,"observedAt":"2026-08-15T00:00:00Z"}
+         },
+         "vibeTags":[],"workScore":80,"lastVerified":null,
+         "news":[
+           {"url":"https://www.theinfatuation.com/new-york/guides/coffee-shops-nyc-for-doing-work",
+            "title":"The Best NYC Coffee Shops With Wifi For Getting Work Done",
+            "sourceDomain":"theinfatuation.com",
+            "observedAt":"2026-05-28",
+            "tag":"news"},
+           {"url":"https://fixture-gazette.example/spot",
+            "sourceDomain":"fixture-gazette.example",
+            "observedAt":"2026-06-01",
+            "tag":"news"}
+         ]}
+        """
+        let venue = try JSONDecoder().decode(Venue.self, from: Data(json.utf8))
+        #expect(venue.news?.count == 2)
+        #expect(venue.news?[0].sourceDomain == "theinfatuation.com")
+        #expect(venue.news?[0].displayTitle == "The Best NYC Coffee Shops With Wifi For Getting Work Done")
+        // No `title` on the second link — `displayTitle` falls back to nil,
+        // the caller falls back to `sourceDomain`.
+        #expect(venue.news?[1].title == nil)
+        #expect(venue.news?[1].displayTitle == nil)
+    }
+
+    @Test func newsLinkDisplayTitleTrimsAndTreatsBlankAsAbsent() {
+        #expect(NewsLink(url: "u", title: "  A Title \n", sourceDomain: "d", observedAt: "2026-01-01").displayTitle == "A Title")
+        #expect(NewsLink(url: "u", title: "   ", sourceDomain: "d", observedAt: "2026-01-01").displayTitle == nil)
+        #expect(NewsLink(url: "u", title: "", sourceDomain: "d", observedAt: "2026-01-01").displayTitle == nil)
+        #expect(NewsLink(url: "u", sourceDomain: "d", observedAt: "2026-01-01").displayTitle == nil)
     }
 }
 

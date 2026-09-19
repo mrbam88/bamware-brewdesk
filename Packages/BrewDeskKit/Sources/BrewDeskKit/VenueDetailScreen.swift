@@ -38,6 +38,7 @@ public struct VenueDetailScreen: View {
                 photoSection
                 workability
                 businessInfo
+                pressLinks
                 // Structured observation entry (brewdesk#47) — the section
                 // owns its sheet and service resolution; ships in Release.
                 // brewdesk#174 (C9): the store-submission surface gate is
@@ -391,6 +392,78 @@ public struct VenueDetailScreen: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("business-info-card")
         }
+    }
+
+    // MARK: - In the press (bd#180)
+
+    /// Allowlisted press links from the engine's `news[]` (ve#103). Additive,
+    /// optional — hidden entirely when the venue carries no news (same
+    /// collapse policy as `businessInfo`). Never an input to Work Fit; pure
+    /// discovery. Each row opens the article in Safari; a malformed `url`
+    /// from the wire is dropped rather than crashing or rendering a dead row.
+    @ViewBuilder
+    private var pressLinks: some View {
+        let links = validPressLinks
+        if !links.isEmpty {
+            informationCard(title: "In the press", systemImage: "newspaper") {
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(Array(links.enumerated()), id: \.offset) { index, entry in
+                        if index > 0 { Divider() }
+                        pressLinkRow(entry.link, url: entry.url)
+                    }
+                }
+            }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("press-links")
+        }
+    }
+
+    private var validPressLinks: [(link: NewsLink, url: URL)] {
+        (venue.news ?? []).compactMap { link in
+            guard let url = URL(string: link.url) else { return nil }
+            return (link, url)
+        }
+    }
+
+    /// Source domain is always shown (the trust signal); the title, when
+    /// present, sits above it. Title/domain come from allowlisted press
+    /// copy the engine curates — unlike `Claim.detail`, safe to render
+    /// verbatim (see `NewsLink` doc comment).
+    private func pressLinkRow(_ link: NewsLink, url: URL) -> some View {
+        Button {
+            openURL(url)
+        } label: {
+            HStack(spacing: 12) {
+                Label {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(verbatim: link.displayTitle ?? link.sourceDomain)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(theme.primaryColor)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                        if link.displayTitle != nil {
+                            Text(verbatim: link.sourceDomain)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+                } icon: {
+                    Image(systemName: "newspaper")
+                        .foregroundStyle(theme.primaryColor)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.up.right")
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("press-link")
+        .accessibilityHint("Opens the article in Safari")
     }
 
     /// Structured schedule with an open-now badge when the OSM string parses;

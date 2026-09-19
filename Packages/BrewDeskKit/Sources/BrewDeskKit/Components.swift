@@ -118,7 +118,10 @@ struct ProvenanceStamp: View {
         case "user_report": String(localized: "community")
         case "field_visit", "site_visit": String(localized: "site visit")
         case "owner": String(localized: "owner")
-        case "agent": String(localized: "web research")
+        // bd#180: was "web research" — matches ClaimRow.sourceLabel(for:)
+        // and Claim.sourceLabel now that agent claims carry press-research
+        // provenance, not just generic web browsing.
+        case "agent": String(localized: "press research")
         default: claim.source
         }
     }
@@ -241,6 +244,9 @@ struct ClaimRow: View {
         case "speed_test": String(localized: "Measured in app")
         case "user_report": String(localized: "User report")
         case "field_visit": String(localized: "Field verified")
+        // bd#180: agent claims are AI press/web research — never show the
+        // raw wire value "agent".
+        case "agent": String(localized: "Press research")
         default: source
         }
     }
