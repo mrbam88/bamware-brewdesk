@@ -18,6 +18,10 @@ public struct VenueDetailScreen: View {
     @State private var photoLoad: PhotoLoad = .loading
     @State private var photoAttempt = 0
     @State private var failedThumbnailURLs: Set<String> = []
+    // bd#197: the nav bar shows no title while the hero's own name is
+    // visible, and only picks it up once that name has scrolled out from
+    // under the nav bar — see `heroNameFrame` name on `hero`.
+    @State private var showNavTitle = false
     #if DEBUG
         @State private var showCaptureFlow = false
     #endif
@@ -56,13 +60,26 @@ public struct VenueDetailScreen: View {
             // double-padded short ones (ui-review-2026-08-21 finding 6).
             .padding(.bottom, 24)
         }
+        // Named space for `heroNameFrame`'s preference below — scrolling
+        // this ScrollView is what moves the hero name's reported frame.
+        .coordinateSpace(name: Self.scrollSpace)
+        .onPreferenceChange(HeroNameFramePreferenceKey.self) { maxY in
+            // The hero name has scrolled out from under the (invisible) nav
+            // bar once its bottom edge passes y = 0 in the scroll's own
+            // coordinate space — that's the moment the nav bar picks up the
+            // title so the screen is never left with no name showing at all.
+            showNavTitle = maxY < 0
+        }
         .accessibilityIdentifier("venue-detail-screen")
         .background(theme.backgroundColor.ignoresSafeArea())
         .safeAreaInset(edge: .bottom) { actionDock }
-        // brewdesk#119: the nav title is the venue's own name, not the
-        // generic "Details" — tests must key off the venue-detail-screen
-        // identifier or the sheet's detail-close button, never this title.
-        .navigationTitle(venue.name)
+        // bd#119 led to bd#142: printing the venue name a second time as
+        // a permanent nav title duplicated the hero's own name in screenshot
+        // QA. bd#197 fixes that the other way around — the hero card now
+        // shows the real, visible name, and the nav title only appears
+        // (still inline, never duplicated on screen) once that name has
+        // scrolled out of view, so there's always exactly one name visible.
+        .navigationTitle(showNavTitle ? venue.name : "")
         .navigationBarTitleDisplayMode(.inline)
         #if DEBUG
             // Community capture prototype entry (brewdesk#46). Debug-only:
@@ -207,19 +224,33 @@ public struct VenueDetailScreen: View {
             .accessibilityHidden(true)
     }
 
+    /// Named coordinate space the hero name's frame is measured in
+    /// (`heroNameFrame`) — declared on the outer `ScrollView`.
+    private static let scrollSpace = "venueDetailScroll"
+
     private var hero: some View {
         VStack(alignment: .leading, spacing: 14) {
-            // The nav bar already shows the venue name as the sheet's own
-            // title (bd#119); a second large-type copy here duplicated it
-            // in screenshot QA (bd#142). This zero-size proxy keeps a
-            // `.isHeader` VoiceOver landmark inside the scrollable content
-            // — the Headings rotor still finds the venue name here — without
-            // printing it on screen a second time.
+            // bd#197: the card's own heading — real, visible, on-screen
+            // text, not a zero-size VoiceOver-only proxy (that was bd#142's
+            // fix for a different problem: a *second* large copy duplicating
+            // the nav title). Without this the largest text on the card was
+            // `locationSummary`'s neighborhood line, which read as the
+            // title — "it just says Greenwich Village" was the bug report.
             Text(venue.name)
+                .font(.title2.weight(.bold))
+                // 2-line cap (+ `.minimumScaleFactor`) at standard sizes
+                // keeps the card compact; a real long name ("Stavros
+                // Niarchos Foundation Library") still clipped there even at
+                // 3 lines once Dynamic Type reached accessibility sizes
+                // (caught by `performAccessibilityAudit(.textClipped)`), so
+                // at those sizes the cap lifts entirely — the card simply
+                // grows, never truncates, matching how `businessInfo`'s
+                // hours block already has no hard line cap.
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                .minimumScaleFactor(0.85)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("venue-detail-heading")
-                .frame(width: 0, height: 0)
-                .clipped()
+                .background(heroNameFrame)
 
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
@@ -282,14 +313,37 @@ public struct VenueDetailScreen: View {
             + " " + String(localized: "Been here? Rate it.")
     }
 
+    /// Reports the hero name's frame (bottom edge, specifically) up through
+    /// `HeroNameFramePreferenceKey` so the ScrollView's `onPreferenceChange`
+    /// can decide when the nav title should take over — iOS 17-safe
+    /// (`onScrollVisibilityChange` is iOS 18+, this deployment target is 17).
+    private var heroNameFrame: some View {
+        GeometryReader { proxy in
+            Color.clear.preference(
+                key: HeroNameFramePreferenceKey.self,
+                value: proxy.frame(in: .named(Self.scrollSpace)).maxY
+            )
+        }
+    }
+
+    /// Demoted, address-flavored secondary line under the hero name
+    /// (bd#197) — `.subheadline`/`.secondary` throughout, never `.headline`,
+    /// so nothing here competes with the venue name for "this is the title."
+    /// The street line carries a small pin glyph so it reads as an address
+    /// rather than a second line of title.
     private var locationSummary: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("\(venue.neighborhood) · \(venue.borough)")
-                .font(.headline)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
             if let address = venue.address {
-                Text(address)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                Label {
+                    Text(address)
+                } icon: {
+                    Image(systemName: "mappin.and.ellipse")
+                }
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
             }
         }
     }
@@ -751,6 +805,17 @@ public struct VenueDetailScreen: View {
         let item = MKMapItem(placemark: placemark)
         item.name = venue.name
         item.openInMaps(launchOptions: [MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeWalking])
+    }
+}
+
+/// The hero name's bottom edge (`maxY`) in the scroll view's own coordinate
+/// space (bd#197). `.infinity` default so a not-yet-measured first frame
+/// reads as "still fully on screen" — never a spurious nav-title flash
+/// before the GeometryReader lands its first value.
+private struct HeroNameFramePreferenceKey: PreferenceKey {
+    static let defaultValue: CGFloat = .infinity
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
