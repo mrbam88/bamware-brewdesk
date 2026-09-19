@@ -60,6 +60,31 @@ struct VenueScoreDot: View {
     }
 }
 
+/// Apple-only gap-fill marker (bd#182, feature-flagged — `AppleGapFillService
+/// .isEnabled`, default OFF): a grey outline café glyph, deliberately unlike
+/// every scored representation above (no capsule/number, no tier fill, a
+/// dashed rather than solid ring) — Apple's own unverified suggestion must
+/// never be mistaken for one of our claims at a glance. Grey only, never red
+/// or green (founder is red-green colorblind) — same `.unobserved` token
+/// `VenueScorePin`/`VenueScoreDot`/`VenueClusterPill` use for "not checked
+/// yet", reused here for "not even ours".
+struct AppleUnverifiedPin: View {
+    var body: some View {
+        Image(systemName: "cup.and.saucer")
+            .font(.caption2.bold())
+            .foregroundStyle(BrewDeskPalette.unobserved)
+            .padding(6)
+            .frame(minWidth: 30, minHeight: 30)
+            .background(.white, in: Circle())
+            .overlay(
+                Circle().strokeBorder(
+                    BrewDeskPalette.unobserved,
+                    style: StrokeStyle(lineWidth: 1.5, dash: [3, 2])
+                )
+            )
+    }
+}
+
 /// High-density cell: count pill tinted by the cell's best score.
 /// A cell with no observed venues at all (bd#159, `!hasObservedVenue`)
 /// tints neutral grey instead of a fabricated tier color from the flat

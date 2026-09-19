@@ -81,7 +81,26 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             venueType: "cafe",
             website: "https://fixture-roasters.example",
             phone: "+1 212-555-0142",
-            email: "hello@fixture-roasters.example"
+            email: "hello@fixture-roasters.example",
+            // bd#180: the one fixture that carries `news` — pins the "In the
+            // press" row rendering (title + source domain, tap opens URL).
+            // Two entries so the UI test can assert both a titled row and a
+            // title-less row (falls back to the domain).
+            news: [
+                NewsLink(
+                    url: "https://fixture-press.example/roasters-review",
+                    title: "Fixture Roasters is the best laptop café in the neighborhood",
+                    sourceDomain: "fixture-press.example",
+                    observedAt: "2026-07-15",
+                    tag: "news"
+                ),
+                NewsLink(
+                    url: "https://fixture-gazette.example/roasters",
+                    sourceDomain: "fixture-gazette.example",
+                    observedAt: "2026-06-01",
+                    tag: "news"
+                )
+            ]
         ),
         fixtureVenue(
             id: "fixture-library",
@@ -356,7 +375,8 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         venueType: String,
         website: String? = nil,
         phone: String? = nil,
-        email: String? = nil
+        email: String? = nil,
+        news: [NewsLink]? = nil
     ) -> Venue {
         let observedAt = "2026-08-01T00:00:00Z"
         return Venue(
@@ -383,7 +403,8 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             venueType: venueType,
             website: website,
             phone: phone,
-            email: email
+            email: email,
+            news: news
         )
     }
 

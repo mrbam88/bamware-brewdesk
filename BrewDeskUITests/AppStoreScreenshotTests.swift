@@ -94,12 +94,10 @@ final class AppStoreScreenshotTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[locale.honestHeadline].waitForExistence(timeout: 2))
         capture("04-honest-by-design")
 
-        app.buttons[locale.continueButton].tap()
-        // brewdesk#174 (C9): shared account-onboarding step, final page —
-        // skipped for the marketing capture (identifier-keyed, locale-safe).
-        let skip = app.descendants(matching: .any)["onboarding-account-skip"]
-        XCTAssertTrue(skip.waitForExistence(timeout: 5))
-        skip.tap()
+        // Last page's button label swaps to `findMyWorkCafe` and finishes
+        // onboarding directly — no account pitch page (brewdesk#184
+        // removed it).
+        app.buttons[locale.findMyWorkCafe].tap()
         XCTAssertTrue(app.staticTexts[locale.startWhereYouAre].waitForExistence(timeout: 2))
         capture("05-location-is-optional")
 

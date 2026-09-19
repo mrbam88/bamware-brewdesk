@@ -1,5 +1,6 @@
 import MapKit
 import SwiftUI
+import UIKit
 import VenueKit
 
 public struct CafeMapScreen: View {
@@ -7,9 +8,33 @@ public struct CafeMapScreen: View {
     @Environment(\.locationDenied) private var locationDenied
     @Environment(\.locationUndetermined) private var locationUndetermined
     @Environment(\.requestLocationAccess) private var requestLocationAccess
+    @Environment(\.launchEnvironment) private var launchEnvironment
+    @Environment(\.openURL) private var openURL
     @Bindable private var model: VenuesModel
     @Bindable private var savedVenues: SavedVenuesStore
+    /// Transport for the Apple feature card's "Suggest this café" action
+    /// (bd#182). Defaults to the documented no-op stub — see
+    /// `CafeSuggestionContract.swift` for why no real endpoint exists yet.
+    private let cafeSuggesting: any CafeSuggesting
     @State private var selected: Venue?
+    /// The Apple base-map POI label currently selected via `Map`'s own
+    /// selection binding (bd#182) — distinct from `selected`, which is only
+    /// ever one of OUR venues. Reset to `nil` once handled so a repeat tap
+    /// on the same label still fires `onChange`.
+    @State private var appleFeatureSelection: MapFeature?
+    /// Drives `AppleFeatureCard`'s sheet: set once a selected Apple feature
+    /// (or a tapped gap-fill marker) fails to match one of our venues.
+    @State private var appleFeatureCandidate: AppleCafeCandidate?
+    /// Best-effort `MKMapItem` for the current `appleFeatureCandidate`,
+    /// resolved async (`AppleCafeDetailsResolver`) so Directions can hand
+    /// Maps a precise place once it lands; `nil` renders and still works
+    /// (Directions falls back to a plain coordinate placemark).
+    @State private var resolvedAppleMapItem: MKMapItem?
+    /// Grey "unverified" markers from the feature-flagged gap-fill
+    /// (`AppleGapFillService`, default OFF) — never mixed into `plan`'s
+    /// scored pins/dots/clusters, recomputed on every camera settle.
+    @State private var appleGapFillMarkers: [AppleUnverifiedPOI] = []
+    @State private var gapFillTask: Task<Void, Never>?
     /// brewdesk#117: forces the detail sheet to open at `.large` — see the
     /// `.sheet` modifier below for why.
     @State private var detailDetent: PresentationDetent = .large
@@ -47,10 +72,35 @@ public struct CafeMapScreen: View {
     /// content clears the action dock (same safe-area mechanism).
     @ScaledMetric(relativeTo: .caption) private var shelfChipRowHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .title2) private var shelfCardBlockHeight: CGFloat = 138
+    /// True right after `centerOnUser()` lands and no pan/zoom/selection has
+    /// moved the camera away since (bd#185) — drives `LocateMeButton`'s
+    /// filled/"tracking" symbol. A plain `@State` flip, not a real MapKit
+    /// follow mode: see `centerOnUser`'s doc comment for why this screen
+    /// stopped relying on the framework's own `.userLocation` tracking.
+    @State private var isTrackingUserLocation = false
+    /// Scale driving `LocateMeButton`'s tap pulse (bd#185); 1 at rest.
+    @State private var locateButtonScale: CGFloat = 1
+    /// Set when the locate button is tapped while authorization is still
+    /// `.notDetermined` (or before a first location fix has replaced the
+    /// Union Square fallback in `model.centerLat/Lng`) — the next
+    /// `model.centerLat`/`centerLng` change then centers automatically
+    /// instead of applying the plain, unanimated default-span recenter
+    /// those `onChange` handlers otherwise apply. Cleared once consumed, or
+    /// if the user pans/zooms/selects before a fix arrives (bd#185).
+    @State private var pendingLocateAfterPermission = false
+    /// Drives the denied-state alert (bd#185); `LocationDeniedBanner`
+    /// already offers the same "Open Settings" affordance in the header,
+    /// this is the same action reachable from the map control itself.
+    @State private var showLocationDeniedAlert = false
 
-    public init(model: VenuesModel, savedVenues: SavedVenuesStore) {
+    public init(
+        model: VenuesModel,
+        savedVenues: SavedVenuesStore,
+        cafeSuggesting: any CafeSuggesting = NullCafeSuggestionClient()
+    ) {
         self.model = model
         self.savedVenues = savedVenues
+        self.cafeSuggesting = cafeSuggesting
         self._position = State(initialValue: .region(Self.region(lat: model.centerLat, lng: model.centerLng)))
     }
 
@@ -64,16 +114,22 @@ public struct CafeMapScreen: View {
         //
         // PR #61 measured "merely attaching `.onMapCameraChange` ≈ +1.5–2%
         // hitch time" and left it off. brewdesk#157 re-adds it at
-        // `frequency: .onEnd` (below) because `MapUserLocationButton` moves
-        // the camera with no gesture at all, so nothing else can refresh
-        // `visibleRegion` after a locate tap. Re-measured 2026-09-17 on the
+        // `frequency: .onEnd` (below) because the locate control (bd#185:
+        // now a custom `LocateMeButton`, originally the stock
+        // `MapUserLocationButton`) moves the camera with no gesture at all,
+        // so nothing else can refresh `visibleRegion` after a locate tap.
+        // Re-measured 2026-09-17 on the
         // same harness (Release, iPhone 17 Pro Max sim, dot zoom): baseline
         // hitchRatio 0.083–0.115 without the modifier, 0.067–0.084 with it —
         // inside run-to-run noise. If `MapPerformanceUITests` ever regresses,
         // this callback is the first suspect.
         MapReader { proxy in
             GeometryReader { geometry in
-                Map(position: $position) {
+                // `selection` (bd#182) binds ONLY Apple's own base-map POI
+                // labels — our pins/dots/clusters keep their existing
+                // Button-driven `selected` flow untouched, so this is a
+                // second, independent selection channel, not a replacement.
+                Map(position: $position, selection: $appleFeatureSelection) {
                     UserAnnotation()
                     annotations(for: plan)
                     // A venue chosen from a dot, cluster zoom-in, or the shelf
@@ -84,13 +140,39 @@ public struct CafeMapScreen: View {
                             pinButton(for: selected, isSelected: true)
                         }
                     }
+                    // Gap-fill (bd#182, feature-flagged, default OFF): grey
+                    // "unverified" Apple POIs shown only while the region is
+                    // thin on our own pins. Never part of `plan` — these
+                    // never compete with or get counted as scored venues.
+                    gapFillAnnotations
+                }
+                // Apple's base-map labels are restricted to food/drink
+                // categories (bd#182) — the only ones this screen makes
+                // selectable/relevant; every other Apple POI label (transit,
+                // parks, shops, …) stays off the map entirely rather than
+                // being selectable-but-ignored.
+                .mapStyle(.standard(pointsOfInterest: .including(Self.selectablePointsOfInterest)))
+                // Suppresses Apple's own callout bubble: our own
+                // `AppleFeatureCard` sheet (driven by the `onChange` below)
+                // is the single source of truth for what a selected feature
+                // looks like, so the system presentation would otherwise
+                // double up on it. A non-empty `Marker` still highlights the
+                // tapped label on the map itself while our sheet is up.
+                .mapFeatureSelectionContent { feature in
+                    Marker(feature.title ?? "", coordinate: feature.coordinate)
+                }
+                .onChange(of: appleFeatureSelection) { _, newValue in
+                    handleAppleFeatureSelection(newValue)
                 }
                 .onMapCameraChange(frequency: .onEnd) { context in
                     refreshVisibleRegion(context.region)
                 }
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 1)
-                        .onChanged { _ in mapInteraction.isActive = true }
+                        .onChanged { _ in
+                            mapInteraction.isActive = true
+                            stopTrackingUserLocation()
+                        }
                         .onEnded { _ in
                             mapInteraction.isActive = false
                             scheduleReplan(proxy: proxy, size: geometry.size)
@@ -98,7 +180,10 @@ public struct CafeMapScreen: View {
                 )
                 .simultaneousGesture(
                     MagnifyGesture()
-                        .onChanged { _ in mapInteraction.isActive = true }
+                        .onChanged { _ in
+                            mapInteraction.isActive = true
+                            stopTrackingUserLocation()
+                        }
                         .onEnded { _ in
                             mapInteraction.isActive = false
                             scheduleReplan(proxy: proxy, size: geometry.size)
@@ -107,7 +192,10 @@ public struct CafeMapScreen: View {
                 // Built-in double-tap zoom has no drag or magnify phase.
                 .simultaneousGesture(
                     TapGesture(count: 2)
-                        .onEnded { scheduleReplan(proxy: proxy, size: geometry.size) }
+                        .onEnded {
+                            stopTrackingUserLocation()
+                            scheduleReplan(proxy: proxy, size: geometry.size)
+                        }
                 )
                 // Any touch on the map — a tap or the start of a pan —
                 // resigns the search field (brewdesk#87). `minimumDistance:
@@ -134,20 +222,34 @@ public struct CafeMapScreen: View {
         }
         .mapControls {
             MapCompass()
-            MapUserLocationButton()
         }
-        // Compass, user-location button, and attribution stay clear of the
-        // shelf card at its resting detent — scoped to the map subtree so the
-        // card overlay below doesn't inherit (and stack on) its own clearance.
+        // Compass and attribution stay clear of the shelf card at its
+        // resting detent — scoped to the map subtree so the card overlay
+        // below doesn't inherit (and stack on) its own clearance.
         .safeAreaPadding(.bottom, shelfClearance)
-        // Frame-timing evidence seam (brewdesk#54); inert without the flag.
-        // Inside the clearance so the HUD sits above the shelf card and its
-        // taps (perf tests zero the counters by tapping it) still land.
-        .overlay(alignment: .bottomTrailing) {
-            if MapFrameStatsHUD.isEnabled {
-                MapFrameStatsHUD(annotationCount: plan.annotationCount)
-                    .padding(.trailing, 8)
+        // UI-test seam (bd#185): MapKit's camera has no accessibility
+        // surface XCUITest can read, so this invisible element exposes the
+        // settled camera center as "lat,lng" — `MapLocateButtonUITests`
+        // reads it to confirm a tap actually moved the map, rather than
+        // trusting animation timing alone.
+        .overlay(alignment: .topLeading) {
+            Color.clear
+                .frame(width: 1, height: 1)
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier("map-camera-center")
+                .accessibilityLabel("Map camera center")
+                .accessibilityValue(cameraCenterAccessibilityValue)
+                .allowsHitTesting(false)
+        }
+        .alert("Location Access Needed", isPresented: $showLocationDeniedAlert) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    openURL(url)
+                }
             }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Turn on Location Services for BrewDesk in Settings to center the map on where you are.")
         }
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.height
@@ -168,6 +270,7 @@ public struct CafeMapScreen: View {
                 isSearchFocused: searchFocused
             ) { venue in
                 selected = venue
+                stopTrackingUserLocation()
                 position = .region(
                     MKCoordinateRegion(
                         center: coordinate(of: venue),
@@ -185,6 +288,37 @@ public struct CafeMapScreen: View {
                     .onChanged { _ in searchFocused = false }
             )
             .scrollDismissesKeyboard(.immediately)
+        }
+        // The locate button (bd#185, replacing the stock
+        // `MapUserLocationButton()` — see its own doc comment for why) and,
+        // beneath it, the frame-timing evidence seam (brewdesk#54; inert
+        // without `-UITestFrameStats`). Deliberately chained AFTER the
+        // `DiscoveryShelfCard` overlay above, not alongside the compass in
+        // `.mapControls` or in an earlier overlay: a SwiftUI `.overlay`
+        // composites on top of everything already attached to the view, so
+        // an EARLIER overlay here (where this block used to live, before
+        // `.safeAreaPadding(.bottom, shelfClearance)`'s clearance was
+        // trusted to be enough on its own) still rendered BELOW the shelf
+        // card's own later overlay — invisible at any detent that reaches
+        // that corner, and a tap there landed on whatever shelf content was
+        // underneath instead (reproduced with `MapLocateButtonUITests`: a
+        // tap on the identifier's own reported frame opened a venue's detail
+        // sheet). `shelfClearance` still reserves the vertical space; this
+        // fixes who draws on top of it.
+        .overlay(alignment: .bottomTrailing) {
+            VStack(alignment: .trailing, spacing: 10) {
+                if MapFrameStatsHUD.isEnabled {
+                    MapFrameStatsHUD(annotationCount: plan.annotationCount)
+                }
+                LocateMeButton(
+                    isTracking: isTrackingUserLocation,
+                    isDenied: locationDenied,
+                    pulseScale: locateButtonScale,
+                    action: handleLocateTap
+                )
+            }
+            .padding(.trailing, 12)
+            .padding(.bottom, shelfClearance)
         }
         .sheet(item: $selected) { venue in
             NavigationStack {
@@ -235,16 +369,50 @@ public struct CafeMapScreen: View {
             scheduleSearchFit(query: newValue)
         }
         .onChange(of: model.centerLat) {
-            position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
-            visibleRegion = Self.region(lat: model.centerLat, lng: model.centerLng)
+            applyCenterChange()
         }
         .onChange(of: model.centerLng) {
-            position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
-            visibleRegion = Self.region(lat: model.centerLat, lng: model.centerLng)
+            applyCenterChange()
+        }
+        // Gap-fill (bd#182): recomputed on every settled camera region —
+        // the same signal `MapAnnotationPlanner` re-plans from — never
+        // during a mid-gesture frame (brewdesk#54 invariant: `visibleRegion`
+        // itself only ever updates post-settle). `MKCoordinateRegion` isn't
+        // Equatable, so `onChange` watches a small Equatable snapshot of it
+        // instead of the region itself.
+        .onChange(of: visibleRegion.map(RegionSnapshot.init)) { _, _ in
+            scheduleGapFill(region: visibleRegion)
+        }
+        .sheet(item: $appleFeatureCandidate, onDismiss: {
+            appleFeatureSelection = nil
+            resolvedAppleMapItem = nil
+        }) { candidate in
+            AppleFeatureCard(
+                candidate: candidate,
+                referenceCoordinate: CLLocationCoordinate2D(latitude: model.centerLat, longitude: model.centerLng),
+                resolvedMapItem: resolvedAppleMapItem,
+                suggesting: cafeSuggesting
+            )
+            .presentationDetents([.height(260), .medium])
+            .presentationDragIndicator(.visible)
+        }
+        // bd#182 UI-test seam: Apple's base-map labels render in the
+        // platform map layer, not the accessibility tree, so
+        // `MapFeatureCardUITests` cannot reliably tap a real one on the
+        // simulator. A launch fixture opens the card directly so its
+        // rendering and actions are still exercised end to end.
+        .task {
+            if let fixture = launchEnvironment.appleFeatureFixture {
+                appleFeatureCandidate = AppleCafeCandidate(
+                    name: fixture.name,
+                    coordinate: CLLocationCoordinate2D(latitude: fixture.lat, longitude: fixture.lng)
+                )
+            }
         }
         .onDisappear {
             replanTask?.cancel()
             searchFitTask?.cancel()
+            gapFillTask?.cancel()
         }
     }
 
@@ -288,6 +456,7 @@ public struct CafeMapScreen: View {
             // re-plan pins for it directly rather than waiting on a camera
             // settle (same pattern as the cluster-zoom handler above).
             visibleRegion = region
+            stopTrackingUserLocation()
             if reduceMotion {
                 position = .region(region)
             } else {
@@ -340,6 +509,140 @@ public struct CafeMapScreen: View {
             span: MKCoordinateSpan(latitudeDelta: latitudeDelta, longitudeDelta: paddedLngSpan)
         )
     }
+
+    // MARK: - Locate me (bd#185)
+
+    /// Handles a `LocateMeButton` tap for the current permission state.
+    /// Denied/restricted never touches the camera — it only offers the
+    /// Settings alert, matching `LocationDeniedBanner`'s existing affordance
+    /// rather than doing nothing silently (the original bug report).
+    private func handleLocateTap() {
+        if locationDenied {
+            showLocationDeniedAlert = true
+            return
+        }
+        if locationUndetermined {
+            // No coordinate to center on yet — ask, then let
+            // `applyCenterChange()` finish the job once a fix lands.
+            pendingLocateAfterPermission = true
+            requestLocationAccess?()
+            return
+        }
+        // Already authorized: center on whatever `model.centerLat/Lng`
+        // holds right now (the Union Square fallback if no fix has arrived
+        // yet), and also arm `pendingLocateAfterPermission` so a real fix
+        // that lands moments later self-corrects the camera instead of
+        // leaving it on the fallback silently.
+        pendingLocateAfterPermission = true
+        centerOnUser()
+    }
+
+    /// Animates the camera to `model.centerLat/Lng` at a walking zoom, with
+    /// a short pulse + filled/"tracking" symbol on the locate button.
+    ///
+    /// Reuses `model`'s center rather than reading Core Location a second
+    /// time here: `model.centerLat/Lng` is the exact coordinate
+    /// `DiscoveryRootView` already derived from `LocationService.location`
+    /// (`updateCenterIfNeeded`), so this stays the single source of truth
+    /// for "where the user is" instead of introducing a second one.
+    ///
+    /// Diagnosis (bd#185): the stock `MapUserLocationButton()` drives the
+    /// map's own OS-managed `.userLocation` follow mode by writing through
+    /// the `position` binding internally. This screen already had two
+    /// `onChange(of: model.centerLat/Lng)` handlers (now folded into
+    /// `applyCenterChange()`) and a shelf-selection callback that overwrite
+    /// `position` with a plain `.region(...)` case — any one of those firing
+    /// after the stock button engaged tracking would silently cancel it,
+    /// which reads to a user as "I tapped Locate and nothing happened" with
+    /// no error, no log, nothing to grep for. A fully custom button that
+    /// only ever writes `.region(...)` itself — never depending on a
+    /// framework-owned tracking mode another handler could clobber — removes
+    /// that failure mode outright rather than trying to sequence around it.
+    private func centerOnUser() {
+        let region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: model.centerLat, longitude: model.centerLng),
+            span: MKCoordinateSpan(latitudeDelta: Self.locateZoomSpan, longitudeDelta: Self.locateZoomSpan)
+        )
+        visibleRegion = region
+        if reduceMotion {
+            position = .region(region)
+        } else {
+            withAnimation(.snappy) { position = .region(region) }
+        }
+        isTrackingUserLocation = true
+        pulseLocateButton()
+    }
+
+    /// Scale 1 → 1.12 → 1 tap feedback on the locate button; skipped under
+    /// Reduce Motion, matching every other animated camera move here.
+    private func pulseLocateButton() {
+        guard !reduceMotion else { return }
+        withAnimation(.snappy(duration: 0.16)) {
+            locateButtonScale = 1.12
+        }
+        Task {
+            try? await Task.sleep(for: .milliseconds(160))
+            guard !Task.isCancelled else { return }
+            withAnimation(.snappy(duration: 0.16)) {
+                locateButtonScale = 1
+            }
+        }
+    }
+
+    /// Any camera move NOT driven by `centerOnUser()` calls this — dropping
+    /// both the tracking symbol and a still-pending "center once a fix
+    /// lands" request the user has since panned, zoomed, or selected away
+    /// from (bd#185).
+    private func stopTrackingUserLocation() {
+        if isTrackingUserLocation { isTrackingUserLocation = false }
+        if pendingLocateAfterPermission { pendingLocateAfterPermission = false }
+    }
+
+    /// Shared body of the `model.centerLat`/`centerLng` `onChange` handlers:
+    /// a `pendingLocateAfterPermission` request in flight gets the full
+    /// animated, walking-zoom `centerOnUser()` treatment; otherwise this
+    /// keeps the screen's original plain, unanimated recenter (e.g. the
+    /// silent cold-start correction once a first fix replaces the Union
+    /// Square fallback).
+    private func applyCenterChange() {
+        if pendingLocateAfterPermission {
+            pendingLocateAfterPermission = false
+            centerOnUser()
+            return
+        }
+        position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
+        visibleRegion = Self.region(lat: model.centerLat, lng: model.centerLng)
+    }
+
+    /// The camera center as "lat,lng" — see the `map-camera-center`
+    /// accessibility element this backs.
+    ///
+    /// While `isTrackingUserLocation` is true, reports `model.centerLat/Lng`
+    /// directly rather than `visibleRegion`'s reconstructed center: the
+    /// latter is recovered from `MapProxy` corner conversions across the
+    /// FULL (edge-to-edge) view (`cameraRegion(proxy:size:)`, used for
+    /// annotation culling), which is measurably offset from the requested
+    /// `.region()` center once `.safeAreaPadding(.bottom, shelfClearance)`
+    /// is in play — the same bias `searchFitRegion`'s own `latitudeShift`
+    /// exists to compensate for on a fitted bounding box. `centerOnUser()`
+    /// deliberately does NOT apply that compensation (it centers like every
+    /// other single-point camera move in this file — cluster zoom, shelf
+    /// selection — none of which shift for the shelf either), so reading
+    /// `model.centerLat/Lng` here reports the coordinate actually asked
+    /// for, not a shelf-shifted reconstruction of where the full-screen
+    /// camera rect happens to sit.
+    private var cameraCenterAccessibilityValue: String {
+        let center: CLLocationCoordinate2D
+        if isTrackingUserLocation {
+            center = CLLocationCoordinate2D(latitude: model.centerLat, longitude: model.centerLng)
+        } else {
+            center = visibleRegion?.center
+                ?? CLLocationCoordinate2D(latitude: model.centerLat, longitude: model.centerLng)
+        }
+        return String(format: "%.6f,%.6f", center.latitude, center.longitude)
+    }
+
+    private static let locateZoomSpan = 0.012
 
     // MARK: - Camera-driven re-planning
 
@@ -426,6 +729,21 @@ public struct CafeMapScreen: View {
         }
     }
 
+    /// Split out of the `Map` content builder (bd#182): a `ForEach` here
+    /// alongside `annotations(for:)`'s own inline one and the selected-pin
+    /// overlay made the whole `Map { … }` trailing closure too much for the
+    /// type checker ("unable to type-check this expression in reasonable
+    /// time") — same fix as `annotations(for:)` already being its own
+    /// function rather than inline.
+    @MapContentBuilder
+    private var gapFillAnnotations: some MapContent {
+        ForEach(appleGapFillMarkers) { poi in
+            Annotation("", coordinate: poi.coordinate) {
+                gapFillButton(for: poi)
+            }
+        }
+    }
+
     private func pinButton(for venue: Venue, isSelected: Bool) -> some View {
         Button {
             selected = venue
@@ -463,6 +781,7 @@ public struct CafeMapScreen: View {
             // Programmatic move: the target region is known, so re-plan
             // directly — no camera observation needed.
             visibleRegion = zoomed
+            stopTrackingUserLocation()
             if reduceMotion {
                 position = .region(zoomed)
             } else {
@@ -475,6 +794,87 @@ public struct CafeMapScreen: View {
         .accessibilityIdentifier("map-cluster")
         .accessibilityLabel(Self.clusterLabel(for: cluster))
         .accessibilityHint("Zooms in to show them")
+    }
+
+    // MARK: - Apple base-map features (bd#182)
+
+    /// Food/drink-only, per the ticket's point-of-interest filter — every
+    /// other Apple POI category (transit, parks, shops, …) is left off the
+    /// base map entirely rather than shown-but-inert.
+    static let selectablePointsOfInterest: [MKPointOfInterestCategory] = [
+        .cafe, .bakery, .restaurant, .foodMarket, .brewery, .winery,
+    ]
+
+    /// `Map`'s own selection binding fired: resolve the tapped feature
+    /// against our venues (`AppleFeatureMatcher`) — a match opens our
+    /// regular venue detail sheet (it IS one of ours, just drawn by Apple's
+    /// free label); no match opens `AppleFeatureCard`. Either way the
+    /// binding resets to `nil` so a repeat tap on the same label still
+    /// fires this `onChange` the next time.
+    private func handleAppleFeatureSelection(_ feature: MapFeature?) {
+        defer { appleFeatureSelection = nil }
+        guard let feature, let name = feature.title, !name.isEmpty else { return }
+        if let matched = AppleFeatureMatcher.matchingVenue(
+            name: name, lat: feature.coordinate.latitude, lng: feature.coordinate.longitude, in: model.venues
+        ) {
+            selected = matched
+            return
+        }
+        resolvedAppleMapItem = nil
+        let candidate = AppleCafeCandidate(
+            name: name, coordinate: feature.coordinate, category: feature.pointOfInterestCategory
+        )
+        appleFeatureCandidate = candidate
+        Task {
+            let item = await AppleCafeDetailsResolver.resolveMapItem(
+                name: name, coordinate: feature.coordinate, feature: feature
+            )
+            // The card may have already been dismissed (or a different
+            // feature selected) by the time this lands.
+            guard appleFeatureCandidate?.id == candidate.id else { return }
+            resolvedAppleMapItem = item
+        }
+    }
+
+    /// A tapped gap-fill marker: already pre-deduped against our venues
+    /// (`AppleGapFillService.fetch`), so this always opens the card — no
+    /// re-matching needed, and no async detail resolution either (a
+    /// gap-fill POI came straight from `MKMapItem` already, but Directions
+    /// works fine off the plain coordinate, so this stays cheap).
+    private func gapFillButton(for poi: AppleUnverifiedPOI) -> some View {
+        Button {
+            resolvedAppleMapItem = nil
+            appleFeatureCandidate = AppleCafeCandidate(name: poi.name, coordinate: poi.coordinate)
+        } label: {
+            AppleUnverifiedPin()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(poi.name), unverified, not yet in BrewDesk")
+        .accessibilityIdentifier("apple-gap-fill-pin")
+    }
+
+    /// Re-evaluates the feature-flagged gap-fill (default OFF) for the
+    /// current `region`: fewer than `AppleGapFillService
+    /// .minimumPinsBeforeGapFill` of our own pins in view triggers an
+    /// on-device `MKLocalPointsOfInterestRequest`. Cancels any in-flight
+    /// fetch first — a fast pan/zoom must never race two of these.
+    private func scheduleGapFill(region: MKCoordinateRegion?) {
+        gapFillTask?.cancel()
+        guard AppleGapFillService.isEnabled, let region else {
+            appleGapFillMarkers = []
+            return
+        }
+        let ourPinCount = MapAnnotationPlanner.culled(model.venues, region: region).count
+        guard AppleGapFillService.shouldGapFill(ourPinCount: ourPinCount) else {
+            appleGapFillMarkers = []
+            return
+        }
+        let venues = model.venues
+        gapFillTask = Task {
+            let markers = await AppleGapFillService.fetch(region: region, excluding: venues)
+            guard !Task.isCancelled else { return }
+            appleGapFillMarkers = markers
+        }
     }
 
     @ViewBuilder
@@ -657,4 +1057,55 @@ public struct CafeMapScreen: View {
 @MainActor
 private final class MapInteractionFlag {
     var isActive = false
+}
+
+/// Prominent "center on me" control (bd#185), replacing the stock
+/// `MapUserLocationButton()`: a solid 48pt brand-filled circle rather than a
+/// small translucent glass pill, so it reads as tappable at a glance next to
+/// `MapCompass()`. State is carried entirely by icon + a brief scale pulse —
+/// never by color alone (the founder is red-green colorblind) — so the
+/// denied state (`location.slash`) is as legible as the tracking state
+/// (`location.fill`) to anyone who can't distinguish a tint shift.
+struct LocateMeButton: View {
+    var isTracking: Bool
+    var isDenied: Bool
+    var pulseScale: CGFloat
+    var action: () -> Void
+
+    private var symbolName: String {
+        if isDenied { return "location.slash" }
+        return isTracking ? "location.fill" : "location"
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbolName)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(BrewDeskPalette.foam)
+                .frame(width: 48, height: 48)
+                .background(BrewDeskPalette.roast, in: Circle())
+                .shadow(color: .black.opacity(0.22), radius: 6, y: 3)
+                .contentTransition(.symbolEffect(.replace))
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(pulseScale)
+        .accessibilityIdentifier("map-locate-me")
+        .accessibilityLabel("Center map on my location")
+    }
+}
+
+/// `MKCoordinateRegion` isn't `Equatable`, so the gap-fill `onChange` (bd#182)
+/// watches this small snapshot of it instead.
+private struct RegionSnapshot: Equatable {
+    let lat: Double
+    let lng: Double
+    let latDelta: Double
+    let lngDelta: Double
+
+    init(_ region: MKCoordinateRegion) {
+        lat = region.center.latitude
+        lng = region.center.longitude
+        latDelta = region.span.latitudeDelta
+        lngDelta = region.span.longitudeDelta
+    }
 }

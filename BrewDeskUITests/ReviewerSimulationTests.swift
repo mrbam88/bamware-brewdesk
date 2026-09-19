@@ -47,15 +47,10 @@ final class ReviewerSimulationTests: XCTestCase {
         app.buttons["Continue"].tap()
         XCTAssertTrue(app.staticTexts["Every score shows its work."].waitForExistence(timeout: 2))
         capture("02-onboarding-evidence-page")
-        app.buttons["Continue"].tap()
-
-        // brewdesk#174 (C9): the shared account-onboarding step is now the
-        // final onboarding page — the reviewer skips it here (still offered
-        // every launch; account sign-in itself is exercised in
-        // AccountFlowUITests/AccountDeletionUITests).
-        let skip = app.descendants(matching: .any)["onboarding-account-skip"]
-        XCTAssertTrue(skip.waitForExistence(timeout: 5), "Account onboarding step did not appear")
-        skip.tap()
+        // Last page's button finishes onboarding directly — no account
+        // pitch page (brewdesk#184 removed it; account sign-in itself is
+        // exercised in AccountFlowUITests/AccountDeletionUITests).
+        app.buttons["Find my work spot"].tap()
 
         // ── 2. Decline location → Union Square fallback, full dataset ─────
         XCTAssertTrue(app.staticTexts["Start where you are."].waitForExistence(timeout: 2))

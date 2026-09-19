@@ -44,8 +44,56 @@ public struct Claim: Codable, Hashable, Sendable {
         case "speed_test": "measured in-app"
         case "user_report": "user report"
         case "field_visit": "field-verified"
+        // bd#180: agent claims are AI web/press research, not a human
+        // verification — "agent" must never leak to the UI as raw text.
+        case "agent": "press research"
         default: source
         }
+    }
+}
+
+/// ve#103: a single allowlisted press article tied to a café — first-class
+/// press signal, never buried in a `Claim.detail` pipeline string.
+///
+/// **News ≠ Work Fit.** A press mention never raises `workScore` by itself
+/// (same honesty rule as `buzz`). Populated only from committed
+/// market-research / cultural-moment / agent-evidence URLs on the engine
+/// side; the client renders `title`/`sourceDomain` verbatim (allowlisted,
+/// curated text — unlike `Claim.detail`, which carries raw pipeline
+/// prefixes and must never render verbatim).
+public struct NewsLink: Codable, Hashable, Sendable {
+    public let url: String
+    public let title: String?
+    public let sourceDomain: String
+    /// ISO date the article was published/observed (not an instant).
+    public let observedAt: String
+    /// Always `"news"` on the wire (ve#103); decoded as a plain string
+    /// rather than a closed enum so an engine-side tag addition stays
+    /// additive instead of a decode failure.
+    public let tag: String
+
+    public init(
+        url: String,
+        title: String? = nil,
+        sourceDomain: String,
+        observedAt: String,
+        tag: String = "news"
+    ) {
+        self.url = url
+        self.title = title
+        self.sourceDomain = sourceDomain
+        self.observedAt = observedAt
+        self.tag = tag
+    }
+
+    /// `title`, trimmed, with blank-or-absent treated the same (mirrors
+    /// `VenuePhoto.communityByline`) — a title-less row falls back to
+    /// `sourceDomain` instead of printing an empty line.
+    public var displayTitle: String? {
+        guard let trimmed = title?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else { return nil }
+        return trimmed
     }
 }
 
@@ -104,6 +152,11 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
     /// payloads, and absent decodes as researched (`isOSMBaseline == false`)
     /// — backward compatible until the engine ships the field.
     public let tier: String?
+    /// Allowlisted press links (ve#103, bd#180) — additive, optional.
+    /// **News ≠ Work Fit**: never an input to `workScore`; render nothing
+    /// when absent or empty (pre-ve#103 payloads, and most venues, carry no
+    /// press hits — that is not a claim about the café).
+    public let news: [NewsLink]?
 
     public init(
         id: String,
@@ -124,7 +177,8 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         website: String? = nil,
         phone: String? = nil,
         email: String? = nil,
-        tier: String? = nil
+        tier: String? = nil,
+        news: [NewsLink]? = nil
     ) {
         self.id = id
         self.name = name
@@ -145,12 +199,13 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         self.phone = phone
         self.email = email
         self.tier = tier
+        self.news = news
     }
 
     enum CodingKeys: String, CodingKey {
         case id, name, lat, lng, address, neighborhood, borough, hoursRaw,
              vertical, attributes, vibeTags, workScore, lastVerified, venueType,
-             website, phone, email, tier
+             website, phone, email, tier, news
         case distanceM = "distance_m"
     }
 
@@ -167,9 +222,11 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
     /// from driving Work Fit"): the engine now treats `estimate` claims and
     /// anything under 0.4 confidence as not counting toward the score, so
     /// every venue with no real evidence lands on the same flat neutral
-    /// `workScore` (52 in NYC, 50–55 on OSM-baseline metros). `false` here
-    /// means `workScore` is that neutral fallback, not a measurement — the
-    /// UI must show "Not checked yet" instead of the number (bd#159).
+    /// `workScore` — a hollow Places pin with no claims at all lands at 40,
+    /// not the 52 once documented here (bd#180); OSM-baseline metros with
+    /// tag-derived claims still run 50–55. `false` here means `workScore`
+    /// is that neutral fallback, not a measurement — the UI must show
+    /// "Not checked yet" instead of the number (bd#159).
     ///
     /// This is a client-side approximation of the engine's own rule; if the
     /// engine ships an explicit field for this, prefer it and keep this

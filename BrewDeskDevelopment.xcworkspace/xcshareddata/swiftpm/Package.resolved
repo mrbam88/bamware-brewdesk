@@ -1,5 +1,5 @@
 {
-  "originHash" : "e786617099d032a9642291b71d11e38e02cce671f58c60d6caecbe34c8fdb7b8",
+  "originHash" : "72755e56d8809c4bd29cc60d26ba92b81a3e9fd4a1484f07ac8f6bdc0f3cec77",
   "pins" : [
     {
       "identity" : "app-check",
@@ -24,7 +24,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/mrbam88/bamware-ios.git",
       "state" : {
-        "revision" : "202681cc270d79173bdd73c2d23f8513e9f8acca"
+        "revision" : "ac444619a96e5e018b33f6c2acf7d6dac0839415"
       }
     },
     {

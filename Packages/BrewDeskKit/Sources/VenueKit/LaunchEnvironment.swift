@@ -52,6 +52,31 @@ public struct LaunchEnvironment: Sendable, Equatable {
     /// pins the clock the venue-detail open-now badge is judged against.
     /// `nil` when absent or unparseable.
     public let fixedNow: Date?
+    /// `-UITestAppleGapFill` (bd#182) — opts a launch into the on-device
+    /// Apple `MKLocalPointsOfInterestRequest` gap-fill (grey "unverified"
+    /// markers shown when the visible region has fewer than
+    /// `AppleGapFillService.minimumPinsBeforeGapFill` of our own pins).
+    /// Absent by default: this is a spend-free but still network-calling
+    /// feature, so every normal and store-submission launch keeps it off
+    /// until a real toggle ships — same "always compiled, inert outside the
+    /// flag" convention as `MapFrameStatsHUD.isEnabled`.
+    public let appleGapFillEnabled: Bool
+    /// `-brewdesk.apple-feature-fixture "<name>|<lat>|<lng>"` (bd#182) —
+    /// forces `CafeMapScreen` to open the "not in BrewDesk yet" Apple
+    /// feature card for this fixed name/coordinate on launch, standing in
+    /// for a real tap on an Apple base-map POI label. Apple's own labels
+    /// are drawn by the platform map layer, not the accessibility tree, so
+    /// `MapFeatureCardUITests` cannot reliably tap one on the simulator —
+    /// this fixture is the seam that exercises the card's rendering and
+    /// actions instead. `nil` when absent or malformed.
+    public let appleFeatureFixture: AppleFeatureFixture?
+    /// `-UITestForceLaunchReveal` (bamware-brewdesk#186) — the one seam
+    /// that forces `LaunchRevealView` to run even though `isUITestRun` is
+    /// true. Every other `-UITest*` launch skips the reveal outright (it's
+    /// a purely cosmetic cold-launch moment that would otherwise make every
+    /// UI test race a ~1.2s overlay); this flag exists for the one UI test
+    /// that specifically asserts the reveal's own behavior.
+    public let forceLaunchReveal: Bool
     /// True when ANY `-UITest…` launch argument is present — the one seam
     /// that holds for every automated UI run, scenario or live. Every UI
     /// test that can reach user flows passes at least one (`-UITestSkipGates`
@@ -105,6 +130,10 @@ public struct LaunchEnvironment: Sendable, Equatable {
             .flatMap(Self.parseOldStylePlistArray)
         fixedNow = Self.value(after: "-brewdesk.uitest-fixed-now", in: arguments)
             .flatMap(Self.parseFixedNow)
+        appleGapFillEnabled = arguments.contains("-UITestAppleGapFill")
+        appleFeatureFixture = Self.value(after: "-brewdesk.apple-feature-fixture", in: arguments)
+            .flatMap(AppleFeatureFixture.init(raw:))
+        forceLaunchReveal = arguments.contains("-UITestForceLaunchReveal")
         isUITestRun = arguments.contains { $0.hasPrefix("-UITest") }
     }
 
@@ -138,5 +167,28 @@ public struct LaunchEnvironment: Sendable, Equatable {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
         return formatter.date(from: raw)
+    }
+}
+
+/// `name|lat|lng` fixture for `-brewdesk.apple-feature-fixture` (bd#182).
+/// A plain struct rather than reusing `Venue`: this stands in for an Apple
+/// POI, not one of ours, and has no score/attributes to fabricate.
+public struct AppleFeatureFixture: Sendable, Equatable {
+    public let name: String
+    public let lat: Double
+    public let lng: Double
+
+    public init(name: String, lat: Double, lng: Double) {
+        self.name = name
+        self.lat = lat
+        self.lng = lng
+    }
+
+    init?(raw: String) {
+        let parts = raw.components(separatedBy: "|")
+        guard parts.count == 3, !parts[0].isEmpty,
+              let lat = Double(parts[1]), let lng = Double(parts[2])
+        else { return nil }
+        self.init(name: parts[0], lat: lat, lng: lng)
     }
 }
