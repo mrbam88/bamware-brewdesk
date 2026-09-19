@@ -21,7 +21,7 @@ let package = Package(
         // SDK links (off by default upstream) — see that package's README.
         .package(
             url: "https://github.com/mrbam88/bamware-ios.git",
-            revision: "202681cc270d79173bdd73c2d23f8513e9f8acca",
+            revision: "ac444619a96e5e018b33f6c2acf7d6dac0839415",
             traits: ["GoogleSignIn"]
         )
     ],
