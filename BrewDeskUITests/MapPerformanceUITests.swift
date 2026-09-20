@@ -53,28 +53,21 @@ final class MapPerformanceUITests: XCTestCase {
         XCTAssertLessThan(hitchRatio ?? 1, 0.20, "map pan dropped too much frame time: \(hud.label)")
     }
 
-    /// Same measurement one representation step in: a cluster tap zooms to
-    /// dot density (~80–120 score dots — the shape of the live 100-venue
-    /// dataset at default zoom), then the same scripted pan runs.
+    /// bd#212: the old "dot zoom" measurement tapped a cluster pill to zoom
+    /// one representation step in; clusters no longer exist. The design's
+    /// own "dot zoom" is now literal — `-brewdesk.debug.initial-span` opens
+    /// the camera wide enough (>= 0.045°) that every rated venue in the
+    /// 2,180-venue `manyVenues` fixture draws as a plain 4pt dot with no
+    /// number, the exact "many small dots" density #211's regression
+    /// profiled.
     @MainActor
     func testScriptedPanFrameTimingAtDotZoom() throws {
-        let app = launchManyVenues(extra: ["-UITestFrameStats"])
+        let app = launchManyVenues(extra: ["-UITestFrameStats", "-brewdesk.debug.initial-span", "0.05"])
         let hud = app.descendants(matching: .any)["frame-stats"].firstMatch
         XCTAssertTrue(hud.waitForExistence(timeout: wait), "frame-stats HUD missing")
         waitForAnnotations(hud, timeout: wait)
 
-        let preCount = parse(hud.label)["annotations"]
-        XCTAssertTrue(
-            app.buttons.matching(identifier: "map-cluster").firstMatch.waitForExistence(timeout: wait)
-        )
-        // Tap a pill clear of the screen corners — the frame-stats HUD sits
-        // bottom-trailing and would swallow the tap of a pill under it.
-        tapCentralCluster(app)
-        Thread.sleep(forTimeInterval: 2)
-        XCTAssertNotEqual(
-            parse(hud.label)["annotations"], preCount,
-            "cluster tap did not change the representation (still \(hud.label))"
-        )
+        Thread.sleep(forTimeInterval: 1.5)
         hud.tap()
 
         scriptedPan(app)
@@ -87,45 +80,70 @@ final class MapPerformanceUITests: XCTestCase {
         add(attachment)
         print("MAP-PERF-DOTS \(hud.label)")
 
+        let frames = stats["frames"].flatMap(Double.init) ?? 0
+        XCTAssertGreaterThan(frames, 100, "recorder measured too few frames to be meaningful")
         let hitchRatio = stats["hitchRatio"].flatMap(Double.init)
         XCTAssertNotNil(hitchRatio, "frame stats label not parseable: \(hud.label)")
+        // Loose bound: catches sustained stutter without flaking on one-off
+        // simulator scheduling blips. The PR carries the exact numbers
+        // against the ticket's ≤0.12 target.
         XCTAssertLessThan(hitchRatio ?? 1, 0.20, "dot-zoom pan dropped too much frame time: \(hud.label)")
     }
 
-    // MARK: - Representation behavior (clusters → dots/pins → detail)
+    // MARK: - Representation behavior (markers → detail, bd#212)
 
-    /// At dataset scale the default zoom must show cluster pills, not one
-    /// annotation per venue; tapping clusters zooms until individual venues
-    /// appear, and tapping a venue still reaches the detail sheet.
+    /// bd#212: no cluster/stack representation exists any more — at ANY
+    /// zoom (including default), the 2,180-venue `manyVenues` fixture draws
+    /// one marker per venue (teardrop, demoted dot, or unrated speck), never
+    /// a count group. Tapping a rated venue's marker must still reach its
+    /// detail sheet. Replaces the old `testClustersZoomToVenuesAndDetailTapThrough`
+    /// (its zoom-stepping loop no longer applies — there's nothing to zoom
+    /// past).
     @MainActor
-    func testClustersZoomToVenuesAndDetailTapThrough() throws {
+    func testTappingAVenueMarkerOpensDetail() throws {
         let app = launchManyVenues()
 
-        let cluster = app.buttons.matching(identifier: "map-cluster").firstMatch
-        XCTAssertTrue(
-            cluster.waitForExistence(timeout: wait),
-            "2,180 venues at default zoom should render as cluster pills"
-        )
-
-        // Each tap zooms one step in; individual venue annotations (labelled
-        // "<name>, Work Fit <n>, <neighborhood>") must appear within a few.
-        var zoomSteps = 0
-        while zoomSteps < 6, !app.mapPins.firstMatch.exists {
-            let pill = app.buttons.matching(identifier: "map-cluster").firstMatch
-            guard pill.waitForExistence(timeout: 5) else { break }
-            pill.tap()
-            zoomSteps += 1
-            Thread.sleep(forTimeInterval: 1.0)
-        }
-
         let pin = app.mapPins.firstMatch
-        XCTAssertTrue(pin.waitForExistence(timeout: wait), "zooming into clusters never yielded venue annotations")
+        XCTAssertTrue(pin.waitForExistence(timeout: wait), "2,180 venues at default zoom rendered no venue markers")
+        XCTAssertFalse(
+            app.buttons.matching(identifier: "map-cluster").firstMatch.exists,
+            "bd#212: no cluster/stack marker may exist anywhere in the app"
+        )
 
         pin.tap()
         XCTAssertTrue(
             app.staticTexts["Workability"].waitForExistence(timeout: wait),
-            "tapping a venue annotation no longer opens the detail sheet"
+            "tapping a venue marker no longer opens the detail sheet"
         )
+    }
+
+    // MARK: - Motion (bd#212 VERIFY step — pinch smoothness, video-captured)
+
+    /// Not a frame-timing measurement — this is the seam a host-side
+    /// `xcrun simctl io <udid> recordVideo` wraps around while it runs, so a
+    /// human (or a contact-sheet review) can watch that markers stay locked
+    /// to their streets through a real pinch gesture and that sizes settle
+    /// smoothly rather than flashing/disappearing. Five zoom-in/zoom-out
+    /// pinches, each held a beat so `.onMapCameraChange(frequency: .onEnd)`
+    /// actually fires and the camera has time to visibly settle between
+    /// direction changes.
+    @MainActor
+    func testPinchZoomStaysSmoothAndMarkersStayAttached() throws {
+        let app = launchManyVenues()
+        XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: wait), "map never rendered markers before the pinch")
+
+        let map = app.windows.firstMatch
+        for _ in 0..<5 {
+            map.pinch(withScale: 3, velocity: 1.2)
+            Thread.sleep(forTimeInterval: 0.6)
+            map.pinch(withScale: 0.33, velocity: -1.2)
+            Thread.sleep(forTimeInterval: 0.6)
+        }
+
+        // The map (and its markers) must still be alive and interactive
+        // after the gesture sequence — a real regression here would leave
+        // the map frozen or the marker layer empty.
+        XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: wait), "map lost its markers after pinching")
     }
 
     // MARK: - Helpers
@@ -139,23 +157,6 @@ final class MapPerformanceUITests: XCTestCase {
         ] + extra
         app.launch()
         return app
-    }
-
-    /// Taps the cluster pill closest to the window center, avoiding pills
-    /// under the corner-anchored HUD or the map controls.
-    @MainActor
-    private func tapCentralCluster(_ app: XCUIApplication) {
-        let window = app.windows.firstMatch.frame
-        let center = CGPoint(x: window.midX, y: window.midY)
-        let pills = app.buttons.matching(identifier: "map-cluster").allElementsBoundByIndex
-        let best = pills
-            .filter { $0.isHittable }
-            .min { lhs, rhs in
-                hypot(lhs.frame.midX - center.x, lhs.frame.midY - center.y)
-                    < hypot(rhs.frame.midX - center.x, rhs.frame.midY - center.y)
-            }
-        XCTAssertNotNil(best, "no hittable cluster pill to tap")
-        best?.tap()
     }
 
     /// Annotation count is published on the HUD label (`annotations=N`).

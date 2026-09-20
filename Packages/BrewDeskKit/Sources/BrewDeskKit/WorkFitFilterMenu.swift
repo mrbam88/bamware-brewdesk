@@ -181,7 +181,7 @@ struct WorkFitFilterMenu: View {
     }
 
     /// "What the numbers mean" — the same four tiers and colors as
-    /// `ScoreBadge`/`VenueScorePin`, spelled out once here since the score
+    /// `ScoreBadge`/`TeardropMarkerView`, spelled out once here since the score
     /// itself no longer carries an inline legend anywhere on Spots.
     private var scoreLegend: some View {
         VStack(alignment: .leading, spacing: 6) {

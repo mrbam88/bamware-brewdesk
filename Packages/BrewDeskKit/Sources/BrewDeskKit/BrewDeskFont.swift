@@ -30,6 +30,23 @@ public enum BrewDeskFont {
         custom("JetBrainsMono-Regular", loaded: jetBrainsMonoLoaded, fallbackDesign: .monospaced, weight: weight, style: style)
     }
 
+    /// Fixed-size (never Dynamic-Type-scaled) Hanken Grotesk LIGHT for the
+    /// tiny score numbers drawn directly on a map marker (bd#212): a
+    /// marker's number size is derived from its own pixel diameter (≈0.58×
+    /// the head), not from the reader's text-size setting, so this
+    /// deliberately skips `Font.custom(_:size:relativeTo:)`'s Dynamic-Type
+    /// scaling that every other `BrewDeskFont` case uses — a marker growing
+    /// past its collision footprint under Larger Text would itself start
+    /// overlapping neighbours. `.monospacedDigit()` gives the tabular
+    /// figures the spec calls for (a "1" and a "9" occupy the same width,
+    /// so a marker's number never visibly reflows the shape around it).
+    public static func markerNumber(size: CGFloat) -> Font {
+        let base: Font = hankenGroteskLoaded
+            ? .custom("HankenGrotesk-Regular", fixedSize: size)
+            : .system(size: size, design: .default)
+        return base.weight(.light).monospacedDigit()
+    }
+
     /// Whether each bundled family actually registered — read by
     /// `BrewDeskFontTests` so a bundling regression fails a test instead of
     /// silently falling back app-wide. `UIFont(name:size:)` does real font

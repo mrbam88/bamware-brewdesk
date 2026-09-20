@@ -99,6 +99,21 @@ public struct LaunchEnvironment: Sendable, Equatable {
     /// flag exists instead of depending on that. `nil` when absent or
     /// malformed.
     public let fixedLocation: FixedLocationFixture?
+    /// `-brewdesk.debug.initial-span <metres-per-point>` (bd#212, revised
+    /// after supervisor review) — opens the map's camera at this real-world
+    /// metres-per-screen-point instead of the normal GPS-fix/Browse-NYC
+    /// default. Metres/point, not a raw coordinate span in degrees: that's
+    /// the same unit `MapAnnotationPlanner.headDiameter(forMetersPerPoint:)`
+    /// sizes markers from, so a screenshot/perf script can name an exact
+    /// marker-size target ("7.2 m/pt" ⇒ 4pt dots, "1.8 m/pt" ⇒ 17pt
+    /// teardrops) rather than guessing a degree span that MapKit might
+    /// render wider once it fits the device's aspect ratio. A test/
+    /// screenshot seam only — `CafeMapScreen` only ever applies it alongside
+    /// `isUITestRun` (some other `-UITest…` argument must also be present),
+    /// so a real App Store/TestFlight launch — which never carries one —
+    /// can't be driven by it. `nil` when absent, unparseable, or
+    /// non-positive.
+    public let debugInitialMetersPerPoint: Double?
     /// True when ANY `-UITest…` launch argument is present — the one seam
     /// that holds for every automated UI run, scenario or live. Every UI
     /// test that can reach user flows passes at least one (`-UITestSkipGates`
@@ -160,6 +175,9 @@ public struct LaunchEnvironment: Sendable, Equatable {
             .flatMap(Double.init)
         fixedLocation = Self.value(after: "-brewdesk.uitest-fixed-location", in: arguments)
             .flatMap(FixedLocationFixture.init(raw:))
+        debugInitialMetersPerPoint = Self.value(after: "-brewdesk.debug.initial-span", in: arguments)
+            .flatMap(Double.init)
+            .flatMap { $0 > 0 ? $0 : nil }
         isUITestRun = arguments.contains { $0.hasPrefix("-UITest") }
     }
 

@@ -216,12 +216,20 @@ public struct CafeMapScreen: View {
                 Map(position: $position, selection: $appleFeatureSelection) {
                     UserAnnotation()
                     annotations(for: plan)
-                    // A venue chosen from a dot, cluster zoom-in, or the shelf
-                    // still shows a full selected pin even when the plan has
-                    // no pin for it.
+                    mapCircles(for: plan)
+                    // A venue chosen from the shelf (or panned away from
+                    // since) still shows a full selected teardrop even when
+                    // it fell outside the current plan's culled/collision
+                    // pass (bd#212 — same fallback bd#209's selected pin
+                    // always used).
                     if let selected, !plan.containsVenue(id: selected.id) {
-                        Annotation("", coordinate: coordinate(of: selected)) {
-                            pinButton(for: selected, isSelected: true)
+                        Annotation("", coordinate: coordinate(of: selected), anchor: .bottom) {
+                            markerButton(for: MarkerPlacement(
+                                venue: selected,
+                                kind: .teardrop(diameter: MapAnnotationPlanner.selectedDiameter),
+                                showsNumber: selected.isObserved,
+                                isSelected: true
+                            ))
                         }
                     }
                     // Gap-fill (bd#182, feature-flagged, default OFF): grey
@@ -292,6 +300,20 @@ public struct CafeMapScreen: View {
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { _ in searchFocused = false }
+                )
+                // bd#212 (supervisor revision): `.dot`/`.speck` markers are
+                // native `MapCircle` overlays, not SwiftUI buttons, so they
+                // need their own tap dispatch — nearest marker within 22pt
+                // of the touch, rated (dot) preferred over unrated (speck).
+                // `SpatialTapGesture` is simultaneous with every gesture
+                // above, so it never blocks panning/zooming/Apple-label
+                // selection; it only acts when the tap actually lands near
+                // one of these markers.
+                .simultaneousGesture(
+                    SpatialTapGesture()
+                        .onEnded { value in
+                            handleMapCircleTap(at: value.location, plan: plan, proxy: proxy)
+                        }
                 )
                 // brewdesk#157: a search clear, filter change, or any other
                 // venue-list change must never ride on a `visibleRegion` that
@@ -571,6 +593,37 @@ public struct CafeMapScreen: View {
                     coordinate: CLLocationCoordinate2D(latitude: fixture.lat, longitude: fixture.lng)
                 )
             }
+            // bd#212 VERIFY seam: opens the camera at a scripted real-world
+            // metres-per-point instead of the normal GPS-fix/Browse-NYC
+            // default, so a screenshot pass or `MapPerformanceUITests`' "dot
+            // zoom" run can script an exact marker-size target (city/
+            // neighborhood/street density) directly rather than depending on
+            // a real pan/pinch to reach it, or guessing a degree span MapKit
+            // might render wider once it fits the device's aspect ratio.
+            // Converted to a coordinate span using the CURRENT center
+            // latitude and whatever `mapSize` is known right now (falling
+            // back to `MapAnnotationPlanner.fallbackMapSize` before the
+            // first `GeometryReader` report) — an approximation good enough
+            // to land the FIRST camera in the ballpark; the very next
+            // re-plan re-derives the real metres/point from the actually
+            // settled region/mapSize regardless. Gated by `isUITestRun`
+            // (true only when some `-UITest…` argument is ALSO present,
+            // same pattern `MapFrameStatsHUD.isEnabled` and every other
+            // `-brewdesk.*`/`-UITest*` seam in this file already uses)
+            // rather than `#if DEBUG`: `MapPerformanceUITests` runs this
+            // exact seam against a RELEASE + ENABLE_TESTABILITY build (the
+            // ticket's own perf-measurement configuration), where `#if
+            // DEBUG` would have compiled it out entirely. A real launch —
+            // App Store or TestFlight — never carries a `-UITest…`
+            // argument, so this can never drive one.
+            if launchEnvironment.isUITestRun, let metersPerPoint = launchEnvironment.debugInitialMetersPerPoint {
+                let assumedWidth = mapSize.width > 0 ? mapSize.width : MapAnnotationPlanner.fallbackMapSize.width
+                let metersPerDegreeLng = 111_320.0 * cos(model.centerLat * .pi / 180)
+                let span = metersPerPoint * Double(assumedWidth) / metersPerDegreeLng
+                let region = Self.region(lat: model.centerLat, lng: model.centerLng, span: span)
+                position = .region(region)
+                visibleRegion = region
+            }
         }
         .onDisappear {
             replanTask?.cancel()
@@ -597,16 +650,6 @@ public struct CafeMapScreen: View {
     static func pinLabel(for venue: Venue) -> String {
         let score = venue.isObserved ? "Work Fit \(venue.workScore)" : "not checked yet"
         return "\(venue.name), \(score), \(venue.neighborhood)"
-    }
-
-    /// bd#204: deliberately never mentions a score, even for a cell with
-    /// observed venues — the old wording ("best Work Fit N") is exactly the
-    /// score-shaped language that made Bilal read a cluster count as an
-    /// out-of-range score. A cluster is a "how many, go zoom in" affordance,
-    /// never a quality signal.
-    static func clusterLabel(for cluster: VenueCluster) -> String {
-        let noun = cluster.count == 1 ? "café" : "cafés"
-        return "\(cluster.count) \(noun) in this area. Double-tap to zoom in."
     }
 
     // MARK: - Search-driven camera fit (brewdesk#158)
@@ -1074,27 +1117,100 @@ public struct CafeMapScreen: View {
         return rects
     }
 
-    /// bd#204: the three representations are no longer mutually exclusive —
-    /// a dense viewport draws all three layers at once (top-ranked score
-    /// pins always on top, dots for the mid tier, clusters for whatever
-    /// overflows both), so this renders every non-empty layer unconditionally
-    /// rather than switching on a single case.
+    /// bd#212 (supervisor revision): only numbered TEARDROPS are real
+    /// SwiftUI `Annotation`s — `id: \.id` (the venue id) keeps a size/
+    /// selection change an in-place update of the SAME hosted annotation
+    /// view rather than a remove+insert. Demoted dots and unrated specks
+    /// are native `MapCircle` overlay content (`mapCircles(for:)`) — the
+    /// perf fix for #211's stalls: hosting every one of ~150-200 unrated
+    /// venues as a SwiftUI annotation view (each wrapped in a 44pt Button)
+    /// was the real cost, not view type churn.
     @MapContentBuilder
     private func annotations(for plan: MapAnnotationPlan) -> some MapContent {
-        ForEach(plan.pins) { venue in
-            Annotation("", coordinate: coordinate(of: venue)) {
-                pinButton(for: venue, isSelected: selected?.id == venue.id)
+        ForEach(plan.teardrops) { placement in
+            Annotation("", coordinate: coordinate(of: placement.venue), anchor: .bottom) {
+                markerButton(for: placement)
             }
         }
-        ForEach(plan.dots) { venue in
-            Annotation("", coordinate: coordinate(of: venue)) {
-                dotButton(for: venue)
-            }
+    }
+
+    /// bd#212 (supervisor revision): demoted rated venues and unrated
+    /// specks, drawn as cheap native `MapCircle`s — MapKit's own overlay
+    /// primitive, never a hosted SwiftUI view.
+    ///
+    /// Radius is derived from the LIVE metres-per-point, not a bare fixed
+    /// metres constant: a pure fixed radius (the supervisor's own starting
+    /// suggestion, "~5 m") shrinks toward invisibility once a rated venue is
+    /// a `.dot` because the WHOLE zoom is past the teardrop threshold (city
+    /// zoom, ≥7.2 m/pt) rather than because of a collision demotion at a
+    /// closer zoom — a 5m dot at 7.2 m/pt is well under 1pt on screen,
+    /// which undersells the "4pt dot" visual target that same zoom level
+    /// is supposed to read as. Scaling the radius by the settled mpp keeps
+    /// a dot/speck's ON-SCREEN size roughly constant across zoom levels —
+    /// still a cheap native overlay, just sized to actually be seen.
+    @MapContentBuilder
+    private func mapCircles(for plan: MapAnnotationPlan) -> some MapContent {
+        let mpp = visibleRegion.map { MapAnnotationPlanner.metersPerPoint(region: $0, mapWidth: mapSize.width) } ?? 3.3
+        let dotRadius = Self.dotRadiusMeters(forMetersPerPoint: mpp)
+        let speckRadius = Self.speckRadiusMeters(forMetersPerPoint: mpp)
+        ForEach(plan.dots) { placement in
+            MapCircle(center: coordinate(of: placement.venue), radius: dotRadius)
+                .foregroundStyle(BrewDeskPalette.markerFill(score: placement.venue.workScore))
         }
-        ForEach(plan.clusters) { cluster in
-            Annotation("", coordinate: cluster.coordinate) {
-                clusterButton(for: cluster)
+        ForEach(plan.specks) { placement in
+            MapCircle(center: coordinate(of: placement.venue), radius: speckRadius)
+                .foregroundStyle(BrewDeskPalette.markerSpeckFill)
+        }
+    }
+
+    /// ~4pt apparent diameter (2pt radius) at the current zoom — matches
+    /// the design's own "4pt dot, no number" city-zoom target — clamped so
+    /// it neither vanishes at wide zoom nor balloons at the closest zoom.
+    /// Supervisor's own starting number ("~5 m radius") is close to this at
+    /// the demotion zooms (≈1.8-3.6 m/pt ⇒ 3.6-7.2m here); the clamp mainly
+    /// matters at ≥7.2 m/pt, where a bare 5m would already be sub-pixel.
+    private static func dotRadiusMeters(forMetersPerPoint mpp: Double) -> CLLocationDistance {
+        min(max(2.0 * mpp, 3.0), 15.0)
+    }
+
+    /// Same shape as `dotRadiusMeters(forMetersPerPoint:)`, a touch smaller
+    /// (~2.6pt apparent diameter) so an unrated speck stays visually
+    /// subordinate to a rated dot at the same zoom (supervisor spec: "~3-4
+    /// m radius").
+    private static func speckRadiusMeters(forMetersPerPoint mpp: Double) -> CLLocationDistance {
+        min(max(1.3 * mpp, 2.0), 10.0)
+    }
+    /// Screen-point radius a tap must land within to select a `.dot`/
+    /// `.speck` marker (supervisor spec: "nearest venue within 22pt").
+    private static let mapCircleTapRadius: CGFloat = 22
+
+    /// bd#212 (supervisor revision): `.dot`/`.speck` markers have no
+    /// SwiftUI button of their own to catch a tap (they're `MapCircle`
+    /// overlays), so a tap anywhere on the map is checked against every
+    /// dot/speck's SCREEN position (via `MapProxy.convert(_:to:)`) and the
+    /// nearest one within `mapCircleTapRadius` wins — rated (dot) preferred
+    /// over unrated (speck) at an equal distance, matching the spec's "nearest
+    /// marker … preferring rated over unrated." A miss (nothing within
+    /// range) is a no-op, so a plain map tap still reaches Apple's own
+    /// base-map label selection untouched.
+    @MainActor
+    private func handleMapCircleTap(at location: CGPoint, plan: MapAnnotationPlan, proxy: MapProxy) {
+        func nearest(in placements: [MarkerPlacement]) -> (MarkerPlacement, CGFloat)? {
+            var best: (MarkerPlacement, CGFloat)?
+            for placement in placements {
+                guard let point = proxy.convert(coordinate(of: placement.venue), to: .local) else { continue }
+                let distance = hypot(point.x - location.x, point.y - location.y)
+                guard distance <= Self.mapCircleTapRadius else { continue }
+                if best == nil || distance < best!.1 {
+                    best = (placement, distance)
+                }
             }
+            return best
+        }
+        if let (dot, _) = nearest(in: plan.dots) {
+            selected = dot.venue
+        } else if let (speck, _) = nearest(in: plan.specks) {
+            selected = speck.venue
         }
     }
 
@@ -1113,56 +1229,30 @@ public struct CafeMapScreen: View {
         }
     }
 
-    private func pinButton(for venue: Venue, isSelected: Bool) -> some View {
+    /// bd#212: the button a numbered TEARDROP uses (dots/specks are native
+    /// `MapCircle` overlays with no button of their own — see
+    /// `handleMapCircleTap`). The min-44pt frame is attached to the BUTTON,
+    /// not baked into `TeardropMarkerView`'s own layout, so even the
+    /// smallest teardrop still gets a full-size tap target without the
+    /// marker's own visual footprint (and therefore its collision math)
+    /// growing to match.
+    private func markerButton(for placement: MarkerPlacement) -> some View {
         Button {
-            selected = venue
+            selected = placement.venue
         } label: {
-            VenueScorePin(venue: venue, isSelected: isSelected)
+            TeardropMarkerView(placement: placement)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Self.pinLabel(for: venue))
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    private func dotButton(for venue: Venue) -> some View {
-        Button {
-            selected = venue
-        } label: {
-            VenueScoreDot(venue: venue)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Self.pinLabel(for: venue))
-    }
-
-    /// Tapping a cluster zooms one representation step in on it.
-    private func clusterButton(for cluster: VenueCluster) -> some View {
-        Button {
-            let span = visibleRegion?.span
-                ?? MKCoordinateSpan(latitudeDelta: 0.035, longitudeDelta: 0.035)
-            let zoomed = MKCoordinateRegion(
-                center: cluster.coordinate,
-                span: MKCoordinateSpan(
-                    latitudeDelta: span.latitudeDelta / 3,
-                    longitudeDelta: span.longitudeDelta / 3
-                )
-            )
-            // Programmatic move: the target region is known, so re-plan
-            // directly — no camera observation needed.
-            visibleRegion = zoomed
-            stopTrackingUserLocation()
-            if reduceMotion {
-                position = .region(zoomed)
-            } else {
-                withAnimation(.snappy) { position = .region(zoomed) }
-            }
-        } label: {
-            VenueClusterPill(cluster: cluster)
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("map-cluster")
-        .accessibilityLabel(Self.clusterLabel(for: cluster))
-        .accessibilityHint("Zooms in to show them")
+        // `alignment: .bottom` keeps the invisible tap-frame's growth
+        // symmetric around the marker's TIP (the frame's bottom edge,
+        // matching `Annotation(..., anchor: .bottom)`) rather than
+        // recentering the whole button and shifting the visual tip away
+        // from the venue's true coordinate.
+        .frame(minWidth: 44, minHeight: 44, alignment: .bottom)
+        .contentShape(Rectangle())
+        .accessibilityLabel(Self.pinLabel(for: placement.venue))
+        .accessibilityValue(placement.isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(placement.isSelected ? .isSelected : [])
     }
 
     // MARK: - Apple base-map features (bd#182)
@@ -1338,26 +1428,19 @@ public struct CafeMapScreen: View {
                 }
 
                 HStack {
-                    Text(countLine)
+                    Text(ratedCafeCountLine)
                         .font(.caption.bold())
                         .lineLimit(1)
                         .layoutPriority(1)
                     Spacer(minLength: 8)
-                    // bd#204: names both marker kinds explicitly — the old
-                    // "Scores show Work Fit" said nothing about clusters, so
-                    // a count pill under it read as another score. Three
-                    // fallback lengths (`ViewThatFits`) so the smallest
-                    // supported width and large Dynamic Type both still fit
-                    // on one line instead of clipping.
-                    ViewThatFits(in: .horizontal) {
-                        Text("Circles: Work Fit score · Stacks: cafés grouped")
-                        Text("Circles: score · Stacks: grouped")
-                        Text("Score · Grouped")
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .multilineTextAlignment(.trailing)
+                    // bd#212: no clusters/stacks left to explain — the only
+                    // thing on the map that needs a legend now is what the
+                    // marker number itself means.
+                    Text("Numbers are Work Fit")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .multilineTextAlignment(.trailing)
                 }
                 .padding(.horizontal, 6)
                 .accessibilityIdentifier("map-count-line")
@@ -1386,20 +1469,19 @@ public struct CafeMapScreen: View {
         .padding(.top, 8)
     }
 
-    /// "N of M spots" — the two competing counts (a plain venue count and
-    /// `DatasetStatStrip`'s dataset total) collapsed into one line
-    /// (brewdesk#118). Both numbers stay dynamic: `N` is the live, filtered
-    /// `model.venues.count`; `M` is the dataset total from `model.health`
-    /// once it loads, and falls back to the plain count (never a hardcoded
-    /// figure) before health answers.
-    private var countLine: String {
-        guard let total = model.health?.venueCount else {
-            return localizedWorkSpotCount(model.venues.count)
-        }
+    /// "N rated · M cafés" (bd#212 — replaces "N of M spots" now that every
+    /// café draws its own marker instead of collapsing into a count
+    /// cluster; "rated" is the number a viewer actually cares about, so it
+    /// leads). `rated` is the live, filtered `model.venues` with real Work
+    /// Fit evidence (bd#159's `isObserved`); `total` is the plain loaded
+    /// count — both dynamic, never hardcoded.
+    private var ratedCafeCountLine: String {
+        let rated = model.venues.filter(\.isObserved).count
+        let total = model.venues.count
         return String(
-            format: String(localized: "%1$lld of %2$lld spots"),
+            format: String(localized: "%1$lld rated · %2$lld cafés"),
             locale: .current,
-            model.venues.count,
+            rated,
             total
         )
     }
@@ -1439,8 +1521,17 @@ public struct CafeMapScreen: View {
     /// bd#209: the span a REAL first location fix opens at — walking scale,
     /// so the first view reads as a neighbourhood instead of half of
     /// Manhattan. See `applyCenterChange` for the one call site that uses
-    /// this instead of `defaultSpan`.
-    private static let firstFixSpan = 0.014
+    /// this instead of `defaultSpan`. bd#212 (supervisor review): bumped
+    /// from 0.014 — at a typical ~390pt device width and NYC's latitude,
+    /// 0.014 landed at ≈3.0 m/pt, the very EDGE of the ≈3.0–3.6 m/pt target
+    /// (a user's first view should show numbered 12–13pt teardrops, not sit
+    /// right at the boundary where a slightly wider device tips it into
+    /// dot-only territory). 0.0155 lands mid-range (≈3.3 m/pt) with margin
+    /// either way. Exact metres/point still varies by device width and
+    /// latitude — this only aims the DEFAULT camera at the target; marker
+    /// SIZE always reflects whatever the real settled metres/point turns
+    /// out to be (`MapAnnotationPlanner.metersPerPoint(region:mapWidth:)`).
+    private static let firstFixSpan = 0.0155
 
     private static func region(lat: Double, lng: Double, span: Double = defaultSpan) -> MKCoordinateRegion {
         MKCoordinateRegion(

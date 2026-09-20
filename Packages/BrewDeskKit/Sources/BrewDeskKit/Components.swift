@@ -46,7 +46,7 @@ extension ScoreTier {
 /// (a fill token shared with pins/icons elsewhere), the badge now uses a
 /// neutral, appearance-adaptive tile — `surfaceSecondary` fill,
 /// `clusterSurfaceText` label (already verified 4.5:1+ in both appearances,
-/// same token `VenueClusterPill` uses) — with the tier color moved to a
+/// same token the map's selected-marker halo uses) — with the tier color moved to a
 /// ring around the tile. Tier is still visible (ring hue + the number
 /// itself), it just no longer has to double as the text color.
 struct ScoreBadge: View {
