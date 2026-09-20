@@ -314,9 +314,21 @@ final class SearchUITests: XCTestCase {
     /// selection's camera position entirely. Reuses bd#200's
     /// `cityWideSearch` fixture and `Fixture Ferry Roasters` (St. George,
     /// ~13.5km from the default Union Square viewport — see
-    /// `testCityWideSearchFindsACafeOutsideTheViewport` above) rather than
-    /// adding a new one. This must FAIL on `origin/main` (no fly-to or
-    /// selection guard exists there) and PASS on the fix branch.
+    /// `testCityWideSearchFindsACafeOutsideTheViewport` above), extended
+    /// (bd#219 2nd revision) with five more St. George fixture cafés
+    /// (`ScenarioVenueService.farawaySurroundingVenues`) so the selection's
+    /// OWN surroundings reload has real neighbours to find. This must FAIL
+    /// on `origin/main` (no fly-to/selection guard/zoom lock exists there)
+    /// and PASS on the fix branch.
+    ///
+    /// Asserts OBJECTIVE, numeric proof of the camera's real zoom and the
+    /// selected marker's real screen position — not a distance tolerance
+    /// around a computed target, which passed even when the actual
+    /// rendered camera was several kilometres wide (bd#219 2nd revision:
+    /// the supervisor's own review of the first fix's contact sheet found
+    /// exactly this — a correct-looking `visibleRegion`-derived test
+    /// passing while the REAL MapKit camera, driven by a separate stale
+    /// write, was nowhere close).
     @MainActor
     func testSelectingAFarAwaySearchResultFliesTheMapToIt() throws {
         let app = XCUIApplication()
@@ -325,27 +337,6 @@ final class SearchUITests: XCTestCase {
         XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
         app.spotsTab.tap()
         XCTAssertTrue(app.descendants(matching: .any)["map-header-card"].waitForExistence(timeout: wait))
-
-        let farCafeLat = 40.6437
-        let farCafeLng = -74.0787
-        // bd#219 (supervisor revision): the fly-to's visible-area target is
-        // NOT the raw café coordinate — `selectSearchResult` biases the
-        // camera CENTER north so the café lands centered in the visible
-        // portion above the `.medium`-detent detail sheet (roughly half the
-        // screen). `CafeMapScreen.searchFitRegion`'s own formula, fed the
-        // fixed 1:2 synthetic ratio `selectSearchResult` uses
-        // (`mediumSheetSyntheticMapHeight`/`ObscuredHeight`), computes that
-        // target deterministically: obscuredFraction 0.5 ⇒ latitudeDelta =
-        // walkingZoomSpan/0.5, shift = 0.25×latitudeDelta. Duplicated here
-        // (not imported — UI test targets can't import the app's package
-        // target) so this test checks the camera against the SAME precise
-        // target the app computes, not a loose tolerance around the café
-        // itself.
-        let walkingZoomSpan = 0.009
-        let expectedLatitudeDelta = walkingZoomSpan / 0.5
-        let expectedShiftDegrees = 0.25 * expectedLatitudeDelta
-        let expectedTargetLat = farCafeLat - expectedShiftDegrees
-        let toleranceMeters = 150.0
 
         let field = searchField(app)
         field.tap()
@@ -388,26 +379,6 @@ final class SearchUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1.5)
         row.tap()
 
-        let center = app.descendants(matching: .any)["map-camera-center"]
-        XCTAssertTrue(center.waitForExistence(timeout: wait), "map camera center accessibility element missing")
-
-        // (a) within 3s the camera center is within 150m of the VISIBLE-
-        // area-centred target (not the raw café coordinate).
-        let flyDeadline = Date().addingTimeInterval(3)
-        var closest = Double.greatestFiniteMagnitude
-        while Date() < flyDeadline {
-            if let coordinate = Self.parseCoordinate(center.value as? String) {
-                closest = min(closest, Self.metersBetween(coordinate.lat, coordinate.lng, expectedTargetLat, farCafeLng))
-                if closest <= toleranceMeters { break }
-            }
-            Thread.sleep(forTimeInterval: 0.1)
-        }
-        XCTAssertLessThanOrEqual(
-            closest, toleranceMeters,
-            "tapping the far café's search result never flew the camera within \(toleranceMeters)m of the " +
-            "computed visible-area target (closest: \(closest)m) — camera-center value: \(center.value ?? "nil")"
-        )
-
         // The selected teardrop — 30pt head, café name in its label — must
         // exist and be hittable in the now-visible map area above the
         // `.medium` sheet, whether or not the far café made it into this
@@ -443,38 +414,118 @@ final class SearchUITests: XCTestCase {
             "header count line still reads the search match count (\(matchCountText)) after committing the selection"
         )
 
-        // (b) still there 4s later — no late fit (a delayed citywide answer
-        // re-running `scheduleSearchFit`, or this selection's own
-        // surroundings reload changing `model.venues` again) pulls it away.
-        Thread.sleep(forTimeInterval: 4)
-        guard let stillThere = Self.parseCoordinate(center.value as? String) else {
-            XCTFail("camera center unreadable after the settle window")
-            return
+        // bd#219 (supervisor 2nd revision): OBJECTIVE proof of the REAL
+        // rendered camera — a `visibleRegion`-derived distance-to-target
+        // check (the first revision's approach) can pass even while the
+        // actual MapKit camera is kilometres wide, because a stale write
+        // from elsewhere can win the render without ever touching
+        // `visibleRegion` again. `map-camera-mpp`/`map-rendered-marker-
+        // count` are test-flag-gated accessibility values reporting the
+        // real settled zoom and how many markers the planner is drawing;
+        // the selected marker's own on-screen frame (read directly, not
+        // reconstructed from a region) proves where it visually landed.
+        let mppElement = app.descendants(matching: .any)["map-camera-mpp"]
+        let markerCountElement = app.descendants(matching: .any)["map-rendered-marker-count"]
+        let headerElement = app.descendants(matching: .any)["map-header-card"]
+        let detailScreenElement = app.descendants(matching: .any)["venue-detail-screen"]
+
+        func currentMetersPerPoint() -> Double? { Double((mppElement.value as? String) ?? "") }
+        func currentMarkerCount() -> Int? { Int((markerCountElement.value as? String) ?? "") }
+        /// The selected marker's screen-space vertical fraction within the
+        /// band from the search header's bottom edge to the detail sheet's
+        /// top edge — the "visible area above the medium sheet" the ticket
+        /// specifies, read from REAL frames, not a computed estimate.
+        func markerBandFraction() -> Double? {
+            guard headerElement.exists, detailScreenElement.exists, selectedMarker.exists else { return nil }
+            let bandTop = headerElement.frame.maxY
+            let bandBottom = detailScreenElement.frame.minY
+            guard bandBottom > bandTop else { return nil }
+            return (selectedMarker.frame.midY - bandTop) / (bandBottom - bandTop)
         }
-        let driftedMeters = Self.metersBetween(stillThere.lat, stillThere.lng, expectedTargetLat, farCafeLng)
-        XCTAssertLessThanOrEqual(
-            driftedMeters, toleranceMeters,
-            "the camera drifted \(driftedMeters)m off the visible-area target 4s after selecting it — a late fit pulled it away"
+
+        XCTAssertTrue(
+            Self.waitFor(timeout: wait) { (currentMetersPerPoint() ?? .greatestFiniteMagnitude) <= 2.6 },
+            "camera never settled to walking scale — mpp=\(currentMetersPerPoint().map { "\($0)" } ?? "nil"), want ≤2.6"
         )
-        XCTAssertTrue(selectedMarker.exists, "selected teardrop disappeared after the settle window")
+        // Note: `mpp` alone can already read ≤2.6 from the FIRST-pass
+        // estimate, before `correctFlyTargetForSettledSheet`'s corrective
+        // write (a separate, slightly later async step) lands — so this
+        // must poll for the band fraction to settle, not take a single
+        // immediate reading right after the mpp check above.
+        var firstBandFraction: Double?
+        XCTAssertTrue(
+            Self.waitFor(timeout: wait) {
+                firstBandFraction = markerBandFraction()
+                guard let firstBandFraction else { return false }
+                return firstBandFraction >= 0.35 && firstBandFraction <= 0.65
+            },
+            "selected marker never settled within the visible band — last reading: " +
+            "\(firstBandFraction.map { "\($0)" } ?? "nil"), want within 0.35–0.65 " +
+            "(header bottom=\(headerElement.frame.maxY), sheet top=\(detailScreenElement.frame.minY), " +
+            "marker frame=\(selectedMarker.frame))"
+        )
+        // The surroundings fetch (`loadSurroundings` → `model.updateViewport`
+        // → the app's own `.task(id: request)` load) is a separate async
+        // hop from the camera settling — poll rather than a single read.
+        XCTAssertTrue(
+            Self.waitFor(timeout: wait) { (currentMarkerCount() ?? 0) >= 5 },
+            "fewer than 5 markers rendered after the surroundings load (count=\(currentMarkerCount().map { "\($0)" } ?? "nil"))"
+        )
+
+        // All three still true 4s later — no late fit (a delayed citywide
+        // answer re-running `scheduleSearchFit`, or this selection's own
+        // surroundings reload changing `model.venues` again) pulls the
+        // camera back out.
+        Thread.sleep(forTimeInterval: 4)
+        XCTAssertLessThanOrEqual(
+            currentMetersPerPoint() ?? .greatestFiniteMagnitude, 2.6,
+            "camera zoomed back out 4s after settling — mpp=\(currentMetersPerPoint().map { "\($0)" } ?? "nil")"
+        )
+        if let laterBandFraction = markerBandFraction() {
+            XCTAssertTrue(
+                laterBandFraction >= 0.35 && laterBandFraction <= 0.65,
+                "selected marker drifted to \(laterBandFraction) of the visible band 4s later, want within 0.35–0.65"
+            )
+        } else {
+            XCTFail("could not compute the selected marker's band position 4s later")
+        }
+        XCTAssertGreaterThanOrEqual(
+            currentMarkerCount() ?? 0, 5,
+            "marker count dropped below 5 4s later (count=\(currentMarkerCount().map { "\($0)" } ?? "nil"))"
+        )
 
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = "search-select-flies-to-far-cafe"
         attachment.lifetime = .keepAlways
         add(attachment)
+
+        // ...and after dismissing the sheet: the camera and its
+        // surroundings must stay exactly where they landed (no band check
+        // here — the sheet, and so the band it defined, is gone).
+        let closeButton = app.buttons["detail-close"]
+        XCTAssertTrue(closeButton.waitForExistence(timeout: wait), "detail close button missing")
+        closeButton.tap()
+        Thread.sleep(forTimeInterval: 1.5)
+        XCTAssertLessThanOrEqual(
+            currentMetersPerPoint() ?? .greatestFiniteMagnitude, 2.6,
+            "camera zoom changed after dismissing the sheet — mpp=\(currentMetersPerPoint().map { "\($0)" } ?? "nil")"
+        )
+        XCTAssertGreaterThanOrEqual(
+            currentMarkerCount() ?? 0, 5,
+            "marker count dropped below 5 after dismissing the sheet (count=\(currentMarkerCount().map { "\($0)" } ?? "nil"))"
+        )
+        // `selected` becomes nil on dismiss, so the café's marker is no
+        // longer THE "selected" one (a plain `map-marker`, not
+        // `map-selected-marker` — bd#212's fallback only special-cases the
+        // ACTIVELY selected venue) — it must still be ON the map, though,
+        // now as a normal marker among the loaded surroundings.
+        let cafeMarkerAfterDismiss = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Fixture Ferry Roasters,")
+        ).firstMatch
+        XCTAssertTrue(cafeMarkerAfterDismiss.waitForExistence(timeout: wait), "café marker disappeared after dismissing the sheet")
     }
 
     // MARK: - Helpers
-
-    /// `"lat,lng"` (see `CafeMapScreen.cameraCenterAccessibilityValue`).
-    /// Duplicated from `MapLocateButtonUITests` — UI test targets can't
-    /// import the app's package target to share it.
-    private static func parseCoordinate(_ raw: String?) -> (lat: Double, lng: Double)? {
-        guard let raw else { return nil }
-        let parts = raw.components(separatedBy: ",")
-        guard parts.count == 2, let lat = Double(parts[0]), let lng = Double(parts[1]) else { return nil }
-        return (lat, lng)
-    }
 
     /// Polls `condition` until it's true or `timeout` elapses — for state
     /// (like the keyboard's own appear animation) that settles a beat after
@@ -486,15 +537,5 @@ final class SearchUITests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         } while Date() < deadline
         return condition()
-    }
-
-    private static func metersBetween(_ lat1: Double, _ lng1: Double, _ lat2: Double, _ lng2: Double) -> Double {
-        let earthRadiusM = 6_371_000.0
-        let dLat = (lat2 - lat1) * .pi / 180
-        let dLng = (lng2 - lng1) * .pi / 180
-        let a = sin(dLat / 2) * sin(dLat / 2)
-            + cos(lat1 * .pi / 180) * cos(lat2 * .pi / 180) * sin(dLng / 2) * sin(dLng / 2)
-        let c = 2 * atan2(sqrt(a), sqrt(1 - a))
-        return earthRadiusM * c
     }
 }
