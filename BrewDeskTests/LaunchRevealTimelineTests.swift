@@ -3,22 +3,20 @@ import Testing
 @testable import BrewDesk
 
 /// Pure-logic coverage for the cold-launch reveal's stage timing
-/// (bamware-brewdesk#186, polished in #193) — no view, no simulator, no
-/// `Timer`/`Task` involved. `LaunchRevealTimeline.frame(atElapsedMS:)` and
-/// friends are plain functions of a `Double`, so every assertion below is
-/// exact and instant.
+/// (bamware-brewdesk#186, polished in #193, redesigned as an additive
+/// signal pulse in #205 after the #193 "draw on" timeline read as broken
+/// on a device) — no view, no simulator, no `Timer`/`Task` involved.
+/// `LaunchRevealTimeline.frame(atElapsedMS:)` and friends are plain
+/// functions of a `Double`, so every assertion below is exact and instant.
 @Suite struct LaunchRevealTimelineTests {
-    // MARK: - Frame 0 / start state
+    // MARK: - Frame 0: the whole point of #205
 
-    @Test func frameZeroIsFullyHidden() {
-        let stage = LaunchRevealTimeline.frame(atElapsedMS: 0)
-        #expect(stage.bodyOpacity == 0)
-        #expect(stage.bodyScale == 0.97)
-        #expect(stage.dotScale == 0)
-        #expect(stage.arc1Trim == 0)
-        #expect(stage.arc2Trim == 0)
-        #expect(stage.arc3Trim == 0)
-        #expect(stage.glowOpacity == 0)
+    /// The load-bearing guarantee this ticket exists to make true: frame 0
+    /// is byte-for-byte `.settled`, i.e. pixel-identical to the static
+    /// `LaunchMark` iOS was already showing. Nothing is hidden, trimmed,
+    /// or faded at the start anymore.
+    @Test func frameZeroIsExactlySettled() {
+        #expect(LaunchRevealTimeline.frame(atElapsedMS: 0) == BrewDeskMarkStage.settled)
     }
 
     @Test func overlayStartsFullyOpaque() {
@@ -29,114 +27,152 @@ import Testing
         #expect(LaunchRevealTimeline.handoffScale(atElapsedMS: 0) == 1)
     }
 
-    // MARK: - Body settle (0–320ms, timingCurve(0.2, 0.9, 0.3, 1.0), no overshoot)
-
-    @Test func bodyFullyVisibleAtSettleEnd() {
-        let stage = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.bodySettleDuration)
-        #expect(abs(stage.bodyOpacity - 1) < 0.001)
-        #expect(abs(stage.bodyScale - 1.0) < 0.001)
+    /// Nothing before the dot's own pulse window moves at all — guards
+    /// against the exact bug this ticket was filed over: something visibly
+    /// changing before the reveal's first intentional motion.
+    @Test func nothingMovesBeforeTheDotPulseStarts() {
+        for ms in stride(from: 0.0, to: LaunchRevealTimeline.dotPulseStart, by: 10) {
+            #expect(LaunchRevealTimeline.frame(atElapsedMS: ms) == BrewDeskMarkStage.settled, "unexpected motion at \(ms)ms")
+        }
     }
 
-    @Test func bodyPartiallyVisibleMidSettle() {
-        let stage = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.bodySettleDuration / 2)
-        #expect(stage.bodyOpacity > 0 && stage.bodyOpacity < 1)
+    // MARK: - Body never moves before hand-off (spec-gap: no "breath")
+
+    @Test func bodyScaleIsAlwaysExactlyOneBeforeHandoff() {
+        for ms in stride(from: 0.0, to: LaunchRevealTimeline.crossfadeStart, by: 20) {
+            #expect(LaunchRevealTimeline.frame(atElapsedMS: ms).bodyScale == 1, "body moved at \(ms)ms")
+        }
     }
 
-    @Test func bodyScaleNeverOvershootsPastOne() {
-        // The new curve is a convex combination of control points whose own
-        // y's never exceed 1 (0, 0.9, 1.0, 1) — sampling densely across the
-        // settle window should never show bodyScale drifting past 1.0 by
-        // more than a hair (allow up to 1.5% per the ticket's tolerance).
+    // MARK: - Dot pulse (120ms start, 220ms long, 1→1.18→1, ease-in-out)
+
+    @Test func dotAtRestBeforeItsPulseStarts() {
+        let stage = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.dotPulseStart - 1)
+        #expect(stage.dotScale == 1)
+    }
+
+    @Test func dotReachesPeakAtPulseMidpoint() {
+        let mid = LaunchRevealTimeline.dotPulseStart + LaunchRevealTimeline.dotPulseDuration / 2
+        let stage = LaunchRevealTimeline.frame(atElapsedMS: mid)
+        #expect(abs(stage.dotScale - 1.18) < 0.001)
+    }
+
+    @Test func dotSettlesBackToOneAtPulseEnd() {
+        let end = LaunchRevealTimeline.dotPulseStart + LaunchRevealTimeline.dotPulseDuration
+        let stage = LaunchRevealTimeline.frame(atElapsedMS: end)
+        #expect(abs(stage.dotScale - 1) < 0.001)
+    }
+
+    @Test func dotStaysAtRestAfterItsPulseEnds() {
+        let end = LaunchRevealTimeline.dotPulseStart + LaunchRevealTimeline.dotPulseDuration
+        let stage = LaunchRevealTimeline.frame(atElapsedMS: end + 50)
+        #expect(stage.dotScale == 1)
+    }
+
+    @Test func dotNeverExceedsItsOwnPeak() {
         var maxScale = 0.0
-        for ms in stride(from: 0.0, through: LaunchRevealTimeline.bodySettleDuration, by: 5) {
-            maxScale = max(maxScale, LaunchRevealTimeline.frame(atElapsedMS: ms).bodyScale)
+        for ms in stride(from: LaunchRevealTimeline.dotPulseStart, through: LaunchRevealTimeline.dotPulseStart + LaunchRevealTimeline.dotPulseDuration, by: 2) {
+            maxScale = max(maxScale, LaunchRevealTimeline.frame(atElapsedMS: ms).dotScale)
         }
-        #expect(maxScale <= 1.0 + 0.015)
+        #expect(maxScale <= 1.18 + 0.001)
     }
 
-    // MARK: - Dot pop (250ms start, 140ms long, overshoots to 1.08)
+    // MARK: - Arc pulses (200/290/380ms, 260ms each, 1→1.05→1)
 
-    @Test func dotHiddenBeforeItsStart() {
-        let stage = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.dotPopStart - 1)
-        #expect(stage.dotScale == 0)
+    @Test func arcsStartInAscendingOrderNinetyMsApart() {
+        #expect(LaunchRevealTimeline.arcPulseStarts == LaunchRevealTimeline.arcPulseStarts.sorted())
+        let gaps = zip(LaunchRevealTimeline.arcPulseStarts, LaunchRevealTimeline.arcPulseStarts.dropFirst()).map { $1 - $0 }
+        #expect(gaps == [90, 90])
     }
 
-    @Test func dotOvershootsPastOneMidPop() {
-        // 60% through the pop is exactly the overshoot peak in the model.
-        let midPop = LaunchRevealTimeline.dotPopStart + LaunchRevealTimeline.dotPopDuration * 0.6
-        let stage = LaunchRevealTimeline.frame(atElapsedMS: midPop)
-        #expect(abs(stage.dotScale - 1.08) < 0.001)
-    }
-
-    @Test func dotSettlesToOneAtPopEnd() {
-        let stage = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.dotPopStart + LaunchRevealTimeline.dotPopDuration)
-        #expect(abs(stage.dotScale - 1.0) < 0.001)
-    }
-
-    // MARK: - Arcs draw on (300/370/440ms, 220ms each, ease-out)
-
-    @Test func arcsAreZeroBeforeTheirOwnStart() {
-        let stage = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.arcStarts[0] - 1)
-        #expect(stage.arc1Trim == 0)
-        #expect(stage.arc2Trim == 0)
-        #expect(stage.arc3Trim == 0)
-    }
-
-    @Test func eachArcReachesFullTrimAtItsOwnEnd() {
-        for (index, start) in LaunchRevealTimeline.arcStarts.enumerated() {
-            let stage = LaunchRevealTimeline.frame(atElapsedMS: start + LaunchRevealTimeline.arcDuration)
-            let trim = [stage.arc1Trim, stage.arc2Trim, stage.arc3Trim][index]
-            #expect(trim == 1, "arc \(index) should be fully drawn by \(start + LaunchRevealTimeline.arcDuration)ms")
+    @Test func eachArcAtRestBeforeItsOwnPulseStarts() {
+        for (index, start) in LaunchRevealTimeline.arcPulseStarts.enumerated() {
+            let stage = LaunchRevealTimeline.frame(atElapsedMS: start - 1)
+            let scale = [stage.arc1Scale, stage.arc2Scale, stage.arc3Scale][index]
+            #expect(scale == 1, "arc \(index) should be at rest before \(start)ms")
         }
     }
 
-    @Test func arcsStartInAscendingOrderSeventyMsApart() {
-        #expect(LaunchRevealTimeline.arcStarts == LaunchRevealTimeline.arcStarts.sorted())
-        let gaps = zip(LaunchRevealTimeline.arcStarts, LaunchRevealTimeline.arcStarts.dropFirst()).map { $1 - $0 }
-        #expect(gaps == [70, 70])
+    @Test func eachArcReachesItsOwnPeakAtPulseMidpoint() {
+        for (index, start) in LaunchRevealTimeline.arcPulseStarts.enumerated() {
+            let mid = start + LaunchRevealTimeline.arcPulseDuration / 2
+            let stage = LaunchRevealTimeline.frame(atElapsedMS: mid)
+            let scale = [stage.arc1Scale, stage.arc2Scale, stage.arc3Scale][index]
+            #expect(abs(scale - 1.05) < 0.001, "arc \(index) should peak at \(mid)ms")
+        }
     }
 
-    @Test func markIsFullyDrawnBySevenHundredMS() {
-        let lastArcEnd = LaunchRevealTimeline.arcStarts.last! + LaunchRevealTimeline.arcDuration
-        #expect(lastArcEnd <= 700)
+    @Test func eachArcSettlesBackToOneAtItsOwnPulseEnd() {
+        for (index, start) in LaunchRevealTimeline.arcPulseStarts.enumerated() {
+            let end = start + LaunchRevealTimeline.arcPulseDuration
+            let stage = LaunchRevealTimeline.frame(atElapsedMS: end)
+            let scale = [stage.arc1Scale, stage.arc2Scale, stage.arc3Scale][index]
+            #expect(abs(scale - 1) < 0.001, "arc \(index) should be back at rest by \(end)ms")
+        }
     }
 
-    @Test func arcTrimEasesOutRatherThanLinear() {
-        // Ease-out means more progress happens early than a linear ramp
-        // would give — at 25% through the duration, trim should already be
-        // further along than 25%.
-        let quarterPoint = LaunchRevealTimeline.arcStarts[0] + LaunchRevealTimeline.arcDuration * 0.25
-        let stage = LaunchRevealTimeline.frame(atElapsedMS: quarterPoint)
-        #expect(stage.arc1Trim > 0.25)
+    @Test func arcsFinishPulsingWellBeforeHandoff() {
+        let lastArcEnd = LaunchRevealTimeline.arcPulseStarts.last! + LaunchRevealTimeline.arcPulseDuration
+        #expect(lastArcEnd <= LaunchRevealTimeline.crossfadeStart)
     }
 
-    // MARK: - Light sweep (680ms start, 380ms long, once, ease-in-out)
+    // MARK: - Ripple (430ms start, 420ms long, scale 1→1.45, opacity 0.45→0)
 
-    @Test func sweepInactiveBeforeItsWindow() {
-        #expect(!LaunchRevealTimeline.isSweepActive(atElapsedMS: LaunchRevealTimeline.sweepStart - 1))
-        #expect(LaunchRevealTimeline.sweepOpacityProgress(atElapsedMS: LaunchRevealTimeline.sweepStart - 1) == 0)
+    @Test func rippleInvisibleBeforeItsWindow() {
+        let stage = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.rippleStart - 1)
+        #expect(stage.rippleOpacity == 0)
+        #expect(stage.rippleScale == 1)
     }
 
-    @Test func sweepActiveThroughoutItsWindow() {
-        #expect(LaunchRevealTimeline.isSweepActive(atElapsedMS: LaunchRevealTimeline.sweepStart))
-        #expect(LaunchRevealTimeline.isSweepActive(atElapsedMS: LaunchRevealTimeline.sweepStart + LaunchRevealTimeline.sweepDuration))
+    @Test func rippleStartsAtOutermostArcsOwnRadiusWithNoJump() {
+        // scale == 1 at the very instant it becomes visible — "starting at
+        // arc 3's radius" per the ticket, i.e. no pop-in jump.
+        let stage = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.rippleStart)
+        #expect(stage.rippleScale == 1)
+        #expect(abs(stage.rippleOpacity - 0.45) < 0.001)
     }
 
-    @Test func sweepInactiveAfterItsWindow() {
-        #expect(!LaunchRevealTimeline.isSweepActive(atElapsedMS: LaunchRevealTimeline.sweepStart + LaunchRevealTimeline.sweepDuration + 1))
+    @Test func rippleExpandsAndFadesOutOnlyAcrossItsWindow() {
+        let end = LaunchRevealTimeline.rippleStart + LaunchRevealTimeline.rippleDuration
+        let stage = LaunchRevealTimeline.frame(atElapsedMS: end)
+        #expect(abs(stage.rippleScale - 1.45) < 0.001)
+        #expect(stage.rippleOpacity == 0)
     }
 
-    @Test func sweepProgressReachesOneAtWindowEnd() {
-        let end = LaunchRevealTimeline.sweepStart + LaunchRevealTimeline.sweepDuration
-        #expect(abs(LaunchRevealTimeline.sweepOpacityProgress(atElapsedMS: end) - 1) < 0.001)
+    @Test func rippleOpacityNeverIncreases() {
+        var previous = Double.infinity
+        for ms in stride(from: LaunchRevealTimeline.rippleStart, through: LaunchRevealTimeline.rippleStart + LaunchRevealTimeline.rippleDuration, by: 10) {
+            let opacity = LaunchRevealTimeline.frame(atElapsedMS: ms).rippleOpacity
+            #expect(opacity <= previous + 0.0001)
+            previous = opacity
+        }
     }
 
-    @Test func sweepStartsAfterTheMarkFinishesDrawing() {
-        let lastArcEnd = LaunchRevealTimeline.arcStarts.last! + LaunchRevealTimeline.arcDuration
-        #expect(LaunchRevealTimeline.sweepStart >= lastArcEnd)
+    @Test func rippleInvisibleAfterItsWindow() {
+        let end = LaunchRevealTimeline.rippleStart + LaunchRevealTimeline.rippleDuration
+        let stage = LaunchRevealTimeline.frame(atElapsedMS: end + 50)
+        #expect(stage.rippleOpacity == 0)
+        #expect(stage.rippleScale == 1)
     }
 
-    // MARK: - Hand-off (900ms start, 220ms long, fade + scale to 1.04)
+    /// Unlike the arcs, the ripple's own window (430–850ms) genuinely runs
+    /// past the hand-off's start (760ms) — the ticket's own numbers do
+    /// this. That's fine: the ripple only ever fades further toward 0
+    /// opacity as it goes (never brightens/reappears), so overlapping with
+    /// the overlay's own fade just means it finishes invisible slightly
+    /// earlier than its nominal end, never that something "un-fades."
+    @Test func rippleOverlapsHandoffButOnlyKeepsFadingOut() {
+        let rippleEnd = LaunchRevealTimeline.rippleStart + LaunchRevealTimeline.rippleDuration
+        #expect(rippleEnd > LaunchRevealTimeline.crossfadeStart, "this test documents the overlap — update it if the numbers change")
+        var previous = Double.infinity
+        for ms in stride(from: LaunchRevealTimeline.crossfadeStart, through: rippleEnd, by: 10) {
+            let opacity = LaunchRevealTimeline.frame(atElapsedMS: ms).rippleOpacity
+            #expect(opacity <= previous + 0.0001)
+            previous = opacity
+        }
+    }
+
+    // MARK: - Hand-off (760ms start, 240ms long, fade + scale to 1.06)
 
     @Test func overlayIsGoneAfterHandoffEnds() {
         let end = LaunchRevealTimeline.crossfadeStart + LaunchRevealTimeline.crossfadeDuration
@@ -151,7 +187,7 @@ import Testing
 
     @Test func handoffScaleReachesPeakAtHandoffEnd() {
         let end = LaunchRevealTimeline.crossfadeStart + LaunchRevealTimeline.crossfadeDuration
-        #expect(abs(LaunchRevealTimeline.handoffScale(atElapsedMS: end) - 1.04) < 0.001)
+        #expect(abs(LaunchRevealTimeline.handoffScale(atElapsedMS: end) - 1.06) < 0.001)
     }
 
     @Test func handoffScaleIsMonotonicDuringItsWindow() {
@@ -161,6 +197,11 @@ import Testing
             #expect(scale >= previous - 0.0001)
             previous = scale
         }
+    }
+
+    @Test func totalRevealIsAboutOneSecond() {
+        let handoffEnd = LaunchRevealTimeline.crossfadeStart + LaunchRevealTimeline.crossfadeDuration
+        #expect(abs(handoffEnd - 1000) <= 50)
     }
 
     // MARK: - Hard cap (1200ms regardless)
@@ -173,10 +214,10 @@ import Testing
     @Test func hardCapIsAtOrAfterEveryOtherStageEnds() {
         let handoffEnd = LaunchRevealTimeline.crossfadeStart + LaunchRevealTimeline.crossfadeDuration
         #expect(LaunchRevealTimeline.hardCapMS >= handoffEnd)
-        let sweepEnd = LaunchRevealTimeline.sweepStart + LaunchRevealTimeline.sweepDuration
-        #expect(LaunchRevealTimeline.hardCapMS >= sweepEnd)
-        for start in LaunchRevealTimeline.arcStarts {
-            #expect(LaunchRevealTimeline.hardCapMS >= start + LaunchRevealTimeline.arcDuration)
+        let rippleEnd = LaunchRevealTimeline.rippleStart + LaunchRevealTimeline.rippleDuration
+        #expect(LaunchRevealTimeline.hardCapMS >= rippleEnd)
+        for start in LaunchRevealTimeline.arcPulseStarts {
+            #expect(LaunchRevealTimeline.hardCapMS >= start + LaunchRevealTimeline.arcPulseDuration)
         }
     }
 
@@ -199,36 +240,5 @@ import Testing
 
     @Test func negativeElapsedClampsToFrameZero() {
         #expect(LaunchRevealTimeline.frame(atElapsedMS: -500) == LaunchRevealTimeline.frame(atElapsedMS: 0))
-    }
-}
-
-/// Coverage for the pure Bezier-easing helper `LaunchRevealTimeline` uses
-/// for the body settle, isolated from the timeline's own stage assembly.
-@Suite struct CubicBezierEaseTests {
-    private let ease = CubicBezierEase(x1: 0.2, y1: 0.9, x2: 0.3, y2: 1.0)
-
-    @Test func startsAtZeroEndsAtOne() {
-        #expect(ease.solve(0) == 0)
-        #expect(ease.solve(1) == 1)
-    }
-
-    @Test func neverExceedsOne() {
-        for i in stride(from: 0.0, through: 1.0, by: 0.02) {
-            #expect(ease.solve(i) <= 1.0 + 0.0001)
-        }
-    }
-
-    @Test func isMonotonicallyNonDecreasing() {
-        var previous = 0.0
-        for i in stride(from: 0.0, through: 1.0, by: 0.02) {
-            let y = ease.solve(i)
-            #expect(y >= previous - 0.0001)
-            previous = y
-        }
-    }
-
-    @Test func clampsOutOfRangeInput() {
-        #expect(ease.solve(-1) == 0)
-        #expect(ease.solve(2) == 1)
     }
 }
