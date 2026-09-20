@@ -9,6 +9,15 @@ public enum VenueAPIError: Error, LocalizedError, Sendable, Equatable {
     case http(statusCode: Int)
     case decoding
     case unsupportedSpeedTest
+    /// A community write (venue-engine PR #145 `communityAuth`) came back 401
+    /// while a bearer token WAS attached: a forced refresh either failed (no
+    /// session, or the server rejected the refresh token) or the retried
+    /// request also came back 401. Callers should surface a sign-in prompt
+    /// and keep the user's draft — not treat this as a generic engine
+    /// failure. A signed-out 401 (no token was ever attached) is never
+    /// remapped to this case; see `VenueAPI.postAuthenticated` — bd#202's
+    /// explicit "signed-out behaviour unchanged" scope guard.
+    case authenticationRequired
 
     public var errorDescription: String? {
         switch self {
@@ -22,6 +31,8 @@ public enum VenueAPIError: Error, LocalizedError, Sendable, Equatable {
             "The venue service returned data in an unexpected format."
         case .unsupportedSpeedTest:
             "Speed observations require a remote HTTPS venue service."
+        case .authenticationRequired:
+            "Sign in to submit."
         }
     }
 }
@@ -76,6 +87,23 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
     public let baseURL: URL
     private let session: URLSession
     private let blockStore: ContributorBlockStore
+    /// Returns a fresh bearer token for the signed-in user, or `nil` when
+    /// signed out — same shape `ServerSavedVenuePersistence.tokenProvider`
+    /// already uses for saved-spots sync (bamware-brewdesk#175). Production
+    /// wiring: `BrewDeskAccountTenant.freshAccessToken`, which already does
+    /// its own proactive refresh. Defaulting to `{ nil }` keeps every
+    /// existing call site (tests, the GET-only `VenueAPI()` instances in
+    /// `RootView`) byte-identical to pre-bd#202 behavior: no header, no
+    /// retry, nothing sent that wasn't sent before.
+    private let tokenProvider: @Sendable () async -> String?
+    /// Forces one refresh after a signed-in write comes back 401 — the one
+    /// case `tokenProvider`'s own proactive check can miss (the access
+    /// token's own `exp` still looked fine; the server revoked the session
+    /// some other way). Production wiring:
+    /// `BrewDeskAccountTenant.refreshAccessTokenAfterUnauthorized`, which
+    /// forces the network refresh call rather than trusting the cached
+    /// expiry. Returns `nil` on no session or a failed refresh.
+    private let tokenRefresher: @Sendable () async -> String?
 
     /// Fail fast: a stalled engine becomes a Retry state in 15 s, not the
     /// 60 s `URLSession.shared` default. No `waitsForConnectivity` — offline
@@ -89,11 +117,15 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
     public init(
         baseURL: URL = VenueAPI.defaultBaseURL,
         session: URLSession = VenueAPI.defaultSession,
-        blockStore: ContributorBlockStore = .shared
+        blockStore: ContributorBlockStore = .shared,
+        tokenProvider: @escaping @Sendable () async -> String? = { nil },
+        tokenRefresher: @escaping @Sendable () async -> String? = { nil }
     ) {
         self.baseURL = baseURL
         self.session = session
         self.blockStore = blockStore
+        self.tokenProvider = tokenProvider
+        self.tokenRefresher = tokenRefresher
     }
 
     public var supportsSpeedTest: Bool {
@@ -207,9 +239,7 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
         req.httpBody = try JSONEncoder().encode(
             ObservationRequest(venueId: venueId, kind: "speed_test", mbpsDown: mbpsDown)
         )
-        let (data, resp) = try await session.data(for: req)
-        try Self.check(resp)
-        return try JSONDecoder().decode(ObservationResponse.self, from: data).venue
+        return try await postAuthenticated(ObservationResponse.self, request: req).venue
     }
 
     /// Rough downstream estimate from uncached JSON fetches against a remote
@@ -261,13 +291,7 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
         req.httpBody = try JSONEncoder().encode(
             VenueObservationRequest(submittedBy: submittedBy, answers: answers)
         )
-        let (data, resp) = try await session.data(for: req)
-        try Self.check(resp)
-        do {
-            return try JSONDecoder().decode(ObservationResponse.self, from: data).venue
-        } catch is DecodingError {
-            throw VenueAPIError.decoding
-        }
+        return try await postAuthenticated(ObservationResponse.self, request: req).venue
     }
 
     private func get<T: Decodable>(_ type: T.Type, from url: URL) async throws -> T {
@@ -282,6 +306,38 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
         } catch is DecodingError {
             throw VenueAPIError.decoding
         }
+    }
+
+    /// The community-write seam (venue-engine PR #145 `communityAuth`) every
+    /// bearer-carrying POST routes through. Attaches `Authorization` when
+    /// `tokenProvider` has a token; on a 401 while one WAS attached, forces
+    /// exactly one refresh (`tokenRefresher`) and retries exactly once with
+    /// the new token before giving up — see `VenueAPIError.authenticationRequired`.
+    /// A signed-out request (no token to begin with) is sent exactly as it
+    /// was before bd#202, and its 401 (if any) surfaces unchanged as
+    /// `.http(statusCode: 401)` — the ticket's explicit "signed-out
+    /// behaviour unchanged" scope guard.
+    private func postAuthenticated<T: Decodable>(_ type: T.Type, request: URLRequest) async throws -> T {
+        let token = await tokenProvider()
+        do {
+            return try await get(type, request: authorized(request, token: token))
+        } catch VenueAPIError.http(statusCode: 401) where token != nil {
+            guard let refreshed = await tokenRefresher() else {
+                throw VenueAPIError.authenticationRequired
+            }
+            do {
+                return try await get(type, request: authorized(request, token: refreshed))
+            } catch VenueAPIError.http(statusCode: 401) {
+                throw VenueAPIError.authenticationRequired
+            }
+        }
+    }
+
+    private func authorized(_ request: URLRequest, token: String?) -> URLRequest {
+        guard let token else { return request }
+        var request = request
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        return request
     }
 
     private static func check(_ resp: URLResponse) throws {

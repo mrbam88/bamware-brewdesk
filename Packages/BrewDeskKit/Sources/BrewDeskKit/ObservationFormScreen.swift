@@ -2,6 +2,8 @@
 // Ships in Release (unlike the Debug-only capture prototype, #46): five enum
 // questions, one tap each, no free text anywhere. Submit → thank-you;
 // engine down → friendly error + Retry. Wire contract: venue-engine PR #26.
+import BamwareAccounts
+import BamwareAccountUI
 import SwiftUI
 import VenueKit
 
@@ -130,7 +132,9 @@ public struct ObservationFormEntrySection: View {
 public struct ObservationFormScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.launchEnvironment) private var launchEnvironment
     @State private var model: ObservationFormModel
+    @State private var accountModel: AccountModel?
     private let venueName: String
 
     public init(venue: Venue, service: any VenueObservationSubmitting) {
@@ -139,6 +143,19 @@ public struct ObservationFormScreen: View {
     }
 
     private var theme: BrewDeskTheme { BrewDeskTheme(isDarkMode: colorScheme == .dark) }
+
+    /// bd#202: whether the sign-in sheet should be showing. Reads straight
+    /// off `model.phase` rather than owning its own `@State` — `phase` is
+    /// already the single source of truth (mirrors `ObservationFormEntrySection`
+    /// resolving its service rather than caching one). Swiping the sheet away
+    /// routes back through `cancelSignInPrompt()` so `phase` and the sheet
+    /// can never disagree.
+    private var isSignInPromptPresented: Binding<Bool> {
+        Binding(
+            get: { model.phase == .signInRequired },
+            set: { presented in if !presented { model.cancelSignInPrompt() } }
+        )
+    }
 
     public var body: some View {
         NavigationStack {
@@ -173,6 +190,51 @@ public struct ObservationFormScreen: View {
         }
         .sensoryFeedback(.error, trigger: model.phase) { _, new in
             if case .failed = new { true } else { false }
+        }
+        // bd#202: 401 on a signed-in submit (refreshed once, still rejected)
+        // or a session that ended entirely — offer sign-in without losing
+        // the five answers. `accountModel` is its own instance (same
+        // fresh-per-surface pattern `YouTabScreen`/`BrewDeskAccountTenant`
+        // already use — it reads the same keychain, so a sign-in here is
+        // visible everywhere else too) rather than plumbed through the
+        // environment, keeping this additive to the composition root.
+        .task {
+            if accountModel == nil {
+                accountModel = BrewDeskAccountStack.makeModel(environment: launchEnvironment)
+            }
+        }
+        .onChange(of: accountModel?.sessions.isSignedIn) { _, isSignedIn in
+            guard isSignedIn == true, model.phase == .signInRequired else { return }
+            Task { await model.submit() }
+        }
+        .sheet(isPresented: isSignInPromptPresented) {
+            NavigationStack {
+                signInPromptContent
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var signInPromptContent: some View {
+        if let accountModel {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Sign in to submit")
+                    .font(.title3.bold())
+                    .padding(.horizontal, 24)
+                    .padding(.top, 20)
+                    .padding(.bottom, 8)
+                    .accessibilityIdentifier("observation-sign-in-required")
+                SignInScreen(model: accountModel, theme: theme)
+            }
+            .navigationTitle("Sign In")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { model.cancelSignInPrompt() }
+                }
+            }
+        } else {
+            ProgressView()
         }
     }
 
