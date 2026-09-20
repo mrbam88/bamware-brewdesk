@@ -10,6 +10,12 @@ public struct CafeMapScreen: View {
     @Environment(\.requestLocationAccess) private var requestLocationAccess
     @Environment(\.launchEnvironment) private var launchEnvironment
     @Environment(\.openURL) private var openURL
+    /// bd#219: a search-driven selection opens the detail sheet at
+    /// `.medium` (so the flown-to map/pin stays visible above it) UNLESS
+    /// Dynamic Type is at an accessibility size, in which case bd#117's
+    /// original `.large`-always rule still applies (medium crowded real
+    /// content into clipped text / sub-44pt targets at those sizes).
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Bindable private var model: VenuesModel
     @Bindable private var savedVenues: SavedVenuesStore
     /// Transport for the Apple feature card's "Suggest this café" action
@@ -77,6 +83,20 @@ public struct CafeMapScreen: View {
     /// stale value, so the guard stops applying on its own with no explicit
     /// reset needed.
     @State private var searchSelectionQuery: String?
+    /// bd#219: true for exactly the `.onChange(of: selected)` pass right
+    /// after `selectSearchResult` set `selected` — tells that handler to
+    /// open the detail sheet at `.medium` instead of bd#117's default
+    /// `.large`. Consumed (reset false) the moment that handler reads it,
+    /// so a LATER plain map/shelf tap (which sets `selected` directly, not
+    /// through `selectSearchResult`) still gets the original `.large`
+    /// behavior.
+    @State private var searchDrivenSelection = false
+    /// bd#219: sourced from a committed search selection's venue name — set
+    /// by `selectSearchResult`, this replaces the editable `TextField` in
+    /// `searchHeader` with a non-editable label reading that name (Apple
+    /// Maps' own "field shows what you picked" behavior), with a clear (x)
+    /// affordance beside it. `nil` is the ordinary editable-field state.
+    @State private var committedSelectionLabel: String?
     /// The shelf's resting detent (brewdesk#76). Changes once per settled
     /// drag — never per frame — so this body stays out of mid-gesture frames
     /// (the brewdesk#54 invariant). Mid-drag state lives in the card itself.
@@ -589,6 +609,15 @@ public struct CafeMapScreen: View {
             // changes where the sheet opens.
             .presentationDetents([.medium, .large], selection: $detailDetent)
             .presentationDragIndicator(.visible)
+            // bd#219: SwiftUI sheets make the presenting view NON-
+            // interactive by default, even for the visible portion above a
+            // `.medium` detent — without this, the map/selected pin behind
+            // a search-driven `.medium` sheet render correctly but can
+            // never be tapped/panned (reproduced: the selected teardrop
+            // existed but `isHittable` stayed false). Real Google/Apple
+            // Maps let you keep interacting with the map while a place
+            // card sits at medium height; this restores that.
+            .presentationBackgroundInteraction(.enabled)
             // At medium detent a scroll gesture must scroll the detail content
             // (clearing the action dock) rather than resize the sheet first —
             // the dock occluded the photo strip with no way to scroll it into
@@ -596,9 +625,28 @@ public struct CafeMapScreen: View {
             .presentationContentInteraction(.scrolls)
         }
         // brewdesk#117: each fresh selection opens full-height, regardless
-        // of whatever detent a previous venue's sheet was left at.
+        // of whatever detent a previous venue's sheet was left at — UNLESS
+        // bd#219's `searchDrivenSelection` says this one came from
+        // `selectSearchResult` and Dynamic Type isn't at an accessibility
+        // size, in which case it opens at `.medium` so the flown-to map and
+        // its selected pin stay visible above the sheet (`.large` is still
+        // one drag away).
         .onChange(of: selected) { _, newValue in
-            if newValue != nil { detailDetent = .large }
+            guard newValue != nil else { return }
+            if searchDrivenSelection, !dynamicTypeSize.isAccessibilitySize {
+                detailDetent = .medium
+            } else {
+                detailDetent = .large
+            }
+            // bd#219: a selection NOT driven by `selectSearchResult` (a
+            // plain map pin, shelf row while browsing, or Apple feature
+            // match) exits the "committed search" display state — the
+            // field's static label would otherwise keep showing a STALE
+            // café name after the user picked something else entirely.
+            if !searchDrivenSelection {
+                committedSelectionLabel = nil
+            }
+            searchDrivenSelection = false
         }
         // brewdesk#158: a settled, non-empty search must move the camera to
         // its results (critique finding 9 — a one-result search left the
@@ -723,6 +771,41 @@ public struct CafeMapScreen: View {
         !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && query != selectionQuery
     }
 
+    /// bd#219: narrows `venues` to WORD-PREFIX matches of `query` before
+    /// `searchFitRegion` fits a bounding box across them — the shelf list
+    /// (and `venues` itself) stay a plain substring match, but that let
+    /// "sey" match "Jersey City Free Public Library" (the "sey" hiding
+    /// inside "Jersey") and pull the fit's bounding box across two states
+    /// for what a person typing "sey" almost certainly meant as one
+    /// unambiguous Brooklyn café. Client-side only — the server's own `q`
+    /// matching is untouched, and this never changes what the shelf lists
+    /// or what pins render, only which of `venues` gets to steer the FIT.
+    /// Falls back to the top 5 results by the existing rank when NOTHING
+    /// has a word-prefix match, so a query that only ever matches mid-word
+    /// (an abbreviation, a typo) still fits something bounded rather than
+    /// nothing at all.
+    static func wordPrefixRankedResults(for query: String, in venues: [Venue]) -> [Venue] {
+        let needle = query
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty else { return venues }
+        let wordPrefixMatches = venues.filter {
+            Self.hasWordPrefixMatch(needle, in: $0.name) || Self.hasWordPrefixMatch(needle, in: $0.neighborhood)
+        }
+        return wordPrefixMatches.isEmpty ? Array(venues.prefix(5)) : wordPrefixMatches
+    }
+
+    /// True when some whitespace/punctuation-delimited WORD in `text`
+    /// begins with `needle` (already folded/trimmed by the caller) —
+    /// "Jersey" does not count as a word-prefix match for "sey" (the
+    /// substring only starts mid-word); "SEY Coffee" does.
+    private static func hasWordPrefixMatch(_ needle: String, in text: String) -> Bool {
+        let folded = text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+        return folded
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .contains { $0.hasPrefix(needle) }
+    }
+
     /// Cancels any pending fit and, for a non-empty query, schedules one
     /// past `VenuesModel.scheduleSearchApplication`'s own ~200ms debounce
     /// so `model.venues` already reflects the settled search by the time
@@ -742,7 +825,7 @@ public struct CafeMapScreen: View {
             guard model.searchQuery == query, !mapInteraction.isActive,
                   Self.shouldApplySearchFit(forQuery: query, selectionQuery: searchSelectionQuery)
             else { return }
-            let results = model.venues
+            let results = Self.wordPrefixRankedResults(for: query, in: model.venues)
             guard !results.isEmpty,
                   let region = Self.searchFitRegion(for: results, mapHeight: mapHeight, shelfClearance: shelfClearance)
             else { return }
@@ -815,25 +898,31 @@ public struct CafeMapScreen: View {
     /// user picked by name is a precise pin drop, not "somewhere near here."
     static let walkingZoomSpan = 0.009
 
-    /// bd#219: the fly-to's visible-area bias, as a FIXED fraction of
-    /// `walkingZoomSpan`, deliberately not `searchFitRegion`'s live
-    /// `shelfClearance`/`mapHeight` ratio (the "still typing/browsing" fit
-    /// above reuses that, unchanged). That ratio is unreliable at exactly a
-    /// selection tap's call site: the keyboard's own dismiss relayout is
-    /// still in flight the instant a row is tapped
-    /// (`selectSearchResult` only just requested `searchFocused = false`),
-    /// so `mapHeight` reads anywhere from its keyboard-shrunk value to its
-    /// settled one depending on exactly when it's sampled — measured
-    /// shifts from ~350m to over 4km for the SAME tap while iterating on
-    /// this fix, including with a short deferred read and with
-    /// `.ignoresSafeArea(.keyboard)` (both tried, both reverted — the
-    /// latter also changed `MapShelfDetentUITests`'
+    /// bd#219: synthetic `mapHeight`/`shelfClearance` inputs to
+    /// `searchFitRegion` for a search-selection fly-to — deliberately NOT
+    /// live measurements. Their 1:2 ratio stands in for "the detail sheet,
+    /// opened at `.medium`, covers about half the screen" (a fixed
+    /// approximation, not a claim about any one device's exact pixel
+    /// height): `searchFitRegion`'s own live `shelfClearance`/`mapHeight`
+    /// reads (still used by the "still typing/browsing" fit above,
+    /// unchanged) are unreliable at exactly a selection tap's call site —
+    /// the keyboard's own dismiss relayout is still in flight the instant a
+    /// row is tapped (`selectSearchResult` only just requested
+    /// `searchFocused = false`), so `mapHeight` reads anywhere from its
+    /// keyboard-shrunk value to its settled one depending on exactly when
+    /// it's sampled — measured shifts from ~350m to over 4km for the SAME
+    /// tap while iterating on this fix, including with a short deferred
+    /// read and with `.ignoresSafeArea(.keyboard)` (both tried, both
+    /// reverted — the latter also changed `MapShelfDetentUITests`'
     /// `testGrabberDragsUpToFullAndListOpensDetail`'s full-detent height, a
-    /// regression nothing about this ticket should touch). A fixed
-    /// fraction of the ALWAYS-known target span keeps the shift small,
-    /// deterministic, and immune to that race — 0.22 lands the venue
-    /// comfortably in the upper ~60% of the visible map at this zoom.
-    static let flyToNorthBiasFraction = 0.22
+    /// regression nothing about this ticket should touch). A fixed ratio
+    /// keeps the shift deterministic and immune to that race while still
+    /// reusing `searchFitRegion`'s own tested inflate-and-shift formula —
+    /// the visible TOP half of the fly-to region ends up at the true
+    /// `walkingZoomSpan`, not a squashed fraction of it, and the venue
+    /// lands centered within that visible half.
+    static let mediumSheetSyntheticMapHeight: CGFloat = 1000
+    static let mediumSheetSyntheticObscuredHeight: CGFloat = 500
 
     // MARK: - Search result selection (bd#219)
 
@@ -843,20 +932,39 @@ public struct CafeMapScreen: View {
     /// `scheduleSearchFit` is doing: resigns the keyboard, commits
     /// `searchSelectionQuery` so no late fit (server search landing, or this
     /// selection's own surroundings reload below) can move the camera again
-    /// for this query, collapses the shelf to `.medium`, selects the venue,
-    /// and flies the camera to it at walking scale, biased north (see
-    /// `flyToNorthBiasFraction`) so it lands in the visible area above the
-    /// newly collapsed shelf.
+    /// for this query, collapses the shelf to `.medium`, COMMITS the search
+    /// (the field switches to a static label naming the café; `venues`
+    /// stops being narrowed to the typed query's matches), selects the
+    /// venue, and flies the camera to it at walking scale, biased north
+    /// (see `mediumSheetSyntheticMapHeight`/`ObscuredHeight`) so it lands
+    /// centered in the visible area above the `.medium` detail sheet that
+    /// opens for it.
     private func selectSearchResult(_ venue: Venue) {
         searchFitTask?.cancel()
         searchSelectionQuery = model.searchQuery
         searchFocused = false
+        searchDrivenSelection = true
         shelfDetent = .medium
+        // bd#219: COMMITS the search — the café's name replaces the
+        // editable field (Apple Maps' own "field shows what you picked"),
+        // and `model.clearSearch()` stops `model.venues` from staying
+        // narrowed to the typed query's matches. Without this, the map/
+        // shelf kept showing only the handful of NAME matches forever (the
+        // header count line stuck at "N rated · M cafés" for the search,
+        // never the neighbourhood) even after `loadSurroundings` below
+        // loaded real venues around the café — `venues` unions in the
+        // loaded viewport set, but a non-empty `activeSearchText` still
+        // filters it down to name matches only.
+        committedSelectionLabel = venue.name
+        model.clearSearch()
         selected = venue
         stopTrackingUserLocation()
-        let shift = Self.walkingZoomSpan * Self.flyToNorthBiasFraction
-        let region = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: venue.lat - shift, longitude: venue.lng),
+        let region = Self.searchFitRegion(
+            for: [venue],
+            mapHeight: Self.mediumSheetSyntheticMapHeight,
+            shelfClearance: Self.mediumSheetSyntheticObscuredHeight
+        ) ?? MKCoordinateRegion(
+            center: coordinate(of: venue),
             span: MKCoordinateSpan(latitudeDelta: Self.walkingZoomSpan, longitudeDelta: Self.walkingZoomSpan)
         )
         // A search selection is a programmatic move, not a gesture — same
@@ -1463,6 +1571,13 @@ public struct CafeMapScreen: View {
         .accessibilityLabel(Self.pinLabel(for: placement.venue))
         .accessibilityValue(placement.isSelected ? "Selected" : "Not selected")
         .accessibilityAddTraits(placement.isSelected ? .isSelected : [])
+        // bd#219 UI-test seam: a dedicated identifier for the SELECTED
+        // marker specifically (every marker already carries the café's
+        // name in its label) — lets a test assert the selected teardrop
+        // exists and is hittable after a search fly-to without depending
+        // on label text alone, which every OTHER unselected marker on
+        // screen also partially matches.
+        .accessibilityIdentifier(placement.isSelected ? "map-selected-marker" : "map-marker")
     }
 
     // MARK: - Apple base-map features (bd#182)
@@ -1591,46 +1706,84 @@ public struct CafeMapScreen: View {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .foregroundStyle(.secondary)
-                        TextField("Search spots", text: $model.searchQuery)
-                            .submitLabel(.search)
-                            .focused($searchFocused)
-                            .onSubmit {
-                                model.submitSearch()
-                                // bd#219: exactly one match already settled
-                                // (a citywide server answer that landed
-                                // before Return, or a plain local match) is
-                                // treated as an explicit selection, same as
-                                // tapping that one shelf row — flies to it
-                                // rather than leaving the camera on a fit
-                                // for a single-item list. A server answer
-                                // still in flight at the moment of Return
-                                // falls through to the ordinary settled-fit
-                                // path once it lands (`scheduleSearchFit`
-                                // via `.onChange(of: model.venues)`) —
-                                // `searchFitRegion` already flies a lone
-                                // result at the same walking scale.
-                                if model.venues.count == 1, let only = model.venues.first {
-                                    selectSearchResult(only)
-                                } else {
-                                    searchFocused = false
+                        // bd#219: a committed search selection (see
+                        // `selectSearchResult`) replaces the editable field
+                        // with a non-editable label naming the café —
+                        // Apple Maps' own "the field shows what you
+                        // picked" behavior — plus its own clear (x). The
+                        // TextField only ever exists in the OTHER branch,
+                        // so there's no hidden/focus-stealing duplicate.
+                        if let selectedLabel = committedSelectionLabel {
+                            Text(selectedLabel)
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    // Tapping the LABEL itself (not the x)
+                                    // starts a fresh search, same as tapping
+                                    // an empty field.
+                                    committedSelectionLabel = nil
+                                    searchFocused = true
                                 }
-                            }
-                        if !model.searchQuery.isEmpty {
-                            // bd#200: the citywide server search's own
-                            // in-flight indicator, distinct from the
-                            // viewport load spinner (`map-state-loading`) —
-                            // this one is scoped to the search field itself.
-                            if model.isSearchingServer {
-                                ProgressView()
-                                    .controlSize(.mini)
-                                    .accessibilityIdentifier("search-server-progress")
-                                    .accessibilityLabel("Searching all of NYC")
-                            }
+                                .accessibilityIdentifier("search-committed-label")
+                                .accessibilityLabel("Selected café: \(selectedLabel)")
+                                .accessibilityHint("Double tap to search again")
                             Button {
-                                model.clearSearch()
+                                // Clears the DISPLAYED text only — the
+                                // camera and whatever surroundings
+                                // `loadSurroundings` already fetched stay
+                                // exactly where they are. `model.searchQuery`
+                                // is already empty from the commit, so
+                                // there's nothing left to clear model-side.
+                                committedSelectionLabel = nil
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundStyle(.secondary)
+                            }
+                            .accessibilityIdentifier("search-clear-selection")
+                            .accessibilityLabel("Clear")
+                        } else {
+                            TextField("Search spots", text: $model.searchQuery)
+                                .submitLabel(.search)
+                                .focused($searchFocused)
+                                .onSubmit {
+                                    model.submitSearch()
+                                    // bd#219: exactly one match already settled
+                                    // (a citywide server answer that landed
+                                    // before Return, or a plain local match) is
+                                    // treated as an explicit selection, same as
+                                    // tapping that one shelf row — flies to it
+                                    // rather than leaving the camera on a fit
+                                    // for a single-item list. A server answer
+                                    // still in flight at the moment of Return
+                                    // falls through to the ordinary settled-fit
+                                    // path once it lands (`scheduleSearchFit`
+                                    // via `.onChange(of: model.venues)`) —
+                                    // `searchFitRegion` already flies a lone
+                                    // result at the same walking scale.
+                                    if model.venues.count == 1, let only = model.venues.first {
+                                        selectSearchResult(only)
+                                    } else {
+                                        searchFocused = false
+                                    }
+                                }
+                            if !model.searchQuery.isEmpty {
+                                // bd#200: the citywide server search's own
+                                // in-flight indicator, distinct from the
+                                // viewport load spinner (`map-state-loading`) —
+                                // this one is scoped to the search field itself.
+                                if model.isSearchingServer {
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                        .accessibilityIdentifier("search-server-progress")
+                                        .accessibilityLabel("Searching all of NYC")
+                                }
+                                Button {
+                                    model.clearSearch()
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
                     }

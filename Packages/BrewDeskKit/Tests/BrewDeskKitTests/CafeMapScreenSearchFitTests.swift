@@ -12,15 +12,15 @@ import VenueKit
 /// the fit leaves room for the shelf card.
 struct CafeMapScreenSearchFitTests {
 
-    private func venue(id: String, lat: Double, lng: Double) -> Venue {
+    private func venue(id: String, name: String? = nil, lat: Double, lng: Double, neighborhood: String = "Test") -> Venue {
         let observedAt = "2026-08-01T00:00:00Z"
         return Venue(
             id: id,
-            name: "Venue \(id)",
+            name: name ?? "Venue \(id)",
             lat: lat,
             lng: lng,
             address: nil,
-            neighborhood: "Test",
+            neighborhood: neighborhood,
             borough: "Manhattan",
             hoursRaw: nil,
             vertical: "cafe",
@@ -145,5 +145,65 @@ struct CafeMapScreenSearchFitTests {
         #expect(unwrapped.center.latitude < target.lat, "must bias north, clear of the shelf")
         #expect(unwrapped.center.longitude == target.lng)
         #expect(abs(target.lat - unwrapped.center.latitude) <= unwrapped.span.latitudeDelta / 2)
+    }
+
+    /// bd#219 (supervisor revision): the ACTUAL fly-to region
+    /// `selectSearchResult` computes, using its fixed 1:2 synthetic ratio
+    /// standing in for a `.medium`-detent detail sheet (~half the screen).
+    /// Exact numbers, not just directional assertions, since the UI test's
+    /// own tolerance is now tight (150m) against this precise target.
+    @Test func mediumSheetFlyToRegionMatchesTheDocumentedShift() throws {
+        let target = venue(id: "far", lat: 40.6437, lng: -74.0787)
+        let region = CafeMapScreen.searchFitRegion(
+            for: [target],
+            mapHeight: CafeMapScreen.mediumSheetSyntheticMapHeight,
+            shelfClearance: CafeMapScreen.mediumSheetSyntheticObscuredHeight
+        )
+        let unwrapped = try #require(region)
+        // obscuredFraction = 500/1000 = 0.5 ⇒ latitudeDelta = span/0.5 =
+        // 2×span; shift = (0.5/2)×latitudeDelta = 0.25×latitudeDelta = a
+        // quarter of the TOTAL region, i.e. half of the visible (top) half
+        // — the venue lands dead-center in the visible portion.
+        let expectedLatitudeDelta = CafeMapScreen.walkingZoomSpan / 0.5
+        let expectedShift = 0.25 * expectedLatitudeDelta
+        #expect(abs(unwrapped.span.latitudeDelta - expectedLatitudeDelta) < 1e-9)
+        #expect(abs((target.lat - unwrapped.center.latitude) - expectedShift) < 1e-9)
+        // In meters, for the PR's own documentation/tolerance discussion.
+        let shiftMeters = expectedShift * 111_320
+        #expect(shiftMeters > 400 && shiftMeters < 600, "expected roughly 500m, got \(shiftMeters)")
+    }
+
+    // MARK: - Word-prefix fit ranking (bd#219, supervisor revision)
+
+    @Test func wordPrefixMatchWinsOverAMidWordSubstringHit() {
+        // Reproduces Bilal's actual report: "sey" as a plain substring
+        // matches BOTH "SEY Coffee" (a real word-prefix match) and "Jersey
+        // City Free Public Library" (only because "sey" hides inside
+        // "Jersey") — the fit must only ever consider the former.
+        let seyCoffee = venue(id: "sey", name: "SEY Coffee", lat: 40.7054, lng: -73.9324)
+        let jerseyLibrary = venue(id: "jersey", name: "Jersey City Free Public Library", lat: 40.7195, lng: -74.0480)
+        let results = CafeMapScreen.wordPrefixRankedResults(for: "sey", in: [seyCoffee, jerseyLibrary])
+        #expect(results.map(\.id) == ["sey"])
+    }
+
+    @Test func wordPrefixMatchChecksNeighborhoodToo() {
+        let named = venue(id: "a", name: "Some Café", lat: 40.7, lng: -74.0)
+        let inNeighborhood = venue(id: "b", name: "Other Café", lat: 40.71, lng: -74.01, neighborhood: "Seyhill")
+        let results = CafeMapScreen.wordPrefixRankedResults(for: "sey", in: [named, inNeighborhood])
+        #expect(results.map(\.id) == ["b"])
+    }
+
+    @Test func noWordPrefixMatchFallsBackToTopFive() {
+        let venues = (0..<8).map { venue(id: "v\($0)", lat: 40.7 + Double($0) * 0.001, lng: -74.0) }
+        // None of these venues' names ("Venue v0"…"Venue v7") or
+        // neighborhoods ("Test") have a word starting with "zzz".
+        let results = CafeMapScreen.wordPrefixRankedResults(for: "zzz", in: venues)
+        #expect(results.count == 5)
+        #expect(results.map(\.id) == venues.prefix(5).map(\.id))
+    }
+
+    @Test func blankQueryReturnsAllResultsUnfiltered() {
+        let venues = [venue(id: "a", lat: 40.7, lng: -74.0), venue(id: "b", lat: 40.71, lng: -74.01)]
+        #expect(CafeMapScreen.wordPrefixRankedResults(for: "  ", in: venues).count == 2)
     }
 }

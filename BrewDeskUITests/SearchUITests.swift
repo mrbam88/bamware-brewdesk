@@ -328,17 +328,24 @@ final class SearchUITests: XCTestCase {
 
         let farCafeLat = 40.6437
         let farCafeLng = -74.0787
-        // bd#219: the fly-to deliberately biases the camera CENTER north of
-        // the café (`CafeMapScreen.flyToNorthBiasFraction` — a FIXED 22% of
-        // the ~900-1000m walking-scale span, ≈200m) so the café lands in
-        // the visible area above the post-selection shelf rather than dead
-        // center behind it. 400m comfortably covers that deterministic
-        // shift plus animation/device rounding, while staying far tighter
-        // than every ORIGINAL failure mode this ticket fixes (camera left
-        // on the ~8km-away starting viewport, or zoomed out to fit all of
-        // NYC), so it still proves a real fly-to happened without asserting
-        // a dead-center distance the design never promised.
-        let toleranceMeters = 400.0
+        // bd#219 (supervisor revision): the fly-to's visible-area target is
+        // NOT the raw café coordinate — `selectSearchResult` biases the
+        // camera CENTER north so the café lands centered in the visible
+        // portion above the `.medium`-detent detail sheet (roughly half the
+        // screen). `CafeMapScreen.searchFitRegion`'s own formula, fed the
+        // fixed 1:2 synthetic ratio `selectSearchResult` uses
+        // (`mediumSheetSyntheticMapHeight`/`ObscuredHeight`), computes that
+        // target deterministically: obscuredFraction 0.5 ⇒ latitudeDelta =
+        // walkingZoomSpan/0.5, shift = 0.25×latitudeDelta. Duplicated here
+        // (not imported — UI test targets can't import the app's package
+        // target) so this test checks the camera against the SAME precise
+        // target the app computes, not a loose tolerance around the café
+        // itself.
+        let walkingZoomSpan = 0.009
+        let expectedLatitudeDelta = walkingZoomSpan / 0.5
+        let expectedShiftDegrees = 0.25 * expectedLatitudeDelta
+        let expectedTargetLat = farCafeLat - expectedShiftDegrees
+        let toleranceMeters = 150.0
 
         let field = searchField(app)
         field.tap()
@@ -354,6 +361,15 @@ final class SearchUITests: XCTestCase {
         XCTAssertTrue(shelf.waitForExistence(timeout: wait), "discovery shelf missing")
         let row = shelf.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Ferry Roasters,")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: wait), "search result row for the far café never appeared")
+
+        // The header count line BEFORE the tap — while search is active it
+        // reflects only the name matches (here, just the one far café), not
+        // the neighbourhood. Captured now so the post-selection assertion
+        // below has something concrete to differ from.
+        let countLine = app.descendants(matching: .any)["map-count-line"].firstMatch
+        XCTAssertTrue(countLine.waitForExistence(timeout: wait), "map count line missing")
+        let matchCountText = countLine.label
+
         // bd#219: `waitUntilHittable` (not a bare `.tap()` the instant the
         // row exists) — the row can appear an instant before the search
         // list's own crossfade/layout settles, and a tap landing mid-settle
@@ -375,25 +391,57 @@ final class SearchUITests: XCTestCase {
         let center = app.descendants(matching: .any)["map-camera-center"]
         XCTAssertTrue(center.waitForExistence(timeout: wait), "map camera center accessibility element missing")
 
-        // (a) within 3s the camera center is within ~150m of the far café.
+        // (a) within 3s the camera center is within 150m of the VISIBLE-
+        // area-centred target (not the raw café coordinate).
         let flyDeadline = Date().addingTimeInterval(3)
         var closest = Double.greatestFiniteMagnitude
         while Date() < flyDeadline {
             if let coordinate = Self.parseCoordinate(center.value as? String) {
-                closest = min(closest, Self.metersBetween(coordinate.lat, coordinate.lng, farCafeLat, farCafeLng))
+                closest = min(closest, Self.metersBetween(coordinate.lat, coordinate.lng, expectedTargetLat, farCafeLng))
                 if closest <= toleranceMeters { break }
             }
             Thread.sleep(forTimeInterval: 0.1)
         }
         XCTAssertLessThanOrEqual(
             closest, toleranceMeters,
-            "tapping the far café's search result never flew the camera within \(toleranceMeters)m of it " +
-            "(closest: \(closest)m) — camera-center value: \(center.value ?? "nil")"
+            "tapping the far café's search result never flew the camera within \(toleranceMeters)m of the " +
+            "computed visible-area target (closest: \(closest)m) — camera-center value: \(center.value ?? "nil")"
         )
 
-        // (c) the detail sheet's heading shows the far café's own name.
+        // The selected teardrop — 30pt head, café name in its label — must
+        // exist and be hittable in the now-visible map area above the
+        // `.medium` sheet, whether or not the far café made it into this
+        // fetch's own (fixture-limited) loaded set: `map-selected-marker`
+        // is the dedicated identifier for the "always render the selection,
+        // never let it be culled/skipped" fallback (bd#212, extended here).
+        let selectedMarker = app.buttons.matching(
+            NSPredicate(format: "identifier == %@ AND label BEGINSWITH %@", "map-selected-marker", "Fixture Ferry Roasters,")
+        ).firstMatch
+        XCTAssertTrue(selectedMarker.waitForExistence(timeout: wait), "selected teardrop for the far café never appeared")
+        XCTAssertTrue(selectedMarker.waitUntilHittable(timeout: wait), "selected teardrop is not hittable")
+
+        // The detail sheet's heading shows the far café's own name.
         let heading = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Fixture Ferry Roasters")).firstMatch
         XCTAssertTrue(heading.waitForExistence(timeout: wait), "detail sheet never opened on the far café")
+
+        // The search field COMMITS: it now shows the café's name as static
+        // text (not an editable query), with the clear (x) affordance.
+        let committedLabel = app.descendants(matching: .any)["search-committed-label"]
+        XCTAssertTrue(committedLabel.waitForExistence(timeout: wait), "search field never committed to the selected café's name")
+        XCTAssertEqual(committedLabel.label, "Selected café: Fixture Ferry Roasters")
+        XCTAssertTrue(app.buttons["search-clear-selection"].exists, "clear (x) affordance missing after commit")
+
+        // Committing the search stops filtering `venues` by the typed
+        // text and loads the neighbourhood around the café instead — the
+        // header count line must settle to something other than the
+        // search's own match count.
+        XCTAssertTrue(
+            Self.waitFor(timeout: wait) {
+                let current = countLine.label
+                return current != matchCountText
+            },
+            "header count line still reads the search match count (\(matchCountText)) after committing the selection"
+        )
 
         // (b) still there 4s later — no late fit (a delayed citywide answer
         // re-running `scheduleSearchFit`, or this selection's own
@@ -403,11 +451,12 @@ final class SearchUITests: XCTestCase {
             XCTFail("camera center unreadable after the settle window")
             return
         }
-        let driftedMeters = Self.metersBetween(stillThere.lat, stillThere.lng, farCafeLat, farCafeLng)
+        let driftedMeters = Self.metersBetween(stillThere.lat, stillThere.lng, expectedTargetLat, farCafeLng)
         XCTAssertLessThanOrEqual(
             driftedMeters, toleranceMeters,
-            "the camera drifted \(driftedMeters)m off the far café 4s after selecting it — a late fit pulled it away"
+            "the camera drifted \(driftedMeters)m off the visible-area target 4s after selecting it — a late fit pulled it away"
         )
+        XCTAssertTrue(selectedMarker.exists, "selected teardrop disappeared after the settle window")
 
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = "search-select-flies-to-far-cafe"
