@@ -43,6 +43,12 @@ public struct CafeMapScreen: View {
     /// Mid-gesture frames never touch state, so a pan composites existing
     /// annotation views instead of re-evaluating this body (brewdesk#54).
     @State private var visibleRegion: MKCoordinateRegion?
+    /// bd#217: the settled camera's heading in degrees, reported alongside
+    /// `visibleRegion` by the same `.onMapCameraChange(frequency: .onEnd)`
+    /// callback — MapKit's own `MapCompass()` control only draws itself
+    /// once the map is rotated off true-north, and this app has no other
+    /// way to know that state exists. Drives `compassExclusionRect` below.
+    @State private var mapHeading: Double = 0
     @State private var replanTask: Task<Void, Never>?
     /// True for the duration of a drag or pinch on the map (see the
     /// `DragGesture`/`MagnifyGesture` handlers below) — brewdesk#158's
@@ -144,6 +150,9 @@ public struct CafeMapScreen: View {
     /// its own frame, only adds floating overlays/insets on top of it).
     /// `searchAreaPillFrame` is `nil` whenever the pill itself isn't in the
     /// view tree — never a stale rect from the last time it was visible.
+    /// bd#217 adds a fifth chrome rect, the compass — see
+    /// `compassExclusionRect`'s own doc comment for why it isn't a
+    /// `@State`-backed measured frame like these four.
     @State private var searchHeaderFrame: CGRect = .zero
     @State private var searchAreaPillFrame: CGRect?
     @State private var locateButtonFrame: CGRect = .zero
@@ -258,6 +267,12 @@ public struct CafeMapScreen: View {
                 }
                 .onMapCameraChange(frequency: .onEnd) { context in
                     refreshVisibleRegion(context.region)
+                    // bd#217: `mapHeading` change alone must still trigger a
+                    // re-plan (a rotate-only gesture with no pan/zoom would
+                    // otherwise leave `visibleRegion` — and so the memoized
+                    // plan — untouched even though the compass exclusion
+                    // rect just appeared/moved).
+                    mapHeading = context.camera.heading
                 }
                 .simultaneousGesture(
                     DragGesture(minimumDistance: 1)
@@ -1110,6 +1125,9 @@ public struct CafeMapScreen: View {
         if let searchAreaPillFrame {
             rects.append(searchAreaPillFrame)
         }
+        if let compassExclusionRect {
+            rects.append(compassExclusionRect)
+        }
         if locateButtonFrame != .zero {
             rects.append(locateButtonFrame)
         }
@@ -1117,6 +1135,33 @@ public struct CafeMapScreen: View {
             rects.append(shelfFrame)
         }
         return rects
+    }
+
+    /// bd#217: `MapCompass()` (attached via this screen's `.mapControls`
+    /// modifier, earlier in `body`) is a
+    /// native MapKit control, not a view this screen composes itself — it
+    /// has no frame `.onGeometryChange` can observe the way every other
+    /// chrome rect here does. Only drawn by MapKit at all once the camera
+    /// is rotated off true-north (`mapHeading`), and always placed
+    /// top-trailing, just clear of the search header, at a fixed
+    /// ~44pt-across system control size — this rect is a deliberately
+    /// generous hand-measured approximation of that fixed placement rather
+    /// than a live measurement, wide enough to cover the control at every
+    /// Dynamic Type size (the header's own height already flexes for
+    /// that, and this rect anchors off the header's real measured bottom
+    /// edge, not a hard-coded y).
+    private static let compassApproxDiameter: CGFloat = 44
+    private static let compassApproxMargin: CGFloat = 12
+
+    private var compassExclusionRect: CGRect? {
+        guard mapSize.width > 0, abs(mapHeading) > 0.5 else { return nil }
+        let side = Self.compassApproxDiameter + Self.compassApproxMargin
+        return CGRect(
+            x: mapSize.width - side - Self.compassApproxMargin,
+            y: searchHeaderFrame.maxY + 8,
+            width: side,
+            height: side
+        )
     }
 
     /// bd#212 (supervisor revision): only numbered TEARDROPS are real

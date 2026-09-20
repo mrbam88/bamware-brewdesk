@@ -194,26 +194,43 @@ public enum BrewDeskPalette {
     /// it reads correctly for a red-green colorblind viewer (`markerTierIsSingleHueAndMonotonic`
     /// in `MarkerPaletteTests` verifies this numerically against the
     /// resolved colors, not just these comments).
+    ///
+    /// bd#217 (TestFlight build 26 feedback — "change the color of the
+    /// text to white on the pins"): the light-map ramp used to carry a DARK
+    /// number on its two lighter steps and a light number only on its two
+    /// darkest, so most pins in a normal light-mode session ("52", "69",
+    /// "45"…) rendered dark-green-on-sage at low contrast. The number is
+    /// now WHITE on every light-map tier (`markerNumberLightMap` below), so
+    /// the FILL ramp had to darken across the board to hold >=4.5:1 white-
+    /// on-fill everywhere, and collapsed to the spec's "at most three
+    /// lightness steps" in the process — tiers 0 and 1 (`<60`, `60-69`)
+    /// now share the lightest of the three (still darkest-wins ordering,
+    /// just not strictly distinct per tier; see
+    /// `MarkerPaletteTests.lightMapMarkerFillIsDarkestForTheBestScore`).
+    /// Verified contrast (relative luminance, WCAG formula): `#3D8069` vs
+    /// white ≈4.68:1, `#2C6B58` ≈6.27:1, `#1C5243` ≈9.0:1 — all comfortably
+    /// clear 4.5:1.
     private static let markerFillDarkMap: [Color] = [
         hex("#3A6E5D"), hex("#4F9D82"), hex("#74CDA9"), hex("#A8F0CF"),
     ]
     private static let markerFillLightMap: [Color] = [
-        hex("#9CCBB9"), hex("#5FA78F"), hex("#2F7A63"), hex("#1F5A49"),
+        hex("#3D8069"), hex("#3D8069"), hex("#2C6B58"), hex("#1C5243"),
     ]
     /// Number color per tier index, resolved separately for each map
     /// appearance so every step clears >=4.5:1 against its own fill —
     /// verified in `MarkerPaletteTests.markerNumberColorClearsContrastAgainstItsFill`.
     /// Dark map: darkest fill (index 0) needs a light number; the three
-    /// brighter fills need a dark one. Light map: the two lighter fills
-    /// (index 0-1) need a dark number; the two darker/more-saturated fills
-    /// (index 2-3) need a light one — NOT a mirror of the dark-map split,
-    /// because the light-map ramp direction is itself reversed.
+    /// brighter fills need a dark one — UNCHANGED by bd#217 (Bilal approved
+    /// the dark-mock mint-fill/dark-number pairing as shipped).
+    /// Light map: bd#217 makes every tier WHITE — see `markerFillLightMap`'s
+    /// doc comment for why (the old split, dark number on the two lighter
+    /// tiers, light number on the two darker ones, is exactly what read as
+    /// low-contrast dark-green-on-sage in Bilal's TestFlight build 26
+    /// screenshot).
     private static let markerNumberDarkMap: [Color] = [
         hex("#E6F2EC"), hex("#08140F"), hex("#08140F"), hex("#08140F"),
     ]
-    private static let markerNumberLightMap: [Color] = [
-        hex("#08140F"), hex("#08140F"), hex("#F4FBF8"), hex("#F4FBF8"),
-    ]
+    private static let markerNumberLightMap: [Color] = Array(repeating: hex("#FFFFFF"), count: 4)
 
     /// Score → tier index (0..3): `<60`, `60-69`, `70-79`, `>=80` — bd#212's
     /// own thresholds, deliberately different from `ScoreTier`'s
@@ -242,13 +259,25 @@ public enum BrewDeskPalette {
         return adaptive(light: markerNumberLightMap[index], dark: markerNumberDarkMap[index])
     }
 
-    /// 0.75pt hairline on every marker (teardrop, dot, or speck) — no white
-    /// ring, ever (bd#212 spec). Fixed, not adaptive: dark enough to read
-    /// as an edge against both a light and dark basemap without the
-    /// per-appearance flip the old `unobservedDotStroke`/`observedDotStroke`
-    /// pair needed (those separated a marker from its NEIGHBOURS at high
-    /// density; this one only has to separate the marker from the map).
-    public static let markerHairline = Color(red: 6.0 / 255, green: 18.0 / 255, blue: 14.0 / 255).opacity(0.9)
+    /// Hairline edge on a rated teardrop (bd#212 spec: 0.75pt dark, "no
+    /// white ring, ever" — that rule stood for BOTH appearances at the
+    /// time).
+    ///
+    /// bd#217 (Bilal, same PR as the white-number change): "the border...
+    /// should be white instead of dark — on the pins," for the LIGHT map
+    /// only — he kept the dark mock's dark-hairline-plus-shadow pairing as
+    /// shipped for DARK. Adaptive so each appearance can keep its own
+    /// answer: light gets a near-opaque white edge (paired with a THINNER
+    /// 1pt stroke — see `TeardropMarkerView.hairlineWidth` — so the extra
+    /// contrast doesn't read as a bigger pin), dark keeps the exact
+    /// bd#212 value unchanged. One value flip here (plus the paired width
+    /// in `TeardropMarkerView`) is what "adaptive token" bought: if Bilal
+    /// ever wants a white ring on the dark map too, only the `dark:` case
+    /// below changes.
+    public static let markerHairline = adaptive(
+        light: Color.white.opacity(0.95),
+        dark: Color(red: 6.0 / 255, green: 18.0 / 255, blue: 14.0 / 255).opacity(0.9)
+    )
 
     /// Faint neutral fill for an unrated (unobserved) venue's speck — never
     /// tier-colored, never red/green (bd#159's "not checked yet" rule

@@ -30,21 +30,31 @@ public enum BrewDeskFont {
         custom("JetBrainsMono-Regular", loaded: jetBrainsMonoLoaded, fallbackDesign: .monospaced, weight: weight, style: style)
     }
 
-    /// Fixed-size (never Dynamic-Type-scaled) Hanken Grotesk LIGHT for the
-    /// tiny score numbers drawn directly on a map marker (bd#212): a
-    /// marker's number size is derived from its own pixel diameter (≈0.58×
-    /// the head), not from the reader's text-size setting, so this
-    /// deliberately skips `Font.custom(_:size:relativeTo:)`'s Dynamic-Type
-    /// scaling that every other `BrewDeskFont` case uses — a marker growing
-    /// past its collision footprint under Larger Text would itself start
-    /// overlapping neighbours. `.monospacedDigit()` gives the tabular
-    /// figures the spec calls for (a "1" and a "9" occupy the same width,
-    /// so a marker's number never visibly reflows the shape around it).
-    public static func markerNumber(size: CGFloat) -> Font {
+    /// Fixed-size (never Dynamic-Type-scaled) Hanken Grotesk for the tiny
+    /// score numbers drawn directly on a map marker (bd#212): a marker's
+    /// number size is derived from its own pixel diameter (≈0.58× the
+    /// head), not from the reader's text-size setting, so this deliberately
+    /// skips `Font.custom(_:size:relativeTo:)`'s Dynamic-Type scaling that
+    /// every other `BrewDeskFont` case uses — a marker growing past its
+    /// collision footprint under Larger Text would itself start overlapping
+    /// neighbours. `.monospacedDigit()` gives the tabular figures the spec
+    /// calls for (a "1" and a "9" occupy the same width, so a marker's
+    /// number never visibly reflows the shape around it).
+    ///
+    /// bd#217: LIGHT (300) is the bd#212 spec weight and stays the default
+    /// for every normal-size teardrop, but at the two smallest head sizes
+    /// that still show a number (11.5pt/12.5pt — below `headDiameter <
+    /// 15`, ≈6.7pt/7.3pt of actual glyph), white-on-fill Light read too
+    /// thin in this PR's own light-map screenshots to be a real legibility
+    /// win over the fix it's shipping. Bumped to REGULAR (400, never bold)
+    /// only for those small heads — every teardrop at 17pt/20pt/the fixed
+    /// 30pt selected size keeps Light.
+    public static func markerNumber(size: CGFloat, headDiameter: CGFloat) -> Font {
+        let weight: Font.Weight = headDiameter < 15 ? .regular : .light
         let base: Font = hankenGroteskLoaded
             ? .custom("HankenGrotesk-Regular", fixedSize: size)
             : .system(size: size, design: .default)
-        return base.weight(.light).monospacedDigit()
+        return base.weight(weight).monospacedDigit()
     }
 
     /// Whether each bundled family actually registered — read by

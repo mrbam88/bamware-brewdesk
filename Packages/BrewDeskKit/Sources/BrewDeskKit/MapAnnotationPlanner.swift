@@ -212,12 +212,27 @@ public enum MapAnnotationPlanner {
     ///     teardrop, seeded into the collision grid first so nothing may
     ///     ever be placed on top of it.
     ///   - exclusionRects: screen-space rects already "occupied" before any
-    ///     TEARDROP is placed (bd#210, kept unchanged for bd#212) — the
-    ///     search header, "Search this area" pill, locate button, shelf
-    ///     card. `.dot`/`.speck` markers are native `MapCircle` overlays and
-    ///     are never checked against these — a low-priority density
+    ///     TEARDROP is placed (bd#210, extended bd#217) — the search
+    ///     header, "Search this area" pill, compass, locate button, shelf
+    ///     card. `.speck` markers are native `MapCircle` overlays and are
+    ///     never checked against these — a faint, unrated, never-numbered
     ///     indicator sitting briefly under chrome isn't the same problem a
     ///     hidden, un-tappable teardrop was.
+    ///
+    ///     bd#217: a RATED candidate whose teardrop attempt collides with
+    ///     one of these rects is now SKIPPED outright rather than falling
+    ///     back to a `.dot` — the bd#210 rule inserted these rects into the
+    ///     same collision grid as every teardrop, which correctly kept the
+    ///     TEARDROP off the chrome, but the fallback `.dot` for that same
+    ///     losing candidate still rendered at the identical coordinate,
+    ///     because `.dot`s (a native `MapCircle`, drawn independently by
+    ///     `CafeMapScreen`) were never themselves exclusion-checked. That
+    ///     was the exact TestFlight build 26 bug: a small green dot peeking
+    ///     out from under the "Search this area" pill where its would-be
+    ///     teardrop had just been correctly excluded. A candidate demoted
+    ///     by a SIBLING teardrop (no chrome involved) still falls back to a
+    ///     dot as before — only a chrome collision skips the venue for this
+    ///     plan entirely.
     /// - Parameter region: the current camera viewport, or `nil` when it has
     ///   never been observed. A stale/unknown region must never render as an
     ///   empty plan while `venues` is non-empty (brewdesk#157) — falls back
@@ -253,8 +268,14 @@ public enum MapAnnotationPlanner {
         // Only teardrops (and chrome exclusion rects) ever enter the
         // collision grid — see `footprintPadding`'s doc comment.
         let grid = CollisionGrid()
-        for rect in exclusionRects {
-            grid.insert(AABB(minX: rect.minX, maxX: rect.maxX, minY: rect.minY, maxY: rect.maxY))
+        // bd#217: kept as its own list, separate from `grid`, so a losing
+        // candidate can be asked "did I lose specifically to CHROME?" — see
+        // the chrome-skip check in the rated-venue loop below.
+        let exclusionBoxes = exclusionRects.map {
+            AABB(minX: $0.minX, maxX: $0.maxX, minY: $0.minY, maxY: $0.maxY)
+        }
+        for box in exclusionBoxes {
+            grid.insert(box)
         }
 
         let mpp = metersPerPoint(region: region, mapWidth: size.width)
@@ -307,6 +328,15 @@ public enum MapAnnotationPlanner {
                         showsNumber: ratedDiameter >= numberThreshold
                     ))
                     totalPlaced += 1
+                    continue
+                }
+                // bd#217: a chrome collision skips the venue entirely this
+                // plan — see `plan`'s own doc comment on `exclusionRects`
+                // for why a `.dot` fallback here would just reproduce the
+                // same peeking-out-from-under-the-pill bug at a smaller
+                // size. A SIBLING-teardrop collision (no exclusion rect
+                // involved) still falls through to the dot fallback below.
+                if exclusionBoxes.contains(where: { $0.intersects(teardropBox) }) {
                     continue
                 }
             }
