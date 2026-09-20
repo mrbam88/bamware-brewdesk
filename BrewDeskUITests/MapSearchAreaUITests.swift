@@ -138,4 +138,43 @@ final class MapSearchAreaUITests: XCTestCase {
 
         capture("search-area-pill-post-tap")
     }
+
+    /// bd#217 (TestFlight build 26 regression): the annotation planner is
+    /// supposed to treat the pill's own frame as an exclusion rect once
+    /// it's on screen (`CafeMapScreen.chromeExclusionRects`), but a
+    /// candidate that lost specifically to that rect used to still render
+    /// as a demoted `.dot` at the SAME coordinate — a small marker peeking
+    /// out from under the pill, exactly what Bilal's screenshot showed.
+    /// Only a real numbered teardrop is an `XCUIElement` `Button` this
+    /// suite can even see (`.dot`/`.speck` are native `MapCircle` overlays
+    /// with no button of their own) — the pin-label contract
+    /// (`CafeMapScreen.pinLabel`) always contains a comma, which is enough
+    /// to tell a marker button apart from every other button on screen.
+    @MainActor
+    func testNoAnnotationButtonIntersectsThePillAfterPan() throws {
+        let app = launchFixtures()
+        XCTAssertTrue(element(app, "map-header-card").waitForExistence(timeout: wait))
+        Thread.sleep(forTimeInterval: 1.0)
+
+        panFarWest(app)
+
+        let pill = app.buttons["map-search-area"]
+        XCTAssertTrue(pill.waitForExistence(timeout: wait), "panning far enough never showed the Search this area pill")
+        // Let the re-plan settle (the pill's own geometry read + the
+        // resulting re-plan are each a separate render pass) before
+        // reading marker frames.
+        Thread.sleep(forTimeInterval: 1.0)
+
+        let pillFrame = pill.frame
+        capture("search-area-pill-clear-of-markers")
+
+        let markerButtons = app.buttons.allElementsBoundByIndex.filter { $0.label.contains(",") }
+        XCTAssertFalse(markerButtons.isEmpty, "test setup: fixtureOK must place at least one numbered teardrop on screen")
+        for marker in markerButtons {
+            XCTAssertFalse(
+                pillFrame.intersects(marker.frame),
+                "marker '\(marker.label)' at \(marker.frame) sits under the Search this area pill at \(pillFrame)"
+            )
+        }
+    }
 }
