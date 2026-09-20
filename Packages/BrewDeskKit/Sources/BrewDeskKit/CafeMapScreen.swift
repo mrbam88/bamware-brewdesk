@@ -1,4 +1,5 @@
 import MapKit
+import os
 import SwiftUI
 import UIKit
 import VenueKit
@@ -1027,27 +1028,77 @@ public struct CafeMapScreen: View {
     /// own per-call cost.
     private func cachedPlan() -> MapAnnotationPlan {
         let exclusionRects = chromeExclusionRects()
+        // bd#211: quantized to an 8pt grid before it becomes part of the
+        // memo key — `chromeExclusionRects()` is re-measured on every
+        // `body` evaluation, and a shelf-detent drag, the search-area
+        // pill's progress-state transition/animation, and the locate
+        // button's tap pulse (`.scaleEffect`, which DOES perturb the
+        // geometry a `.onGeometryChange` reports) all move these rects by
+        // sub-pixel amounts every frame. Unquantized, every one of those
+        // frames looked like a "the layout moved" cache miss and forced a
+        // full `plan()` recompute. Quantizing means only a movement that
+        // actually changes which 8pt cell a rect edge falls in busts the
+        // cache — matching the spec's ">8pt" threshold.
+        let quantizedRects = exclusionRects.map(Self.quantized)
         let key = PlanCacheKey(
             venues: model.venues,
             region: visibleRegion.map(RegionSnapshot.init),
             mapSize: mapSize,
             selectedID: selected?.id,
-            exclusionRects: exclusionRects
+            exclusionRects: quantizedRects
         )
         if let cachedKey = planCache.key, cachedKey == key, let cached = planCache.plan {
             return cached
         }
+        let signpostID = Self.signposter.makeSignpostID()
+        let state = Self.signposter.beginInterval("MapAnnotationPlanner.plan", id: signpostID)
+        let planStart = MapFrameStatsHUD.isEnabled ? CFAbsoluteTimeGetCurrent() : 0
         let plan = MapAnnotationPlanner.plan(
             venues: model.venues,
             region: visibleRegion,
             mapSize: mapSize,
             selectedVenueID: selected?.id,
-            exclusionRects: exclusionRects
+            exclusionRects: exclusionRects,
+            // bd#211: hysteresis — see `MapAnnotationPlanner.plan`'s
+            // `previousPlan` doc comment.
+            previousPlan: planCache.plan
         )
+        Self.signposter.endInterval("MapAnnotationPlanner.plan", state)
+        // bd#211: per-call planning cost + how many marker identities
+        // changed this re-plan, gated behind the same flag as the frame-
+        // stats HUD (`-UITestFrameStats`) and published through the SAME HUD
+        // label the UI tests already read — this is the "signpost/log
+        // numbers" evidence the ticket accepts in place of a full Instruments
+        // trace, and it is what let this PR attribute the stall to view
+        // churn rather than `plan()`'s own cost (see the PR description's
+        // top-5 table).
+        if MapFrameStatsHUD.isEnabled {
+            let elapsedMs = (CFAbsoluteTimeGetCurrent() - planStart) * 1000
+            let previousIDs = Set((planCache.plan?.markerItems ?? []).map(\.id))
+            let newIDs = Set(plan.markerItems.map(\.id))
+            let changed = previousIDs.symmetricDifference(newIDs).count
+            MapFrameStatsHUD.shared.recordPlan(elapsedMs: elapsedMs, changedIDs: changed)
+        }
         planCache.key = key
         planCache.plan = plan
         return plan
     }
+
+    /// Rounds each edge to the nearest 8pt — see `cachedPlan()`'s comment on
+    /// why the memo key uses this instead of the exact measured rect.
+    private static func quantized(_ rect: CGRect) -> CGRect {
+        func snap(_ value: CGFloat) -> CGFloat { (value / 8).rounded() * 8 }
+        return CGRect(
+            x: snap(rect.minX), y: snap(rect.minY),
+            width: snap(rect.width), height: snap(rect.height)
+        )
+    }
+
+    /// bd#211: OSSignposter interval around `MapAnnotationPlanner.plan(...)`
+    /// itself, so an Instruments trace (or `xcrun xctrace`'s log export) can
+    /// attribute a stalled frame to planning versus SwiftUI/MapKit applying
+    /// the resulting annotation diff.
+    private static let signposter = OSSignposter(subsystem: "com.bamware.brewdesk.map", category: "MapPlan")
 
     /// bd#210: the chrome rects the planner treats as already-occupied —
     /// (a) top of the map through the search header's bottom edge + 8pt
@@ -1077,24 +1128,37 @@ public struct CafeMapScreen: View {
     /// bd#204: the three representations are no longer mutually exclusive —
     /// a dense viewport draws all three layers at once (top-ranked score
     /// pins always on top, dots for the mid tier, clusters for whatever
-    /// overflows both), so this renders every non-empty layer unconditionally
-    /// rather than switching on a single case.
+    /// overflows both).
+    ///
+    /// bd#211: rendered from ONE `ForEach` over `plan.markerItems`, not three
+    /// separate ones keyed by kind (the pre-#211 shape). A collision-driven
+    /// demotion (a venue that was a pin last plan becomes a dot this plan,
+    /// or vice versa) keeps the SAME identity slot in a single `ForEach`, so
+    /// MapKit updates that one annotation view's content in place. Split
+    /// across three `ForEach`s, the same venue id moving from the `pins`
+    /// collection to the `dots` collection is structurally a removal from
+    /// one list and an insertion into an unrelated one — MapKit has no way
+    /// to correlate them, so it tears down and rebuilds the `MKAnnotationView`
+    /// instead of restyling it. That teardown/rebuild across dozens of
+    /// markers on every pan-settle re-plan is the #211 stall.
     @MapContentBuilder
     private func annotations(for plan: MapAnnotationPlan) -> some MapContent {
-        ForEach(plan.pins) { venue in
-            Annotation("", coordinate: coordinate(of: venue)) {
-                pinButton(for: venue, isSelected: selected?.id == venue.id)
+        ForEach(plan.markerItems) { item in
+            Annotation("", coordinate: item.coordinate) {
+                marker(for: item)
             }
         }
-        ForEach(plan.dots) { venue in
-            Annotation("", coordinate: coordinate(of: venue)) {
-                dotButton(for: venue)
-            }
-        }
-        ForEach(plan.clusters) { cluster in
-            Annotation("", coordinate: cluster.coordinate) {
-                clusterButton(for: cluster)
-            }
+    }
+
+    @ViewBuilder
+    private func marker(for item: MapMarkerItem) -> some View {
+        switch item.payload {
+        case .pin(let venue):
+            pinButton(for: venue, isSelected: selected?.id == venue.id)
+        case .dot(let venue):
+            dotButton(for: venue)
+        case .cluster(let cluster):
+            clusterButton(for: cluster)
         }
     }
 
@@ -1117,7 +1181,7 @@ public struct CafeMapScreen: View {
         Button {
             selected = venue
         } label: {
-            VenueScorePin(venue: venue, isSelected: isSelected)
+            VenueScorePin(venue: venue, isSelected: isSelected).equatable()
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Self.pinLabel(for: venue))
@@ -1129,7 +1193,7 @@ public struct CafeMapScreen: View {
         Button {
             selected = venue
         } label: {
-            VenueScoreDot(venue: venue)
+            VenueScoreDot(venue: venue).equatable()
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Self.pinLabel(for: venue))
@@ -1157,7 +1221,7 @@ public struct CafeMapScreen: View {
                 withAnimation(.snappy) { position = .region(zoomed) }
             }
         } label: {
-            VenueClusterPill(cluster: cluster)
+            VenueClusterPill(cluster: cluster).equatable()
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("map-cluster")
@@ -1527,4 +1591,46 @@ private struct PlanCacheKey: Equatable {
 private final class PlanCacheBox {
     var key: PlanCacheKey?
     var plan: MapAnnotationPlan?
+}
+
+// MARK: - bd#211: unified marker identity for rendering
+
+/// What one merged marker slot draws — see `annotations(for:)`'s doc comment
+/// for why pins/dots/clusters render from one list instead of three.
+private enum MapMarkerPayload {
+    case pin(Venue)
+    case dot(Venue)
+    case cluster(VenueCluster)
+}
+
+private struct MapMarkerItem: Identifiable {
+    /// A venue's id for `.pin`/`.dot` — unchanged by which kind it currently
+    /// renders as, so a pin ⇄ dot demotion keeps this identity. A cluster's
+    /// own id for `.cluster` (grid-stable for ordinary stacks, member-set-
+    /// stable for "homeless" ones — see `MapAnnotationPlanner`'s
+    /// `homelessMemberKey`).
+    let id: String
+    let payload: MapMarkerPayload
+
+    var coordinate: CLLocationCoordinate2D {
+        switch payload {
+        case .pin(let venue), .dot(let venue):
+            CLLocationCoordinate2D(latitude: venue.lat, longitude: venue.lng)
+        case .cluster(let cluster):
+            cluster.coordinate
+        }
+    }
+}
+
+extension MapAnnotationPlan {
+    /// Pins, dots, and clusters merged into one identity-stable list for
+    /// SwiftUI's `ForEach` — see `CafeMapScreen.annotations(for:)`.
+    fileprivate var markerItems: [MapMarkerItem] {
+        var items: [MapMarkerItem] = []
+        items.reserveCapacity(annotationCount)
+        for venue in pins { items.append(MapMarkerItem(id: venue.id, payload: .pin(venue))) }
+        for venue in dots { items.append(MapMarkerItem(id: venue.id, payload: .dot(venue))) }
+        for cluster in clusters { items.append(MapMarkerItem(id: cluster.id, payload: .cluster(cluster))) }
+        return items
+    }
 }

@@ -16,9 +16,22 @@ import VenueKit
 /// outline pin with no number instead of the engine's flat fallback score —
 /// the fill is a fixed grey, never red or green (founder is red-green
 /// colorblind), so it can never be mistaken for a low/high tier.
-struct VenueScorePin: View {
+struct VenueScorePin: View, Equatable {
     let venue: Venue
     let isSelected: Bool
+
+    /// bd#211: SwiftUI skips re-diffing a marker's whole subtree once its
+    /// own inputs compare equal — `Map` re-hosts every surviving annotation
+    /// view on a re-plan even when its identity is unchanged (see
+    /// `CafeMapScreen.annotations(for:)`'s doc comment), so this is real
+    /// savings for the majority of markers a pan settle re-plans but does
+    /// NOT actually change the appearance of.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.venue.id == rhs.venue.id
+            && lhs.venue.workScore == rhs.venue.workScore
+            && lhs.venue.isObserved == rhs.venue.isObserved
+            && lhs.isSelected == rhs.isSelected
+    }
 
     var body: some View {
         Group {
@@ -68,8 +81,16 @@ struct VenueScorePin: View {
 /// not just color/lightness: unobserved is a hollow ring (no fill),
 /// observed is a filled disc — so even the lightest observed step reads as
 /// unmistakably different from "not checked yet" at a glance.
-struct VenueScoreDot: View {
+struct VenueScoreDot: View, Equatable {
     let venue: Venue
+
+    /// bd#211: see `VenueScorePin.==` — same reasoning, dot styling only
+    /// ever depends on tier/observed state.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.venue.id == rhs.venue.id
+            && lhs.venue.workScore == rhs.venue.workScore
+            && lhs.venue.isObserved == rhs.venue.isObserved
+    }
 
     var body: some View {
         Group {
@@ -122,8 +143,17 @@ struct AppleUnverifiedPin: View {
 /// count — never the cell's best score, however evidenced the cell is. The
 /// shape difference (rect stack vs. circle) is what keeps the two legible in
 /// greyscale, not just the color (founder is red-green colorblind).
-struct VenueClusterPill: View {
+struct VenueClusterPill: View, Equatable {
     let cluster: VenueCluster
+
+    /// bd#211: see `VenueScorePin.==` — a stack's appearance depends only on
+    /// count/score/observed state, never its exact rendered position.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.cluster.id == rhs.cluster.id
+            && lhs.cluster.count == rhs.cluster.count
+            && lhs.cluster.bestScore == rhs.cluster.bestScore
+            && lhs.cluster.hasObservedVenue == rhs.cluster.hasObservedVenue
+    }
 
     /// "128", capped to "999+" only once the pill genuinely can't spell out
     /// the count. bd#209: "99+" was hiding real information at exactly the

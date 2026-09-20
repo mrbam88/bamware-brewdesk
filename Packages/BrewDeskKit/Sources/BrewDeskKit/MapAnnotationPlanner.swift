@@ -118,7 +118,7 @@ public enum MapAnnotationPlanner {
     /// between two markers, not just breathing room inside one.
     public static let footprintPadding: CGFloat = 4
 
-    enum MarkerKind {
+    enum MarkerKind: Equatable {
         case pin, stack, dot
 
         /// Visual size, before `footprintPadding`.
@@ -173,12 +173,40 @@ public enum MapAnnotationPlanner {
     ///   entirely on this rescue path (every venue renders as a plain pin,
     ///   same as before bd#209) rather than laid out against a region
     ///   already known to be wrong.
+    /// - Parameter previousPlan: the last plan actually rendered, if any
+    ///   (bd#211 incremental-placement hysteresis). When supplied, a venue
+    ///   that was ALREADY a pin (or already a dot) last time is given first
+    ///   crack at keeping that exact footprint this time, ahead of other
+    ///   equally-eligible candidates — see the collision-priority reordering
+    ///   at each phase below. Profiling (#211) found the re-plan itself
+    ///   cheap (worst call ~40ms) but nearly the whole annotation set losing
+    ///   and regaining its identity on every settle — not because those
+    ///   venues left the viewport, but because a fresh score/distance sort
+    ///   reshuffles which of several EQUALLY eligible venues wins a slot
+    ///   purely from candidates entering/leaving elsewhere in view.
+    ///
+    ///   This deliberately does NOT change who is ELIGIBLE for a pin or dot
+    ///   slot — a first cut that let a previously-placed venue keep its kind
+    ///   outright (skipping the top-`pinLimit`/nearest-`dotCandidateLimit`
+    ///   gates entirely) broke `testClustersZoomToVenuesAndDetailTapThrough`
+    ///   in the app suite: early low-count plans during initial load had
+    ///   room for individual markers, and hysteresis kept "locking in" that
+    ///   representation as more venues streamed in, so the city-wide view
+    ///   never fell back to clusters. Reordering PRIORITY within the exact
+    ///   same eligible-candidate set can't change which representation a
+    ///   dense viewport ultimately settles into, only which of several
+    ///   equally-ranked candidates wins a contested footprint — so the
+    ///   "visible result must not change" requirement holds by construction,
+    ///   not by re-testing every case. `nil` (the default) reproduces the
+    ///   exact pre-#211 behaviour — every existing call site and test that
+    ///   never passes this is unaffected.
     public static func plan(
         venues: [Venue],
         region: MKCoordinateRegion?,
         mapSize: CGSize = .zero,
         selectedVenueID: String? = nil,
-        exclusionRects: [CGRect] = []
+        exclusionRects: [CGRect] = [],
+        previousPlan: MapAnnotationPlan? = nil
     ) -> MapAnnotationPlan {
         guard let region else {
             return MapAnnotationPlan(pins: venues, dots: [], clusters: [])
@@ -224,8 +252,20 @@ public enum MapAnnotationPlanner {
         let pinCandidates = topScoringObserved(
             visible.filter { $0.id != selectedVenue?.id }, limit: pinLimit
         )
+        // bd#211: iteration order only — a candidate that was ALSO a pin in
+        // `previousPlan` is tried first, so on a collision between two
+        // otherwise-tied candidates the one already occupying that screen
+        // space keeps it. The ELIGIBLE SET above (`pinCandidates`) is
+        // unchanged, so this can never place a venue that wasn't already
+        // going to compete for a pin regardless of history.
+        let previousPinIDs = Set((previousPlan?.pins ?? []).map(\.id))
+        let orderedPinCandidates = previousPinIDs.isEmpty ? pinCandidates : pinCandidates.sorted { lhs, rhs in
+            let lhsCarried = previousPinIDs.contains(lhs.id)
+            let rhsCarried = previousPinIDs.contains(rhs.id)
+            return lhsCarried && !rhsCarried
+        }
         var demotedToDots: [Venue] = []
-        for candidate in pinCandidates {
+        for candidate in orderedPinCandidates {
             guard totalPlaced < maxAnnotations else {
                 demotedToDots.append(candidate)
                 continue
@@ -281,7 +321,16 @@ public enum MapAnnotationPlanner {
         // pass ends is simply never drawn — a deliberate drop, not a bug
         // (bd#209 spec: "absorbed into the nearest stack … or dropped").
         var homeless: [ScreenCellKey: [Venue]] = [:]
-        let orderedDotAttempts = demotedToDots.sorted(by: byScoreDescendingThenID) + nearestDotCandidates
+        let baseDotAttempts = demotedToDots.sorted(by: byScoreDescendingThenID) + nearestDotCandidates
+        // bd#211: same iteration-order-only priority as the pin phase above
+        // — a candidate that was ALSO a dot in `previousPlan` is tried
+        // first within this UNCHANGED candidate set.
+        let previousDotIDs = Set((previousPlan?.dots ?? []).map(\.id))
+        let orderedDotAttempts = previousDotIDs.isEmpty ? baseDotAttempts : baseDotAttempts.sorted { lhs, rhs in
+            let lhsCarried = previousDotIDs.contains(lhs.id)
+            let rhsCarried = previousDotIDs.contains(rhs.id)
+            return lhsCarried && !rhsCarried
+        }
         for candidate in orderedDotAttempts {
             guard totalPlaced < maxAnnotations else { break }
             let point = projector.point(for: coordinate(of: candidate))
@@ -300,7 +349,14 @@ public enum MapAnnotationPlanner {
             homeless[key, default: []].append(candidate)
             if homeless[key]!.count >= 3, totalPlaced < maxAnnotations {
                 let members = homeless.removeValue(forKey: key)!
-                let synthesized = aggregate(members, id: "homeless-\(key.cx)-\(key.cy)")
+                // bd#211: id from the MEMBER SET, not the screen-space bucket
+                // key — `key.cx/cy` shift on every pan even when the exact
+                // same venues fall homeless again, which handed SwiftUI a
+                // brand-new annotation identity (and forced MapKit to tear
+                // down and rebuild the stack's view) on nearly every settle.
+                // A sorted, joined member-id string is deterministic for the
+                // same membership regardless of where it lands on screen.
+                let synthesized = aggregate(members, id: "homeless-\(homelessMemberKey(members))")
                 let before = placedStacks.count
                 place(stackCandidate: synthesized, projector: projector, grid: grid, placedStacks: &placedStacks)
                 if placedStacks.count > before { totalPlaced += 1 }
@@ -309,6 +365,14 @@ public enum MapAnnotationPlanner {
 
         let clustersOut = placedStacks.map(\.asVenueCluster).sorted { $0.id < $1.id }
         return MapAnnotationPlan(pins: pinsOut, dots: dotsOut, clusters: clustersOut)
+    }
+
+    /// Deterministic key for a "homeless" stack's identity (bd#211): sorted
+    /// member venue ids joined, so the id depends only on WHICH venues
+    /// grouped together, never on where the group happened to land on
+    /// screen this particular `plan()` call.
+    private static func homelessMemberKey(_ members: [Venue]) -> String {
+        members.map(\.id).sorted().joined(separator: ",")
     }
 
     private static func coordinate(of venue: Venue) -> CLLocationCoordinate2D {

@@ -635,4 +635,77 @@ struct MapAnnotationPlannerTests {
         let densePlan = MapAnnotationPlanner.plan(venues: dense, region: region(), mapSize: wideMapSize)
         #expect(!densePlan.containsVenue(id: "absent"), "clusters render no individual venue")
     }
+
+    // MARK: - bd#211: identity stability across a re-plan
+
+    /// All marker ids (pin/dot venue ids + cluster ids) a plan renders.
+    private func markerIDs(_ plan: MapAnnotationPlan) -> Set<String> {
+        Set(plan.pins.map(\.id) + plan.dots.map(\.id) + plan.clusters.map(\.id))
+    }
+
+    /// `region()` nudged by `fraction` of its own span, same zoom — the
+    /// shape of a real drag well inside `MapAnnotationPlanner.cullMargin`.
+    private func nudged(_ base: MKCoordinateRegion, fraction: Double) -> MKCoordinateRegion {
+        MKCoordinateRegion(
+            center: CLLocationCoordinate2D(
+                latitude: base.center.latitude + base.span.latitudeDelta * fraction,
+                longitude: base.center.longitude + base.span.longitudeDelta * fraction
+            ),
+            span: base.span
+        )
+    }
+
+    /// The production shape (`CafeMapScreen.cachedPlan()` always threads the
+    /// last rendered plan through `previousPlan`): a dense, contested
+    /// viewport — where a fresh top-N/nearest-N sort would otherwise
+    /// reshuffle which venues win a pin/dot slot — must still keep ≥90% of
+    /// its marker identities across a small (5%) pan once hysteresis is
+    /// wired in. This is the #211 fix's own acceptance bar; without
+    /// `previousPlan` threaded through, the same scenario churns well below
+    /// it (the regression this ticket fixes).
+    @Test func markerIdentityIsMostlyStableAcrossASmallPanWithHysteresis() {
+        let venues = grid(count: 150, extent: 0.02)
+        let base = region()
+        let first = MapAnnotationPlanner.plan(venues: venues, region: base, mapSize: mapSize)
+        let panned = nudged(base, fraction: 0.05)
+        let second = MapAnnotationPlanner.plan(
+            venues: venues, region: panned, mapSize: mapSize, previousPlan: first
+        )
+        let survived = markerIDs(first).intersection(markerIDs(second)).count
+        let ratio = Double(survived) / Double(markerIDs(first).count)
+        #expect(ratio >= 0.9, "expected ≥90% of marker ids to survive a 5% pan, got \(ratio) (\(survived)/\(markerIDs(first).count))")
+    }
+
+    /// Hysteresis (bd#211) only ever reorders WHICH equally-eligible
+    /// candidate wins a contested footprint — it must never let a
+    /// previously-placed venue bypass a rule the fresh computation still
+    /// enforces: no marker-vs-marker overlap, the `maxAnnotations` cap, pin/
+    /// dot exclusivity, and an unobserved venue never keeping a stale pin.
+    @Test func hysteresisNeverViolatesCollisionOrEligibilityRules() {
+        let venues = grid(count: 300)
+        let base = region()
+        let first = MapAnnotationPlanner.plan(venues: venues, region: base, mapSize: mapSize)
+        let panned = nudged(base, fraction: 0.1)
+        let second = MapAnnotationPlanner.plan(
+            venues: venues, region: panned, mapSize: mapSize, previousPlan: first
+        )
+        assertNoOverlaps(footprints(for: second, region: panned, mapSize: mapSize))
+        #expect(second.annotationCount <= MapAnnotationPlanner.maxAnnotations)
+        let pinIDs = Set(second.pins.map(\.id))
+        #expect(second.dots.allSatisfy { !pinIDs.contains($0.id) }, "hysteresis let a venue be both a pin and a dot")
+        #expect(second.pins.allSatisfy { $0.isObserved }, "hysteresis let an unobserved venue keep a stale pin")
+    }
+
+    /// Same two inputs (including `previousPlan`) must still plan
+    /// identically — hysteresis reorders candidates deterministically from
+    /// `previousPlan`'s own contents, not from any hidden mutable state.
+    @Test func planWithPreviousPlanStaysDeterministic() {
+        let venues = grid(count: 300)
+        let base = region()
+        let first = MapAnnotationPlanner.plan(venues: venues, region: base, mapSize: mapSize)
+        let panned = nudged(base, fraction: 0.1)
+        let second = MapAnnotationPlanner.plan(venues: venues, region: panned, mapSize: mapSize, previousPlan: first)
+        let third = MapAnnotationPlanner.plan(venues: venues, region: panned, mapSize: mapSize, previousPlan: first)
+        #expect(second == third)
+    }
 }
