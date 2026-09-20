@@ -4,36 +4,25 @@ import Testing
 import VenueKit
 @testable import BrewDeskKit
 
-/// Representation planning for the map (brewdesk#54, re-shaped bd#204, made
-/// collision-free bd#209): viewport culling, screen-space collision-free
-/// pin/dot/stack placement, and stable grid clustering as the stack-
-/// candidate source.
+/// Marker planning for the map (brewdesk#54, re-shaped bd#204/#209,
+/// replaced outright by bd#212's "micro teardrops" — no cluster/stack
+/// grouping of any kind remains; every venue plans its OWN marker, sized by
+/// the settled camera's real metres-per-screen-point (supervisor review:
+/// keying off the requested region's raw degree span didn't survive the
+/// phone's actual aspect ratio), and demoted to a small dot only on a
+/// genuine screen-space collision with a better-scored teardrop).
 struct MapAnnotationPlannerTests {
 
     // MARK: - Helpers
 
-    /// A realistic phone-portrait map viewport — every test below either
-    /// passes this explicitly or relies on `MapAnnotationPlanner
-    /// .fallbackMapSize`, which is the same size.
     private let mapSize = CGSize(width: 390, height: 660)
-
-    /// A large virtual canvas used only by `wellSeparatedGrid` scenarios.
-    /// `wellSeparatedGrid` needs BOTH a small enough total degree-extent to
-    /// stay inside the region's cull margin (so `plan()`'s "cluster the
-    /// WHOLE dataset" step, brewdesk#54's zero-churn design, never pulls in
-    /// off-screen venues the test isn't reasoning about) AND a wide enough
-    /// pixel spread per step to keep every footprint collision-free — a big
-    /// canvas gets both at once without the step size itself having to grow.
+    /// A large virtual canvas so a fixed-degree step between venues is also
+    /// a large-enough pixel step to stay collision-free regardless of
+    /// marker size at the region's span.
     private let wideMapSize = CGSize(width: 2_400, height: 2_400)
 
-    /// `observed: false` produces a venue with no scored claims at all
-    /// (`isObserved == false`) — bd#159's "not checked yet" case, and
-    /// bd#204's "never eligible for a top-pin slot" case.
     private func venue(id: String, lat: Double, lng: Double, score: Int = 50, observed: Bool = true) -> Venue {
         let observedAt = "2026-08-01T00:00:00Z"
-        // `observed: false` gives every claim an `estimate` source at
-        // sub-threshold confidence — `Venue.isObserved`'s exact "no real
-        // evidence" definition (same pattern as `SavedVenuesStoreTests`).
         let unobservedClaim = Claim(value: "unknown", source: "estimate", confidence: 0.3, observedAt: observedAt)
         return Venue(
             id: id,
@@ -67,7 +56,8 @@ struct MapAnnotationPlannerTests {
         )
     }
 
-    /// `count` venues spread evenly inside the given box.
+    /// `count` venues spread evenly inside the given box — dense enough to
+    /// exercise collision handling.
     private func grid(
         count: Int,
         centerLat: Double = 40.7359,
@@ -87,19 +77,13 @@ struct MapAnnotationPlannerTests {
         }
     }
 
-    /// A grid spaced far enough apart, at `region()`'s default span and
-    /// `mapSize`, that NO two footprints (pin, dot, or stack) can ever
-    /// collide — every distinct cell differs from every other by at least
-    /// one `step` in latitude or longitude, and a single step alone clears
-    /// even the largest (stack) footprint on both axes. Tests that want to
-    /// reason about exact counts use this instead of `grid(...)`, which
-    /// packs venues close enough together to deliberately exercise
-    /// collision handling.
-    private func wellSeparatedGrid(count: Int, observed: Bool = true, scoreOffset: Int = 0) -> [Venue] {
+    /// A grid spaced far enough apart, at the given step/mapSize, that no
+    /// two footprints can ever collide.
+    private func wellSeparatedGrid(
+        count: Int, step: Double, centerLat: Double = 40.7359, centerLng: Double = -73.9911,
+        observed: Bool = true, scoreOffset: Int = 0
+    ) -> [Venue] {
         let columns = Int(Double(count).squareRoot().rounded(.up))
-        let step = 0.0015
-        let centerLat = 40.7359
-        let centerLng = -73.9911
         return (0..<count).map { index in
             venue(
                 id: "s\(index)",
@@ -118,40 +102,48 @@ struct MapAnnotationPlannerTests {
         )
     }
 
-    /// Every footprint `plan` would draw, in the same screen space
-    /// `MapAnnotationPlanner.plan` used internally — reconstructed here
-    /// (via the same `ScreenProjector`/`MarkerKind` the planner uses,
-    /// visible through `@testable import`) so tests can assert "nothing
-    /// overlaps" directly against what a viewer would actually see.
-    private func footprints(for plan: MapAnnotationPlan, region: MKCoordinateRegion, mapSize: CGSize) -> [AABB] {
+    /// A region whose longitude span resolves to approximately the given
+    /// metres-per-point at `mapSize`'s width and the region's own latitude
+    /// — lets tests reason directly in the unit the planner actually sizes
+    /// from, instead of back-solving a span by hand.
+    private func region(forMetersPerPoint mpp: Double, mapWidth: CGFloat, lat: Double = 40.7335, lng: Double = -74.0027) -> MKCoordinateRegion {
+        let metersPerDegreeLng = 111_320.0 * cos(lat * .pi / 180)
+        let span = mpp * Double(mapWidth) / metersPerDegreeLng
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: lat, longitude: lng),
+            span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
+        )
+    }
+
+    private func coordinate(of venue: Venue) -> CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: venue.lat, longitude: venue.lng)
+    }
+
+    /// Every TEARDROP footprint `plan` would draw, in the same screen space
+    /// `MapAnnotationPlanner.plan` used internally — `.dot`/`.speck` are
+    /// native `MapCircle` overlays with no discrete screen-space footprint
+    /// to collide-check any more (see the planner's own doc comments).
+    private func teardropFootprints(for plan: MapAnnotationPlan, region: MKCoordinateRegion, mapSize: CGSize) -> [AABB] {
         let projector = ScreenProjector(region: region, size: mapSize)
-        var boxes: [AABB] = []
-        for pin in plan.pins {
-            boxes.append(projector.footprint(.pin, at: CLLocationCoordinate2D(latitude: pin.lat, longitude: pin.lng)))
+        return plan.teardrops.compactMap { placement in
+            guard let diameter = placement.kind.teardropDiameter else { return nil }
+            return MapAnnotationPlanner.teardropFootprint(diameter: diameter, at: projector.point(for: coordinate(of: placement.venue)))
         }
-        for dot in plan.dots {
-            boxes.append(projector.footprint(.dot, at: CLLocationCoordinate2D(latitude: dot.lat, longitude: dot.lng)))
-        }
-        for cluster in plan.clusters {
-            boxes.append(projector.footprint(.stack, at: cluster.coordinate))
-        }
-        return boxes
     }
 
     private func assertNoOverlaps(_ boxes: [AABB], sourceLocation: SourceLocation = #_sourceLocation) {
         guard boxes.count > 1 else { return }
         for i in 0..<(boxes.count - 1) {
             for j in (i + 1)..<boxes.count {
-                #expect(!boxes[i].intersects(boxes[j]), "markers \(i) and \(j) overlap", sourceLocation: sourceLocation)
+                #expect(!boxes[i].intersects(boxes[j]), "teardrops \(i) and \(j) overlap", sourceLocation: sourceLocation)
             }
         }
     }
 
-    // MARK: - Culling
+    // MARK: - Culling (unchanged from bd#209/#210)
 
     @Test func cullingKeepsVenuesInsideRegionAndMargin() {
         let inside = venue(id: "inside", lat: 40.7359, lng: -73.9911)
-        // 0.035 span + 50% margin ⇒ padded half-height 0.035·(0.5+0.5) = 0.035°.
         let inMargin = venue(id: "margin", lat: 40.7359 + 0.030, lng: -73.9911)
         let outside = venue(id: "outside", lat: 40.7359 + 0.05, lng: -73.9911)
         let farOutside = venue(id: "far", lat: 40.9, lng: -73.7)
@@ -166,278 +158,208 @@ struct MapAnnotationPlannerTests {
         #expect(culled.map(\.id) == venues.map(\.id))
     }
 
-    // MARK: - bd#209: collision-free placement
+    // MARK: - bd#212 (supervisor revision): metres-per-point sizing
 
-    @Test func wellSeparatedVenuesAllRenderAsIndividualPinsAndDots() {
-        // 25 well-separated observed venues: none collide, so all 25 win a
-        // pin slot outright.
-        let pins = wellSeparatedGrid(count: MapAnnotationPlanner.pinLimit)
-        let plan = MapAnnotationPlanner.plan(venues: pins, region: region(), mapSize: wideMapSize)
-        #expect(plan.pins.count == MapAnnotationPlanner.pinLimit)
+    @Test func headDiameterClampsAtBothEndsAndInterpolatesBetweenStops() {
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 20) == 4, "zoomed out clamps at the 4pt floor")
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 9.0) == 4)
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 5.4) == 11.5, "numbers (>= 11 pt) hold through a normal neighborhood view")
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 3.6) == 12.5)
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 1.8) == 17)
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 0.9) == 20)
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 0.1) == 20, "closer than the closest stop clamps at the 20pt ceiling")
+        // Midpoint (on the LOG scale) between two stops lands strictly
+        // between their diameters.
+        let midMPP = (9.0 * 5.4).squareRoot()
+        let mid = MapAnnotationPlanner.headDiameter(forMetersPerPoint: midMPP)
+        #expect(mid > 4 && mid < 12)
+    }
+
+    @Test func headDiameterIsMonotonicAsMetersPerPointShrinks() {
+        var previous: CGFloat = 0
+        var mpp = 10.0
+        while mpp >= 0.5 {
+            let diameter = MapAnnotationPlanner.headDiameter(forMetersPerPoint: mpp)
+            #expect(diameter >= previous, "diameter must never shrink as the map zooms IN (mpp \(mpp))")
+            previous = diameter
+            mpp -= 0.2
+        }
+    }
+
+    @Test func metersPerPointReflectsRealVisibleWidthNotRawDegreeSpan() {
+        // Same span (same real-world visible width) spread across a WIDER
+        // map means each point covers LESS real-world distance — metres/
+        // point must shrink as the map gets wider, not grow. This is the
+        // exact aspect-ratio sensitivity the raw-span approach missed: two
+        // devices requesting the identical region span render different
+        // metres/point once MapKit fits it to each one's actual width.
+        let testRegion = region(span: 0.02)
+        let narrow = MapAnnotationPlanner.metersPerPoint(region: testRegion, mapWidth: 300)
+        let wide = MapAnnotationPlanner.metersPerPoint(region: testRegion, mapWidth: 600)
+        #expect(wide < narrow)
+        #expect(narrow / wide > 1.9 && narrow / wide < 2.1, "doubling the map width should roughly halve metres/point for the same span")
+    }
+
+    // MARK: - bd#212: collision-free teardrop placement
+
+    @Test func wellSeparatedRatedVenuesAllRenderAsFullTeardropsWithNumbers() {
+        // 1.8 m/pt ⇒ 17pt heads, well above both the shape and number
+        // thresholds; a generous step keeps every footprint collision-free.
+        let venues = wellSeparatedGrid(count: 30, step: 0.0015)
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: wideMapSize.width)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: wideMapSize)
+        #expect(plan.markers.count == 30)
+        #expect(plan.teardrops.count == 30)
         #expect(plan.dots.isEmpty)
-        #expect(plan.clusters.isEmpty)
-        assertNoOverlaps(footprints(for: plan, region: region(), mapSize: wideMapSize))
+        for marker in plan.teardrops {
+            #expect(marker.showsNumber, "a 17pt un-demoted teardrop must show its number")
+        }
+        assertNoOverlaps(teardropFootprints(for: plan, region: testRegion, mapSize: wideMapSize))
     }
 
-    @Test func midDensityWellSeparatedFillsPinsThenDots() {
-        let extraDots = 50
-        let venues = wellSeparatedGrid(count: MapAnnotationPlanner.pinLimit + extraDots)
-        let plan = MapAnnotationPlanner.plan(venues: venues, region: region(), mapSize: wideMapSize)
-        #expect(plan.pins.count == MapAnnotationPlanner.pinLimit)
-        #expect(plan.dots.count == extraDots)
-        #expect(plan.clusters.isEmpty)
-        assertNoOverlaps(footprints(for: plan, region: region(), mapSize: wideMapSize))
+    @Test func denselyPackedCandidatesDemoteToDotsInsteadOfOverlapping() {
+        // Two observed venues close enough that their TEARDROP footprints
+        // (17+2=19pt side, half 9.5) collide, but the tight "head diameter +
+        // 1pt, tail excluded" box means only genuinely overlapping heads
+        // ever demote.
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width)
+        let a = venue(id: "a", lat: 40.7335, lng: -74.0027, score: 90)
+        let b = venue(id: "b", lat: 40.7335 + 0.00006, lng: -74.0027, score: 88)
+        let plan = MapAnnotationPlanner.plan(venues: [a, b], region: testRegion, mapSize: mapSize)
+        #expect(plan.markers.count == 2, "the loser must still render, demoted, not vanish")
+        #expect(plan.teardrops.contains { $0.id == "a" }, "higher-scored venue must win the teardrop")
+        #expect(plan.dots.contains { $0.id == "b" }, "lower-scored venue must be demoted to a dot")
+        let loser = plan.markers.first { $0.id == "b" }
+        #expect(loser?.showsNumber == false, "a demoted dot never shows a number")
+        assertNoOverlaps(teardropFootprints(for: plan, region: testRegion, mapSize: mapSize))
     }
 
-    @Test func overflowPastTheDotCandidateLimitClustersWithoutLosingVenues() {
-        // 25 pins + 200 dot candidates + 50 genuine grid-cluster overflow —
-        // note `pinLimit + dotCandidateLimit` (225) already exceeds
-        // `maxAnnotations` (120) on its own, so this ALSO exercises the
-        // global cap: not every dot candidate that's considered gets placed
-        // (`dotCandidateLimit` is just the pool size collision/the cap then
-        // trims), but the 50 venues that never even became dot candidates
-        // must still show up, grouped into a stack — that's the actual
-        // "overflow past the dot candidate limit" case this test names.
-        let overflow = 50
-        let count = MapAnnotationPlanner.pinLimit + MapAnnotationPlanner.dotCandidateLimit + overflow
-        let venues = wellSeparatedGrid(count: count)
-        let plan = MapAnnotationPlanner.plan(venues: venues, region: region(), mapSize: wideMapSize)
-        #expect(plan.pins.count == MapAnnotationPlanner.pinLimit)
-        #expect(!plan.clusters.isEmpty, "overflow past the dot candidate limit must cluster")
-        // `pinLimit + dotCandidateLimit` alone already exceeds
-        // `maxAnnotations`, so the global cap ALSO trims some dot
-        // candidates before they're ever attempted — those are a
-        // deliberate drop (spec: "or dropped"), not a bug, so this checks
-        // "never double-counted, never more than exists" rather than exact
-        // conservation.
-        let individuallyRendered = plan.pins.count + plan.dots.count
-        let clusteredCount = plan.clusters.reduce(0) { $0 + $1.count }
-        #expect(individuallyRendered + clusteredCount <= count)
-        // But the 50 venues that never even competed for a pin or dot slot
-        // (the genuine "overflow past the dot candidate limit" case this
-        // test names) are never subject to that cap-driven drop — the
-        // stacks phase runs before dots and isn't anywhere near the cap.
-        #expect(clusteredCount >= overflow, "every venue that never became a dot candidate must still be represented")
-        #expect(plan.annotationCount <= MapAnnotationPlanner.maxAnnotations)
-        assertNoOverlaps(footprints(for: plan, region: region(), mapSize: wideMapSize))
+    @Test func wellSeparatedVenuesNeverDemoteEvenAtRealisticCafeDensity() {
+        // Regression for the supervisor's hood-zoom finding: at 3.6 m/pt a
+        // 12pt head's footprint (12+1·2=14pt side) needs >14·3.6≈50.4m of
+        // real-world clearance on at least one axis to stay collision-free.
+        // 70m apart clears that with margin on both lat AND lng (using the
+        // LONGITUDE metres-per-degree, the smaller of the two at this
+        // latitude, so the same degree-step is >=70m on both axes).
+        let lat = 40.7335
+        let metersApart = 70.0
+        let metersPerDegreeLng = 111_320.0 * cos(lat * .pi / 180)
+        let stepDegrees = metersApart / metersPerDegreeLng
+        let venues = wellSeparatedGrid(count: 20, step: stepDegrees, centerLat: lat, centerLng: -74.0027, observed: true)
+        let testRegion = region(forMetersPerPoint: 3.6, mapWidth: mapSize.width, lat: lat, lng: -74.0027)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize)
+        #expect(plan.teardrops.count == 20, "70m-separated venues at 3.6 m/pt (12pt heads) must not demote")
+        assertNoOverlaps(teardropFootprints(for: plan, region: testRegion, mapSize: mapSize))
     }
 
-    @Test func denselyPackedPinCandidatesDemoteToDotsInsteadOfOverlapping() {
-        // Two observed venues close enough that their PIN footprints
-        // (44+8pt, half-width 26) overlap, but far enough apart that a DOT
-        // footprint (12+8pt, half-width 10) does not — only one can win the
-        // pin slot, but the loser must still render, demoted to a dot,
-        // rather than either overlapping the winner or vanishing (bd#209's
-        // whole point — #208 only ever separated pins from clusters, never
-        // pin-vs-pin). ~0.0025° of latitude ≈ 47pt at this region/mapSize:
-        // under the 52pt pin-pin threshold, over the 36pt pin-dot one.
-        let a = venue(id: "a", lat: 40.7359, lng: -73.9911, score: 90)
-        let b = venue(id: "b", lat: 40.7359 + 0.0025, lng: -73.9911, score: 88)
-        let plan = MapAnnotationPlanner.plan(venues: [a, b], region: region(), mapSize: mapSize)
-        #expect(plan.pins.count == 1, "only one of the two colliding candidates can be a pin")
-        #expect(plan.pins.first?.id == "a", "the higher-scored candidate wins the pin slot")
-        #expect(plan.dots.map(\.id) == ["b"], "the loser still renders, demoted to a dot")
-        assertNoOverlaps(footprints(for: plan, region: region(), mapSize: mapSize))
+    @Test func belowShapeThresholdEveryRatedVenueIsADotWithNoCollisionWork() {
+        // 20 m/pt is past the 7.2 m/pt floor — every rated venue renders as
+        // a dot, none even attempt a teardrop, so density here can't demote
+        // anything (there's nothing left to demote).
+        let venues = grid(count: 40, extent: 0.002, observed: true)
+        let testRegion = region(forMetersPerPoint: 20, mapWidth: mapSize.width)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize)
+        #expect(plan.teardrops.isEmpty)
+        #expect(plan.dots.count == plan.markers.count)
     }
 
-    @Test func selectedVenueAlwaysPlacedAndReservesItsFootprint() {
-        let a = venue(id: "a", lat: 40.7359, lng: -73.9911, score: 50)
+    @Test func selectedVenueAlwaysPlacedAtFixedSizeAndReservesItsFootprint() {
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width)
+        let a = venue(id: "a", lat: 40.7335, lng: -74.0027, score: 50)
         // Deliberately near-identical coordinates and a HIGHER score than
-        // the selected venue — without the bd#209 seeding pass this would
-        // normally out-rank "a" for the pin slot.
-        let b = venue(id: "b", lat: 40.735901, lng: -73.991101, score: 95)
-        let plan = MapAnnotationPlanner.plan(venues: [a, b], region: region(), mapSize: mapSize, selectedVenueID: "a")
-        #expect(plan.pins.contains { $0.id == "a" }, "the selected venue must always render as a pin")
-        #expect(!plan.pins.contains { $0.id == "b" }, "nothing may overlap the selected venue's reserved footprint")
-        assertNoOverlaps(footprints(for: plan, region: region(), mapSize: mapSize))
+        // the selected venue — without the seeding pass this would normally
+        // out-rank "a" for the marker slot.
+        let b = venue(id: "b", lat: 40.733501, lng: -74.002701, score: 95)
+        let plan = MapAnnotationPlanner.plan(venues: [a, b], region: testRegion, mapSize: mapSize, selectedVenueID: "a")
+        let selectedMarker = plan.markers.first { $0.id == "a" }
+        #expect(selectedMarker?.isSelected == true)
+        #expect(selectedMarker?.kind.teardropDiameter == MapAnnotationPlanner.selectedDiameter)
+        #expect(!plan.teardrops.contains { $0.id == "b" }, "nothing may overlap the selected venue's reserved footprint")
+        assertNoOverlaps(teardropFootprints(for: plan, region: testRegion, mapSize: mapSize))
     }
 
     @Test func totalAnnotationsNeverExceedTheCapAtExtremeDensity() {
         let venues = grid(count: 2_000, extent: 0.02)
-        let plan = MapAnnotationPlanner.plan(venues: venues, region: region(), mapSize: mapSize)
+        let testRegion = region(forMetersPerPoint: 3.6, mapWidth: mapSize.width)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize)
         #expect(plan.annotationCount <= MapAnnotationPlanner.maxAnnotations)
-        assertNoOverlaps(footprints(for: plan, region: region(), mapSize: mapSize))
+        assertNoOverlaps(teardropFootprints(for: plan, region: testRegion, mapSize: mapSize))
     }
 
-    @Test func stackPositionIsMemberCentroidNeverAGridCellCentre() throws {
-        let testRegion = region()
-        let cell = MapAnnotationPlanner.clusterCellDegrees(spanLongitude: testRegion.span.longitudeDelta)
-        // 200 filler venues near the region centre soak up the entire dot
-        // candidate budget, forcing the group below — far from the centre —
-        // into the grid-clustering path instead of individual dots.
-        let fillers = (0..<MapAnnotationPlanner.dotCandidateLimit).map { i -> Venue in
-            venue(
-                id: "filler\(i)",
-                lat: 40.7359 + Double(i % 50) * 0.00002,
-                lng: -73.9911 + Double(i / 50) * 0.00002,
-                score: 40,
-                observed: false
-            )
+    // MARK: - bd#159/#212: unrated venues are specks, never numbered
+
+    @Test func unratedVenuesAreSpecksAndNeverShowANumberOrCompeteWithRatedPlacement() {
+        let unrated = grid(count: 200, extent: 0.02, observed: false)
+        let rated = wellSeparatedGrid(count: 5, step: 0.003, observed: true, scoreOffset: 90)
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: wideMapSize.width)
+        let plan = MapAnnotationPlanner.plan(venues: unrated + rated, region: testRegion, mapSize: wideMapSize)
+        let ratedIDs = Set(rated.map(\.id))
+        #expect(plan.specks.allSatisfy { !ratedIDs.contains($0.id) })
+        #expect(plan.specks.allSatisfy { !$0.showsNumber })
+        for marker in plan.markers where ratedIDs.contains(marker.id) {
+            #expect(marker.showsNumber, "a well-separated rated venue at 1.8 m/pt must show its number")
         }
-        // Five venues sharing one grid cell, skewed toward its edge — their
-        // true average is nowhere near that cell's geometric centre. 0.01°
-        // stays inside the map's actual PIXEL bounds at this region/mapSize
-        // (span 0.035 ⇒ ±0.0175 is the strict on-screen half-extent; the
-        // larger ±0.035 cull margin also accepts venues that never fit on
-        // screen at all, which bd#210's edge-of-map bounds check on stack
-        // nudging correctly refuses to place a marker at).
-        let cornerLat = 40.7359 + 0.01
-        let cornerLng = -73.9911 + 0.01
-        let target = (0..<5).map { i in
-            venue(id: "target\(i)", lat: cornerLat + Double(i) * 0.0002, lng: cornerLng + Double(i) * 0.0002, score: 40, observed: false)
-        }
-        let trueCentroidLat = target.map(\.lat).reduce(0, +) / Double(target.count)
-        let trueCentroidLng = target.map(\.lng).reduce(0, +) / Double(target.count)
-        let cellCentreLat = (cornerLat / cell).rounded(.down) * cell + cell / 2
-        let cellCentreLng = (cornerLng / cell).rounded(.down) * cell + cell / 2
-
-        let plan = MapAnnotationPlanner.plan(venues: fillers + target, region: testRegion, mapSize: mapSize)
-        let stack = try #require(plan.clusters.first { $0.id.hasPrefix("cluster-") })
-
-        #expect(abs(stack.latitude - trueCentroidLat) < 0.0005, "expected the true member centroid")
-        #expect(abs(stack.longitude - trueCentroidLng) < 0.0005, "expected the true member centroid")
-        let distanceFromCellCentre = hypot(stack.latitude - cellCentreLat, stack.longitude - cellCentreLng)
-        #expect(distanceFromCellCentre > 0.0005, "must not sit at the raw grid cell centre (bd#209 — the #208 stack-over-the-river bug)")
     }
 
-    @Test func aSingleStackIsNeverInternallyCappedAtNinetyNine() {
-        // 300 venues tight enough that dot placement collides heavily,
-        // funnelling most of them into one or two stacks — the MODEL must
-        // carry the true count past 99 (the view layer is what decides how
-        // to DISPLAY it — see `VenueClusterPill.displayCount`).
-        let venues = grid(count: 300, extent: 0.002, observed: false)
-        let plan = MapAnnotationPlanner.plan(venues: venues, region: region(), mapSize: mapSize)
-        #expect(plan.clusters.contains { $0.count > 99 }, "a dense group must not be silently capped below its real count")
-        assertNoOverlaps(footprints(for: plan, region: region(), mapSize: mapSize))
+    @Test func noSpecksRenderWhenZoomedAllTheWayOut() {
+        let unrated = grid(count: 50, extent: 0.02, observed: false)
+        let testRegion = region(forMetersPerPoint: 8, mapWidth: mapSize.width)
+        let plan = MapAnnotationPlanner.plan(venues: unrated, region: testRegion, mapSize: mapSize)
+        #expect(plan.markers.isEmpty, "unrated venues draw nothing beyond the 5 m/pt visibility threshold")
     }
 
-    // MARK: - bd#204: always-visible score pins
-
-    @Test func unobservedVenuesNeverTakeAPinSlot() {
-        // 300 unobserved venues plus 5 well-separated observed ones with
-        // real scores: the 5 observed venues must be the pins, never a
-        // fabricated-score unobserved venue (bd#159's rule extended to
-        // bd#204's pin promotion).
-        let unobserved = grid(count: 300, observed: false)
-        let observed = (0..<5).map { i in
-            venue(id: "obs\(i)", lat: 40.7359 + Double(i) * 0.004, lng: -73.9911, score: 90, observed: true)
-        }
-        let plan = MapAnnotationPlanner.plan(venues: unobserved + observed, region: region(), mapSize: mapSize)
-        #expect(plan.pins.count == 5)
-        #expect(Set(plan.pins.map(\.id)) == Set(observed.map(\.id)))
+    @Test func ratedBudgetIsSpentBeforeUnratedSpecks() {
+        // Rated venues alone exceed the cap; no speck should ever squeeze in
+        // ahead of a rated marker.
+        let rated = grid(count: MapAnnotationPlanner.maxAnnotations + 50, extent: 0.02, observed: true)
+        let unrated = grid(count: 30, centerLat: 40.74, centerLng: -73.98, extent: 0.005, observed: false)
+        let testRegion = region(forMetersPerPoint: 3.6, mapWidth: mapSize.width)
+        let plan = MapAnnotationPlanner.plan(venues: rated + unrated, region: testRegion, mapSize: mapSize)
+        #expect(plan.annotationCount <= MapAnnotationPlanner.maxAnnotations)
+        #expect(plan.markers.allSatisfy { $0.venue.isObserved }, "no unrated speck should have taken a slot from a rated venue")
     }
 
-    @Test func placedPinsAreAlwaysDrawnFromTheTopScoredObservedCandidates() {
-        let venues = grid(count: 300)
-        let plan = MapAnnotationPlanner.plan(venues: venues, region: region(), mapSize: mapSize)
+    // MARK: - bd#210: chrome exclusion rects (teardrops only, bd#212 revision)
 
-        let visible = MapAnnotationPlanner.culled(venues, region: region())
-        let expectedCandidates = Set(
-            visible
-                .filter(\.isObserved)
-                .sorted { $0.workScore != $1.workScore ? $0.workScore > $1.workScore : $0.id < $1.id }
-                .prefix(MapAnnotationPlanner.pinLimit)
-                .map(\.id)
-        )
-        #expect(
-            Set(plan.pins.map(\.id)).isSubset(of: expectedCandidates),
-            "no venue may win a pin slot that isn't among the top-ranked observed candidates"
-        )
-        // No pinned venue is also counted in a dot.
-        let pinIDs = Set(plan.pins.map(\.id))
-        #expect(plan.dots.allSatisfy { !pinIDs.contains($0.id) })
-    }
-
-    // MARK: - bd#210: chrome exclusion rects
-
-    @Test func noPlacedPinOrStackIntersectsAnExclusionRect() {
-        // A top-band exclusion (mimics the search header + status bar) and a
-        // corner exclusion (mimics the locate button) — both large enough
-        // that a dense 400-venue grid is guaranteed to have real candidates
-        // land inside them.
-        let testRegion = region()
+    @Test func noPlacedTeardropIntersectsAnExclusionRect() {
+        let testRegion = region(forMetersPerPoint: 3.6, mapWidth: mapSize.width)
         let exclusions = [
             CGRect(x: 0, y: 0, width: mapSize.width, height: 140),
             CGRect(x: mapSize.width - 80, y: mapSize.height - 140, width: 68, height: 68),
         ]
         let venues = grid(count: 400, extent: 0.03)
-        let plan = MapAnnotationPlanner.plan(
-            venues: venues, region: testRegion, mapSize: mapSize, exclusionRects: exclusions
-        )
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize, exclusionRects: exclusions)
 
-        let projector = ScreenProjector(region: testRegion, size: mapSize)
         let exclusionBoxes = exclusions.map { AABB(minX: $0.minX, maxX: $0.maxX, minY: $0.minY, maxY: $0.maxY) }
-        for pin in plan.pins {
-            let box = projector.footprint(.pin, at: CLLocationCoordinate2D(latitude: pin.lat, longitude: pin.lng))
+        for box in teardropFootprints(for: plan, region: testRegion, mapSize: mapSize) {
             for exclusion in exclusionBoxes {
-                #expect(!box.intersects(exclusion), "pin \(pin.id) sits under an exclusion rect")
+                #expect(!box.intersects(exclusion), "a teardrop sits under an exclusion rect")
             }
         }
-        for dot in plan.dots {
-            let box = projector.footprint(.dot, at: CLLocationCoordinate2D(latitude: dot.lat, longitude: dot.lng))
-            for exclusion in exclusionBoxes {
-                #expect(!box.intersects(exclusion), "dot \(dot.id) sits under an exclusion rect")
-            }
-        }
-        for cluster in plan.clusters {
-            let box = projector.footprint(.stack, at: cluster.coordinate)
-            for exclusion in exclusionBoxes {
-                #expect(!box.intersects(exclusion), "stack \(cluster.id) sits under an exclusion rect")
-            }
-        }
-        // Exclusion rects never break the base guarantee: still zero
-        // marker-vs-marker overlaps.
-        assertNoOverlaps(footprints(for: plan, region: testRegion, mapSize: mapSize))
+        assertNoOverlaps(teardropFootprints(for: plan, region: testRegion, mapSize: mapSize))
     }
 
-    @Test func pinUnderAnExclusionRectDemotesToADotWhenTheDotFootprintClears() {
-        let testRegion = region()
+    @Test func teardropUnderAnExclusionRectDemotesToADot() {
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width)
         let projector = ScreenProjector(region: testRegion, size: mapSize)
-        let target = venue(id: "under-chrome", lat: 40.7359, lng: -73.9911, score: 90)
+        let target = venue(id: "under-chrome", lat: 40.7335, lng: -74.0027, score: 90)
         let point = projector.point(for: CLLocationCoordinate2D(latitude: target.lat, longitude: target.lng))
-        // Stops 15pt short of the venue's own point on the X axis: inside
-        // the pin's 26pt half-width (collides) but outside the dot's 10pt
-        // half-width (clears).
-        let exclusion = CGRect(x: point.x - 100, y: point.y - 50, width: 85, height: 100)
-        let plan = MapAnnotationPlanner.plan(
-            venues: [target], region: testRegion, mapSize: mapSize, exclusionRects: [exclusion]
-        )
-        #expect(plan.pins.isEmpty, "a pin under chrome must never render as a pin")
-        #expect(plan.dots.map(\.id) == ["under-chrome"], "demotes to a dot once the smaller dot footprint clears the exclusion rect")
+        let exclusion = CGRect(x: point.x - 20, y: point.y - 20, width: 40, height: 40)
+        let plan = MapAnnotationPlanner.plan(venues: [target], region: testRegion, mapSize: mapSize, exclusionRects: [exclusion])
+        #expect(plan.dots.map(\.id) == ["under-chrome"], "a teardrop under chrome demotes to a dot rather than vanishing")
     }
 
-    @Test func dotFullyInsideAnExclusionRectWithNothingNearbyIsSkipped() {
+    @Test func planWithExclusionRectsStaysDeterministic() {
         let testRegion = region()
-        let projector = ScreenProjector(region: testRegion, size: mapSize)
-        // Unobserved (never a pin candidate) and alone — nothing nearby to
-        // absorb it into a stack, so a collision here can only be dropped.
-        let target = venue(id: "chrome-dot", lat: 40.7360, lng: -73.9912, score: 10, observed: false)
-        let point = projector.point(for: CLLocationCoordinate2D(latitude: target.lat, longitude: target.lng))
-        let exclusion = CGRect(x: point.x - 40, y: point.y - 40, width: 80, height: 80)
-        let plan = MapAnnotationPlanner.plan(
-            venues: [target], region: testRegion, mapSize: mapSize, exclusionRects: [exclusion]
-        )
-        #expect(plan.annotationCount == 0, "a lone venue fully under chrome, with nothing nearby to absorb it into, must not render")
-    }
-
-    @Test func planWithExclusionRectsStaysDeterministicAndWithinTheCap() {
-        let testRegion = region()
-        let exclusions = [
-            CGRect(x: 0, y: 0, width: mapSize.width, height: 140),
-            CGRect(x: mapSize.width - 80, y: mapSize.height - 140, width: 68, height: 68),
-        ]
+        let exclusions = [CGRect(x: 0, y: 0, width: mapSize.width, height: 140)]
         let venues = grid(count: 400, extent: 0.03)
-        let first = MapAnnotationPlanner.plan(
-            venues: venues, region: testRegion, mapSize: mapSize, exclusionRects: exclusions
-        )
-        let second = MapAnnotationPlanner.plan(
-            venues: venues, region: testRegion, mapSize: mapSize, exclusionRects: exclusions
-        )
-        #expect(first == second, "identical input (including exclusion rects) must plan identically")
+        let first = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize, exclusionRects: exclusions)
+        let second = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize, exclusionRects: exclusions)
+        #expect(first == second)
         #expect(first.annotationCount <= MapAnnotationPlanner.maxAnnotations)
     }
 
-    // MARK: - bd#209: determinism
+    // MARK: - bd#212: determinism and stable ids
 
     @Test func planIsDeterministicForTheSameInput() {
         let venues = grid(count: 400)
@@ -447,12 +369,32 @@ struct MapAnnotationPlannerTests {
         #expect(first == second)
     }
 
-    // MARK: - bd#209: 500-random-venue property test (VERIFY step of the ticket)
+    /// bd#212 perf requirement: "100% of ids unchanged for a pan that keeps
+    /// the same venues in the fetched set." A pan of a fraction of a metre
+    /// keeps the exact same culled venue set and the exact same
+    /// per-marker screen-space outcome, so the marker id set — and each
+    /// marker's kind — must come back byte-identical.
+    @Test func stableIDsAcrossATinyPanThatKeepsTheSameVenues() {
+        let venues = wellSeparatedGrid(count: 40, step: 0.0015)
+        // Comfortably inside the CLAMPED "closest" zone (<=0.9 m/pt always
+        // returns exactly 20.0) so a sub-metre nudge in the region's
+        // center can't tip a diameter across an interpolation boundary by
+        // a floating-point hair — this test is about STABLE IDS/KINDS
+        // across a pan, not about interpolation-boundary precision.
+        let testRegion = region(forMetersPerPoint: 0.5, mapWidth: wideMapSize.width)
+        let before = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: wideMapSize)
+        var nudged = testRegion
+        nudged.center.latitude += 0.0000005
+        let after = MapAnnotationPlanner.plan(venues: venues, region: nudged, mapSize: wideMapSize)
+        #expect(Set(before.markers.map(\.id)) == Set(after.markers.map(\.id)), "an imperceptible pan must not change which venues are drawn")
+        let beforeKinds = Dictionary(uniqueKeysWithValues: before.markers.map { ($0.id, $0.kind) })
+        for marker in after.markers {
+            #expect(beforeKinds[marker.id] == marker.kind, "an imperceptible pan must not change a venue's marker kind")
+        }
+    }
 
-    /// A tiny deterministic RNG — the planner itself must be reproducible
-    /// for a FIXED input, but generating that fixed input across repeated
-    /// `swift test` runs also needs to be reproducible, and
-    /// `SystemRandomNumberGenerator` isn't.
+    // MARK: - bd#212: 500-random-venue property test (VERIFY step of the ticket)
+
     private struct SeededGenerator: RandomNumberGenerator {
         private var state: UInt64
         init(seed: UInt64) { state = seed }
@@ -474,38 +416,26 @@ struct MapAnnotationPlannerTests {
     }
 
     @Test func fiveHundredRandomVenuesInADenseBoundingBoxProduceACollisionFreeDeterministicPlan() {
-        // A dense lower-Manhattan-scale bbox — small enough that, packed
-        // with 500 venues, pin/dot/stack collisions are the norm, not the
-        // exception, matching the evidence screenshot this ticket fixes.
         let venues = randomVenues(count: 500, seed: 42, centerLat: 40.7335, centerLng: -74.0027, extent: 0.02)
         let testRegion = region(lat: 40.7335, lng: -74.0027, span: 0.02)
         let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize)
 
-        // Zero intersecting footprints, anywhere in the rendered plan.
-        assertNoOverlaps(footprints(for: plan, region: testRegion, mapSize: mapSize))
+        // Zero intersecting TEARDROP footprints, anywhere in the rendered plan.
+        assertNoOverlaps(teardropFootprints(for: plan, region: testRegion, mapSize: mapSize))
 
         // Total rendered annotations never exceed the cap.
         #expect(plan.annotationCount <= MapAnnotationPlanner.maxAnnotations)
 
-        // Top-scored observed venues win pin slots — no pin is drawn from
-        // outside the top-ranked observed candidates.
-        let visible = MapAnnotationPlanner.culled(venues, region: testRegion)
-        let expectedCandidates = Set(
-            visible
-                .filter(\.isObserved)
-                .sorted { $0.workScore != $1.workScore ? $0.workScore > $1.workScore : $0.id < $1.id }
-                .prefix(MapAnnotationPlanner.pinLimit)
-                .map(\.id)
-        )
-        #expect(Set(plan.pins.map(\.id)).isSubset(of: expectedCandidates))
+        // Every marker corresponds to a real input venue, never a duplicate.
+        #expect(plan.markers.map(\.id).count == Set(plan.markers.map(\.id)).count, "no venue may be drawn twice")
 
-        // Every non-synthesized stack never drifts far from an actual
-        // venue — the direct regression test for #208's stacks landing
-        // outside the café area (over the Hudson).
-        let cell = MapAnnotationPlanner.clusterCellDegrees(spanLongitude: testRegion.span.longitudeDelta)
-        for cluster in plan.clusters {
-            let nearestVenueDistance = venues.map { hypot($0.lat - cluster.latitude, $0.lng - cluster.longitude) }.min() ?? .infinity
-            #expect(nearestVenueDistance <= cell * 1.5, "stack \(cluster.id) drifted away from every real venue")
+        // A teardrop or dot is only ever drawn for an observed venue; only
+        // an unrated venue ever renders as a speck.
+        for marker in plan.markers {
+            switch marker.kind {
+            case .teardrop, .dot: #expect(marker.venue.isObserved)
+            case .speck: #expect(!marker.venue.isObserved)
+            }
         }
 
         // Deterministic: replanning the identical input yields an identical
@@ -514,53 +444,39 @@ struct MapAnnotationPlannerTests {
         #expect(plan == replanned)
     }
 
-    // MARK: - Clusters (grid mechanics, unaffected by bd#209's placement layer)
+    // MARK: - Stale/unknown region fallback (brewdesk#157)
 
-    @Test func clusterCountsSumToVisibleVenues() {
-        let venues = grid(count: 400)
-        let clusters = MapAnnotationPlanner.clusters(for: venues, spanLongitude: 0.035)
-        #expect(clusters.map(\.count).reduce(0, +) == 400)
+    @Test func planFallsBackToUnculledVenuesWhenRegionIsUnknown() {
+        let venues = grid(count: 10)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: nil, mapSize: mapSize)
+        #expect(Set(plan.markers.map(\.id)) == Set(venues.map(\.id)))
+        #expect(plan.teardrops.count == venues.count)
     }
 
-    @Test func clusterCentroidLiesWithinItsVenues() {
-        let venues = grid(count: 400)
-        let clusters = MapAnnotationPlanner.clusters(for: venues, spanLongitude: 0.035)
-        let minLat = venues.map(\.lat).min()!
-        let maxLat = venues.map(\.lat).max()!
-        for cluster in clusters {
-            #expect(cluster.latitude >= minLat && cluster.latitude <= maxLat)
-        }
+    @Test func planFallsBackWithoutLosingVenuesWhenTheKnownRegionExcludesEveryVenue() {
+        let venues = grid(count: 10)
+        let staleRegion = region(lat: 41.5, lng: -74.5, span: 0.01)
+        #expect(MapAnnotationPlanner.culled(venues, region: staleRegion).isEmpty, "test setup: region must exclude every venue")
+
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: staleRegion, mapSize: mapSize)
+        #expect(plan.markers.count == venues.count, "no venue may silently vanish just because the region is stale")
     }
 
-    @Test func clusterBestScoreIsCellMaximum() {
-        let low = venue(id: "low", lat: 40.7359, lng: -73.9911, score: 10)
-        let high = venue(id: "high", lat: 40.7360, lng: -73.9912, score: 93)
-        let clusters = MapAnnotationPlanner.clusters(for: [low, high], spanLongitude: 0.5)
-        #expect(clusters.count == 1)
-        #expect(clusters.first?.bestScore == 93)
+    @Test func planNeverFallsBackWhenTheRegionGenuinelyHasNoVenues() {
+        let plan = MapAnnotationPlanner.plan(venues: [], region: region(), mapSize: mapSize)
+        #expect(plan.markers.isEmpty)
     }
 
-    @Test func clusterIdsAreStableAcrossPansAtSameZoom() {
-        let venues = grid(count: 400)
-        let before = MapAnnotationPlanner.clusters(for: venues, spanLongitude: 0.035)
-        // Same venues, same zoom — a pan changes the region, not the grid.
-        let after = MapAnnotationPlanner.clusters(for: venues, spanLongitude: 0.035)
-        #expect(before == after)
+    // MARK: - Plan helpers
+
+    @Test func planKnowsWhichVenuesItRendersIndividually() {
+        let venues = grid(count: 10)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: region(), mapSize: mapSize)
+        #expect(plan.containsVenue(id: venues[0].id))
+        #expect(!plan.containsVenue(id: "absent"))
     }
 
-    @Test func cellSizeIsQuantizedAndMonotonic() {
-        let fine = MapAnnotationPlanner.clusterCellDegrees(spanLongitude: 0.02)
-        let coarse = MapAnnotationPlanner.clusterCellDegrees(spanLongitude: 0.32)
-        #expect(fine < coarse)
-        // Power-of-two quantization: pans and small span jitter at the same
-        // zoom land on the same cell size, so clusters never re-bucket.
-        for span in [0.02, 0.035, 0.1, 0.32] {
-            let exponent = log2(MapAnnotationPlanner.clusterCellDegrees(spanLongitude: span))
-            #expect(exponent == exponent.rounded(), "cell size must be a power of two (span \(span))")
-        }
-    }
-
-    // MARK: - Re-plan hysteresis (CafeMapScreen)
+    // MARK: - Re-plan hysteresis (CafeMapScreen, unchanged from #209)
 
     @Test func smallPansInsideTheMarginSkipReplanning() {
         let current = region()
@@ -577,62 +493,5 @@ struct MapAnnotationPlannerTests {
         #expect(CafeMapScreen.needsReplan(from: current, to: zoomIn))
         let zoomOut = region(span: 0.035 * 3)
         #expect(CafeMapScreen.needsReplan(from: current, to: zoomOut))
-    }
-
-    // MARK: - Stale/unknown region fallback (brewdesk#157)
-
-    @Test func planFallsBackToUnculledVenuesWhenRegionIsUnknown() {
-        // No camera has settled yet (cold start, or every `MapProxy`
-        // conversion has failed) — a nil region must plan against every
-        // venue, never an empty list. Precise pixel collision math needs a
-        // trustworthy region, so this rescue path skips it entirely
-        // (bd#209) rather than laying out against a region it doesn't have.
-        let venues = grid(count: 10)
-        let plan = MapAnnotationPlanner.plan(venues: venues, region: nil, mapSize: mapSize)
-        #expect(Set(plan.pins.map(\.id)) == Set(venues.map(\.id)))
-    }
-
-    @Test func planFallsBackWithoutLosingVenuesWhenTheKnownRegionExcludesEveryVenue() {
-        // A region that legitimately covers none of the venues (stale after
-        // a search clear, a filter change, or a locate-button move with no
-        // gesture to trigger a re-plan) must not render as zero pins while
-        // venues exist — brewdesk#157's core symptom. Every venue must still
-        // be represented SOMEWHERE (pin, dot, or folded into a stack) —
-        // bd#209's collision pass still runs here (the region shape itself
-        // is trustworthy, it just doesn't contain these venues), so this no
-        // longer asserts an exact all-pins outcome the way the pre-bd#209
-        // version did.
-        let venues = grid(count: 10)
-        let staleRegion = region(lat: 41.5, lng: -74.5, span: 0.01)
-        #expect(MapAnnotationPlanner.culled(venues, region: staleRegion).isEmpty, "test setup: region must exclude every venue")
-
-        let plan = MapAnnotationPlanner.plan(venues: venues, region: staleRegion, mapSize: mapSize)
-        let individuallyRendered = Set(plan.pins.map(\.id)).union(plan.dots.map(\.id))
-        let clusteredCount = plan.clusters.reduce(0) { $0 + $1.count }
-        #expect(individuallyRendered.count + clusteredCount == venues.count, "no venue may silently vanish")
-        assertNoOverlaps(footprints(for: plan, region: staleRegion, mapSize: mapSize))
-    }
-
-    @Test func planNeverFallsBackWhenTheRegionGenuinelyHasNoVenues() {
-        // An empty `venues` input (e.g. a genuinely empty dataset) must stay
-        // empty — the fallback only rescues a non-empty list a bad region
-        // culled to nothing, never an honest zero.
-        let plan = MapAnnotationPlanner.plan(venues: [], region: region(), mapSize: mapSize)
-        #expect(plan.pins.isEmpty)
-        #expect(plan.dots.isEmpty)
-        #expect(plan.clusters.isEmpty)
-    }
-
-    // MARK: - Plan helpers
-
-    @Test func planKnowsWhichVenuesItRendersIndividually() {
-        let venues = grid(count: 10)
-        let plan = MapAnnotationPlanner.plan(venues: venues, region: region(), mapSize: mapSize)
-        #expect(plan.containsVenue(id: venues[0].id))
-        #expect(!plan.containsVenue(id: "absent"))
-
-        let dense = wellSeparatedGrid(count: MapAnnotationPlanner.pinLimit + MapAnnotationPlanner.dotCandidateLimit + 50)
-        let densePlan = MapAnnotationPlanner.plan(venues: dense, region: region(), mapSize: wideMapSize)
-        #expect(!densePlan.containsVenue(id: "absent"), "clusters render no individual venue")
     }
 }

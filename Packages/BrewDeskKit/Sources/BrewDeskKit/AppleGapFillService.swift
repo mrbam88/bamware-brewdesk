@@ -28,8 +28,7 @@ public struct AppleUnverifiedPOI: Identifiable, Equatable, Sendable {
 /// (`MKLocalPointsOfInterestRequest`, on-device, no spend) and show them as
 /// grey "unverified" markers — `AppleUnverifiedPin` in
 /// `MapAnnotationViews.swift`, deliberately never the same visual language
-/// as a scored pin/dot/cluster (`VenueScorePin`/`VenueScoreDot`/
-/// `VenueClusterPill`), so an unverified Apple result can never be mistaken
+/// as a scored marker (`TeardropMarkerView`), so an unverified Apple result can never be mistaken
 /// for one of our own claims.
 @MainActor
 public enum AppleGapFillService {

@@ -177,6 +177,97 @@ public enum BrewDeskPalette {
         dark: Color(red: 0.40, green: 0.40, blue: 0.42)
     )
 
+    // MARK: - bd#212: micro teardrop marker palette — single hue,
+    // lightness-only, ramp DIRECTION flips by appearance
+
+    /// Fill for a RATED marker (teardrop or its demoted dot), by score
+    /// tier index (0 = `<60`, 1 = `60-69`, 2 = `70-79`, 3 = `>=80`) —
+    /// replaces `observedDotGreat/Good/Weak` and every `ScoreTier.color`
+    /// use on the map outright (bd#212 deletes the cluster/stack design
+    /// these coexisted with).
+    ///
+    /// DARK basemap: best score is the BRIGHTEST fill (index 3 lightest).
+    /// LIGHT basemap: the ramp REVERSES — best score is the DARKEST/most
+    /// saturated fill (index 3 darkest) — a light map showing a bright pin
+    /// for a bad score would itself be a second, contradictory "lightness"
+    /// signal. Either way lightness alone (never hue) carries the tier, so
+    /// it reads correctly for a red-green colorblind viewer (`markerTierIsSingleHueAndMonotonic`
+    /// in `MarkerPaletteTests` verifies this numerically against the
+    /// resolved colors, not just these comments).
+    private static let markerFillDarkMap: [Color] = [
+        hex("#3A6E5D"), hex("#4F9D82"), hex("#74CDA9"), hex("#A8F0CF"),
+    ]
+    private static let markerFillLightMap: [Color] = [
+        hex("#9CCBB9"), hex("#5FA78F"), hex("#2F7A63"), hex("#1F5A49"),
+    ]
+    /// Number color per tier index, resolved separately for each map
+    /// appearance so every step clears >=4.5:1 against its own fill —
+    /// verified in `MarkerPaletteTests.markerNumberColorClearsContrastAgainstItsFill`.
+    /// Dark map: darkest fill (index 0) needs a light number; the three
+    /// brighter fills need a dark one. Light map: the two lighter fills
+    /// (index 0-1) need a dark number; the two darker/more-saturated fills
+    /// (index 2-3) need a light one — NOT a mirror of the dark-map split,
+    /// because the light-map ramp direction is itself reversed.
+    private static let markerNumberDarkMap: [Color] = [
+        hex("#E6F2EC"), hex("#08140F"), hex("#08140F"), hex("#08140F"),
+    ]
+    private static let markerNumberLightMap: [Color] = [
+        hex("#08140F"), hex("#08140F"), hex("#F4FBF8"), hex("#F4FBF8"),
+    ]
+
+    /// Score → tier index (0..3): `<60`, `60-69`, `70-79`, `>=80` — bd#212's
+    /// own thresholds, deliberately different from `ScoreTier`'s
+    /// (75/60/45): this ramp exists only to place a marker in one of four
+    /// LIGHTNESS steps, not to classify "great/good/mixed/weak" for copy.
+    static func markerTierIndex(score: Int) -> Int {
+        switch score {
+        case 80...: 3
+        case 70..<80: 2
+        case 60..<70: 1
+        default: 0
+        }
+    }
+
+    /// Fill for a rated teardrop/dot marker, adaptive per map appearance.
+    public static func markerFill(score: Int) -> Color {
+        let index = markerTierIndex(score: score)
+        return adaptive(light: markerFillLightMap[index], dark: markerFillDarkMap[index])
+    }
+
+    /// Number color for a rated marker's score label, adaptive per map
+    /// appearance — always paired with `markerFill(score:)` for the SAME
+    /// score, never mixed with a different tier's fill.
+    public static func markerNumberColor(score: Int) -> Color {
+        let index = markerTierIndex(score: score)
+        return adaptive(light: markerNumberLightMap[index], dark: markerNumberDarkMap[index])
+    }
+
+    /// 0.75pt hairline on every marker (teardrop, dot, or speck) — no white
+    /// ring, ever (bd#212 spec). Fixed, not adaptive: dark enough to read
+    /// as an edge against both a light and dark basemap without the
+    /// per-appearance flip the old `unobservedDotStroke`/`observedDotStroke`
+    /// pair needed (those separated a marker from its NEIGHBOURS at high
+    /// density; this one only has to separate the marker from the map).
+    public static let markerHairline = Color(red: 6.0 / 255, green: 18.0 / 255, blue: 14.0 / 255).opacity(0.9)
+
+    /// Faint neutral fill for an unrated (unobserved) venue's speck — never
+    /// tier-colored, never red/green (bd#159's "not checked yet" rule
+    /// carried into bd#212), and adaptive so it stays visible against both
+    /// basemaps rather than the old fixed-dark-grey regression
+    /// (`unobservedDotStroke`'s own doc comment documents that exact bug).
+    public static let markerSpeckFill = adaptive(
+        light: Color(red: 0.42, green: 0.42, blue: 0.44).opacity(0.55),
+        dark: Color(red: 0.74, green: 0.76, blue: 0.78).opacity(0.55)
+    )
+
+    /// Halo label background behind the selected marker's café name — a
+    /// small pill sitting above the 30pt selected head.
+    public static let markerHaloBackground = adaptive(
+        light: Color(red: 1, green: 1, blue: 1).opacity(0.92),
+        dark: Color(red: 0.09, green: 0.13, blue: 0.11).opacity(0.92)
+    )
+    public static let markerHaloText = adaptive(light: espresso, dark: foam)
+
     public static let pageGradient = LinearGradient(
         colors: [oat, foam],
         startPoint: .topLeading,
