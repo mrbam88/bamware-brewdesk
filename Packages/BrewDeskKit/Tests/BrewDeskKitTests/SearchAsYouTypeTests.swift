@@ -6,11 +6,21 @@ import VenueKit
 /// brewdesk#78 — search-as-you-type. Semantics under test:
 ///
 /// - Typing filters the already-loaded list ~200ms after the last keystroke —
-///   no submit needed, and never a network request per keystroke.
+///   no submit needed, and (still) never a network request per keystroke:
+///   bd#200's citywide server search shares the exact same settle signal
+///   (`activeSearchText`), so it fires once per SETTLED query, not once per
+///   character — see `typingAppliesAfterDebounceWithoutNetworkOrSubmit`.
 /// - Matching is case- and diacritic-insensitive, prefix + contains, over
 ///   venue name and neighborhood. Prefix matches rank first.
 /// - Submit (keyboard Search key) and clear apply immediately.
 /// - No matches yields an empty list (the views' loaded-empty state).
+///
+/// `CountingVenueService` now honors `query.search` (bd#200): every other
+/// query field it already ignored (filters, sort, limit), matching the
+/// pre-existing "the wire predicate is whatever the fake decides" contract
+/// these tests were written against — only `search` needed real behavior so
+/// the citywide-search union logic under test here has something real to
+/// union against.
 @Suite @MainActor struct SearchAsYouTypeTests {
     private static let roasters = searchFixtureVenue(name: "Café Añejo Roasters", neighborhood: "Union Square")
     private static let readingRoom = searchFixtureVenue(name: "Reading Room", neighborhood: "Greenwich Village")
@@ -43,8 +53,10 @@ import VenueKit
 
         try await waitForDebounce()
         #expect(names(model) == ["Reading Room"])       // applied, no submit
-        #expect(model.request.query.search == nil)      // never on the wire
-        #expect(await api.fetchCount == fetchesAfterLoad)
+        #expect(model.request.query.search == nil)      // the VIEWPORT request never carries it
+        // bd#200: exactly ONE citywide request for the settled query — not
+        // one per keystroke, and not zero either (that was the bug).
+        #expect(await api.fetchCount == fetchesAfterLoad + 1)
     }
 
     @Test func matchingIsCaseAndDiacriticInsensitive() async throws {
@@ -131,9 +143,20 @@ private actor CountingVenueService: VenueListing {
         self.venues = venues
     }
 
+    /// bd#200: honors `query.search` the way the real engine's `q` param
+    /// does — a case/diacritic-insensitive contains over name or
+    /// neighborhood — so the citywide-search union logic under test has a
+    /// realistic "server" to union `venues` against. Every other query
+    /// field stays ignored, unchanged from before.
     func fetchVenues(_ query: VenueQuery) async throws -> [Venue] {
         fetchCount += 1
-        return venues
+        guard let search = query.search, !search.isEmpty else { return venues }
+        let needle = search.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+        return venues.filter { venue in
+            let name = venue.name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            let neighborhood = venue.neighborhood.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            return name.contains(needle) || neighborhood.contains(needle)
+        }
     }
 }
 

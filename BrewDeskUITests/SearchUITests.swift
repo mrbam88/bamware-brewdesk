@@ -208,4 +208,56 @@ final class SearchUITests: XCTestCase {
         XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitUntilHittable(timeout: wait),
                       "search-centered result pin is not hittable")
     }
+
+    /// bd#200 — "Search must be city-wide". Root cause: `VenuesModel.venues`
+    /// used to be a purely LOCAL filter over whatever pins the current
+    /// viewport had already loaded, so a café outside that viewport —
+    /// however exact the typed name — could never appear, exactly the bug
+    /// Bilal hit typing "Conwell". `cityWideSearch` serves the normal three
+    /// Union Square fixtures for a plain viewport load, plus a fourth café
+    /// (`Fixture Ferry Roasters`, St. George, ~13.5km away — outside every
+    /// viewport radius this app ever queries with) ONLY when `q` matches it —
+    /// the same shape as the real engine's `q` contract. This must FAIL on
+    /// `origin/main` (no server search exists there to find it at all) and
+    /// PASS once bd#200's citywide search ships.
+    @MainActor
+    func testCityWideSearchFindsACafeOutsideTheViewport() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-UITestSkipGates", "-UITestScenario", "cityWideSearch"]
+        app.launch()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
+        app.spotsTab.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["map-header-card"].waitForExistence(timeout: wait))
+
+        func matchCount() -> Int {
+            app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Ferry Roasters,")).count
+        }
+        func poll(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+            let deadline = Date().addingTimeInterval(timeout)
+            repeat {
+                if condition() { return true }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            } while Date() < deadline
+            return condition()
+        }
+
+        // The far café is nowhere at all before searching — the default
+        // Union Square viewport never loaded it (proves this is a genuine
+        // citywide find, not something already on screen).
+        XCTAssertEqual(matchCount(), 0, "far café was already on screen before any search")
+
+        let field = searchField(app)
+        field.tap()
+        field.typeText("Ferry Roasters")
+
+        // 2 == both the shelf row (bd#200's server result landed in
+        // `venues`) AND the real map pin (the camera moved onto it,
+        // `scheduleSearchFit`/bd#158) — same rank-independent proof
+        // `testSearchMovesCameraToOffScreenResult` above uses.
+        XCTAssertTrue(poll(timeout: wait) { matchCount() == 2 },
+                      "citywide search never surfaced the far café's row and pin " +
+                      "(got \(matchCount()) matches, want 2)")
+        XCTAssertTrue(app.mapPin(named: "Fixture Ferry Roasters").waitUntilHittable(timeout: wait),
+                      "citywide search result pin is not hittable")
+    }
 }

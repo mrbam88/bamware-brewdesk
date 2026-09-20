@@ -132,14 +132,17 @@ public struct CafeMapScreen: View {
         // separate "hide after fetch" flag: `searchThisArea()` updates
         // `model`'s center/radius to match the region it fetched for, so
         // the comparison naturally goes false the moment that lands.
-        let showSearchAreaPill = isSearchingThisArea || visibleRegion.map {
+        // bd#200: a text search already re-queries city-wide on its own —
+        // the "Search this area" pill (a LOCAL viewport re-fetch) would be a
+        // confusing second, unrelated affordance while one's in flight.
+        let showSearchAreaPill = model.searchQuery.isEmpty && (isSearchingThisArea || visibleRegion.map {
             Self.needsSearchAreaPill(
                 loadedCenterLat: model.centerLat,
                 loadedCenterLng: model.centerLng,
                 loadedRadiusM: model.radiusM,
                 visibleRegion: $0
             )
-        } == true
+        } == true)
         // Camera tracking (brewdesk#54 / PR #61): the region is recovered on
         // demand — a gesture ending schedules one debounced `MapProxy` corner
         // conversion after momentum settles, and programmatic moves (cluster
@@ -251,6 +254,18 @@ public struct CafeMapScreen: View {
                     if let region = Self.cameraRegion(proxy: proxy, size: geometry.size) {
                         visibleRegion = region
                     }
+                    // bd#200: the citywide server search lands asynchronously,
+                    // after `scheduleSearchFit`'s own 260ms debounce may
+                    // already have fit the camera to whatever LOCAL results
+                    // existed at that moment (or fit nothing at all, empty).
+                    // Re-evaluate the fit whenever the result set itself
+                    // changes while a search is still settled, so a
+                    // server-only match still pulls the camera onto it
+                    // instead of leaving the user staring at an empty local
+                    // viewport. A no-op (via `scheduleSearchFit`'s own
+                    // guards) for an empty query, a stale query, or a
+                    // venues change with no search active at all.
+                    scheduleSearchFit(query: model.searchQuery)
                 }
             }
         }
@@ -643,7 +658,13 @@ public struct CafeMapScreen: View {
         // query would leave `needsSearchAreaPill` true and the pill would
         // reappear right after a locate move, which is the one thing the
         // ticket says must never happen.
-        model.updateViewport(
+        //
+        // bd#198: `model.centerOnUser`, NOT `model.updateViewport` — the
+        // latter would mark the result `.exploredViewport` and stop
+        // following GPS, which is exactly backwards for a locate-me tap:
+        // this is the one action that should ARM following again after a
+        // "Search this area" tap or a manual pan turned it off.
+        model.centerOnUser(
             lat: model.centerLat, lng: model.centerLng, radiusM: Self.radiusMeters(for: region)
         )
         if reduceMotion {
@@ -692,6 +713,16 @@ public struct CafeMapScreen: View {
             centerOnUser()
             return
         }
+        // bd#198: a `.exploredViewport` centre change — "Search this area"
+        // or a manual pan that triggered a refetch — is only ever set FROM
+        // the camera's own settled position (`searchThisArea()` reads
+        // `visibleRegion.center`), so the camera is already exactly there.
+        // Recentering here would be redundant at best; at worst it resets
+        // the user's zoom to `Self.region`'s fixed span, which reads as
+        // exactly the "snaps back" bug this ticket fixes, just to a
+        // different place. Keep the camera exactly where the user left it —
+        // only the pins (via `model.venues`) change.
+        guard model.centerSource != .exploredViewport else { return }
         position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
         visibleRegion = Self.region(lat: model.centerLat, lng: model.centerLng)
     }
@@ -1086,6 +1117,16 @@ public struct CafeMapScreen: View {
                                 searchFocused = false
                             }
                         if !model.searchQuery.isEmpty {
+                            // bd#200: the citywide server search's own
+                            // in-flight indicator, distinct from the
+                            // viewport load spinner (`map-state-loading`) —
+                            // this one is scoped to the search field itself.
+                            if model.isSearchingServer {
+                                ProgressView()
+                                    .controlSize(.mini)
+                                    .accessibilityIdentifier("search-server-progress")
+                                    .accessibilityLabel("Searching all of NYC")
+                            }
                             Button {
                                 model.clearSearch()
                             } label: {
