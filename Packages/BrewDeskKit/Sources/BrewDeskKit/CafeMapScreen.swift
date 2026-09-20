@@ -505,10 +505,14 @@ public struct CafeMapScreen: View {
         return "\(venue.name), \(score), \(venue.neighborhood)"
     }
 
+    /// bd#204: deliberately never mentions a score, even for a cell with
+    /// observed venues — the old wording ("best Work Fit N") is exactly the
+    /// score-shaped language that made Bilal read a cluster count as an
+    /// out-of-range score. A cluster is a "how many, go zoom in" affordance,
+    /// never a quality signal.
     static func clusterLabel(for cluster: VenueCluster) -> String {
-        cluster.hasObservedVenue
-            ? "\(cluster.count) venues, best Work Fit \(cluster.bestScore)"
-            : "\(cluster.count) venues, not checked yet"
+        let noun = cluster.count == 1 ? "café" : "cafés"
+        return "\(cluster.count) \(noun) in this area. Double-tap to zoom in."
     }
 
     // MARK: - Search-driven camera fit (brewdesk#158)
@@ -892,26 +896,26 @@ public struct CafeMapScreen: View {
     // MARK: - Annotations (representation from MapAnnotationPlanner,
     // styling from MapAnnotationViews — see brewdesk#54/#55)
 
+    /// bd#204: the three representations are no longer mutually exclusive —
+    /// a dense viewport draws all three layers at once (top-ranked score
+    /// pins always on top, dots for the mid tier, clusters for whatever
+    /// overflows both), so this renders every non-empty layer unconditionally
+    /// rather than switching on a single case.
     @MapContentBuilder
     private func annotations(for plan: MapAnnotationPlan) -> some MapContent {
-        switch plan {
-        case .pins(let venues):
-            ForEach(venues) { venue in
-                Annotation("", coordinate: coordinate(of: venue)) {
-                    pinButton(for: venue, isSelected: selected?.id == venue.id)
-                }
+        ForEach(plan.pins) { venue in
+            Annotation("", coordinate: coordinate(of: venue)) {
+                pinButton(for: venue, isSelected: selected?.id == venue.id)
             }
-        case .dots(let venues):
-            ForEach(venues) { venue in
-                Annotation("", coordinate: coordinate(of: venue)) {
-                    dotButton(for: venue)
-                }
+        }
+        ForEach(plan.dots) { venue in
+            Annotation("", coordinate: coordinate(of: venue)) {
+                dotButton(for: venue)
             }
-        case .clusters(let clusters):
-            ForEach(clusters) { cluster in
-                Annotation("", coordinate: cluster.coordinate) {
-                    clusterButton(for: cluster)
-                }
+        }
+        ForEach(plan.clusters) { cluster in
+            Annotation("", coordinate: cluster.coordinate) {
+                clusterButton(for: cluster)
             }
         }
     }
@@ -1158,10 +1162,24 @@ public struct CafeMapScreen: View {
                 HStack {
                     Text(countLine)
                         .font(.caption.bold())
-                    Spacer()
-                    Text("Scores show Work Fit")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+                    Spacer(minLength: 8)
+                    // bd#204: names both marker kinds explicitly — the old
+                    // "Scores show Work Fit" said nothing about clusters, so
+                    // a count pill under it read as another score. Three
+                    // fallback lengths (`ViewThatFits`) so the smallest
+                    // supported width and large Dynamic Type both still fit
+                    // on one line instead of clipping.
+                    ViewThatFits(in: .horizontal) {
+                        Text("Circles: Work Fit score · Stacks: cafés grouped")
+                        Text("Circles: score · Stacks: grouped")
+                        Text("Score · Grouped")
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .multilineTextAlignment(.trailing)
                 }
                 .padding(.horizontal, 6)
                 .accessibilityIdentifier("map-count-line")

@@ -85,23 +85,59 @@ struct AppleUnverifiedPin: View {
     }
 }
 
-/// High-density cell: count pill tinted by the cell's best score.
-/// A cell with no observed venues at all (bd#159, `!hasObservedVenue`)
-/// tints neutral grey instead of a fabricated tier color from the flat
-/// fallback score.
+/// High-density cell: a "stack" of grouped cafés, deliberately UNLIKE a
+/// score pin in both shape and color (bd#204 — Bilal read cluster counts as
+/// out-of-range scores because the old pill was a tier-tinted capsule
+/// indistinguishable from `VenueScorePin`). Never a `ScoreTier` color, never
+/// a circle/capsule: a rounded-rectangle silhouette with a second, offset
+/// rect behind it to read as a pile of pins, a `square.stack` glyph, and the
+/// count — never the cell's best score, however evidenced the cell is. The
+/// shape difference (rect stack vs. circle) is what keeps the two legible in
+/// greyscale, not just the color (founder is red-green colorblind).
 struct VenueClusterPill: View {
     let cluster: VenueCluster
 
+    /// "125", capped to "99+" once the pill can no longer read the exact
+    /// count at a glance — the display is metadata about density, not a
+    /// precise figure worth spelling out past two digits.
+    private var displayCount: String {
+        cluster.count > 99 ? "99+" : "\(cluster.count)"
+    }
+
     var body: some View {
-        Text("\(cluster.count)")
-            .font(.caption.monospacedDigit().bold())
-            .foregroundStyle(.white)
-            .padding(.horizontal, 6)
-            .frame(minWidth: 34, minHeight: 34)
+        ZStack {
+            // The second, offset rect behind the front face — reads as a
+            // pile of grouped pins rather than one flat badge. Solid fill,
+            // no shadow/material (map annotations re-host every pan frame;
+            // see the file-level perf note above).
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(BrewDeskPalette.clusterSurface)
+                .frame(width: 40, height: 40)
+                .offset(x: 5, y: 5)
+
+            // Content drives sizing (not the other way around, bd#204 fix):
+            // an `.overlay`'d shape stays pinned to the frame's minimum, so
+            // "99+" wrapped onto a second line at the 44pt minimum. Sizing
+            // the HStack first and hanging the shape off its `.background`
+            // lets the pill grow past 44pt when the capped label needs it.
+            HStack(spacing: 3) {
+                Image(systemName: "square.stack")
+                    .font(.caption2.bold())
+                Text(displayCount)
+                    .font(.caption.monospacedDigit().bold())
+                    .fixedSize()
+            }
+            .foregroundStyle(BrewDeskPalette.clusterSurfaceText)
+            .padding(.horizontal, 8)
+            .frame(minWidth: 44, minHeight: 44)
             .background(
-                cluster.hasObservedVenue ? ScoreTier(score: cluster.bestScore).color : BrewDeskPalette.unobserved,
-                in: Capsule()
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(BrewDeskPalette.clusterSurface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(BrewDeskPalette.clusterSurfaceStroke, lineWidth: 1)
+                    )
             )
-            .overlay(Capsule().stroke(.white, lineWidth: 1.5))
+        }
     }
 }
