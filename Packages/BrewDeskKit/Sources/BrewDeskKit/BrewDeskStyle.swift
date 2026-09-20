@@ -83,7 +83,14 @@ public enum BrewDeskPalette {
     /// pile read as one blob with no visible boundaries. A neutral grey fill
     /// with a darker grey edge keeps each dot legible as its own shape even
     /// when several sit close together, without introducing red/green.
-    public static let unobservedDotStroke = Color(red: 0.38, green: 0.38, blue: 0.40)
+    ///
+    /// Adaptive (supervisor check at live density, 2026-09-20): the fixed dark
+    /// grey vanished against the dark basemap, so unrated cafés were invisible
+    /// in dark mode. Dark grey on the light map, light grey on the dark map.
+    public static let unobservedDotStroke = adaptive(
+        light: Color(red: 0.38, green: 0.38, blue: 0.40),
+        dark: Color(red: 0.80, green: 0.81, blue: 0.83)
+    )
 
     // MARK: - bd#211: observed dot fills — single hue, lightness-only tier
 

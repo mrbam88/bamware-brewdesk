@@ -79,7 +79,7 @@ struct VenueScoreDot: View {
                     .overlay(Circle().stroke(BrewDeskPalette.observedDotStroke, lineWidth: 1))
             } else {
                 Circle()
-                    .strokeBorder(BrewDeskPalette.unobservedDotStroke, lineWidth: 1.5)
+                    .strokeBorder(BrewDeskPalette.unobservedDotStroke, lineWidth: 2)
             }
         }
         .frame(width: 14, height: 14)
