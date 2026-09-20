@@ -1,67 +1,67 @@
 import SwiftUI
+import UIKit
 import VenueKit
 
 /// Styling for the map's markers (brewdesk#54, re-shaped bd#204/#209,
 /// replaced outright by bd#212's "micro teardrops" — the design Bilal chose
 /// after rejecting build 24's score-circle + count-stack markers. There is
-/// no grouping/clustering representation left anywhere in the app; every
-/// venue draws its OWN marker, sized by zoom and demoted to a small dot only
-/// on a genuine screen-space collision with a better-scored marker.
+/// no grouping/clustering representation left anywhere in the app.
 ///
-/// Deliberately the ONLY place map-marker looks live — `MapAnnotationPlanner`
-/// decides WHAT to draw (kind + diameter + selection), this file decides
-/// what it LOOKS like.
-///
-/// Every view here stays composite-cheap on purpose: solid fills, one small
-/// shadow, no materials, no per-marker `GeometryReader`, text only when the
-/// head is big enough to read (bd#212 perf requirement — MapKit re-hosts
-/// every annotation view on-camera-settle, so a cheap view is what keeps the
-/// re-plan from itself becoming a hitch, same #54 lesson as before).
+/// Only the numbered TEARDROP lives here as a SwiftUI view any more — a
+/// demoted rated dot and an unrated speck are native MapKit `MapCircle`
+/// overlay content built directly in `CafeMapScreen` (supervisor review:
+/// hosting ~200 unrated specks as SwiftUI annotation views, each wrapped in
+/// its own 44pt `Button`, was the real cost behind the missed perf target —
+/// a `MapCircle` is MapKit's own cheap overlay primitive, never a hosted
+/// SwiftUI view).
 
 /// The classic map-pin silhouette: a round head with a pointed tail, tip at
 /// the BOTTOM-CENTER of the view's own frame — paired with
 /// `Annotation(..., anchor: .bottom)` in `CafeMapScreen` so the tip (not the
 /// shape's visual center) lands exactly on the venue's coordinate.
+///
+/// Built the same way the design mock's own CSS does (`border-radius: 50%
+/// 50% 50% 0; transform: rotate(-45deg)`): round three corners of a square
+/// at their maximum radius (side/2 — which makes those three corners trace
+/// a true circle of diameter `side` centered on the square's own center),
+/// leave the fourth corner sharp, then rotate the whole square -45° around
+/// its center. The sharp corner swings straight down to become the tip, at
+/// distance `side/2 · (1 + √2) ≈ 0.7071·side` below the head's center — a
+/// pure affine rotation, not a hand-derived arc-sweep direction (the
+/// PREVIOUS implementation built the outline from a manual circular arc
+/// with a `clockwise` flag guessed without ever rendering it; the guess was
+/// wrong, so every teardrop rendered as a near-invisible sliver instead of
+/// a filled head — this construction has no such direction ambiguity: it's
+/// one multiplication).
 struct TeardropShape: Shape {
     func path(in rect: CGRect) -> Path {
-        let r = rect.width / 2
-        let center = CGPoint(x: rect.midX, y: rect.minY + r)
-        let tip = CGPoint(x: rect.midX, y: rect.maxY)
-        // The tail's two straight sides leave the circle this many degrees
-        // either side of straight-down — a moderate angle keeps the tail
-        // slim without pinching to a hairline at these tiny (4–30pt) sizes.
-        let theta = Angle.degrees(55).radians
-        let left = CGPoint(x: center.x - r * sin(theta), y: center.y + r * cos(theta))
-        let right = CGPoint(x: center.x + r * sin(theta), y: center.y + r * cos(theta))
-
-        var path = Path()
-        path.move(to: tip)
-        path.addLine(to: left)
-        // The long way around the circle — through the TOP, never back
-        // through the gap where the tail attaches.
-        path.addArc(
-            center: center,
-            radius: r,
-            startAngle: Angle(radians: atan2(left.y - center.y, left.x - center.x)),
-            endAngle: Angle(radians: atan2(right.y - center.y, right.x - center.x)),
-            clockwise: true
+        let side = rect.width
+        let headCenter = CGPoint(x: rect.midX, y: rect.minY + side / 2)
+        let squareRect = CGRect(
+            x: headCenter.x - side / 2, y: headCenter.y - side / 2,
+            width: side, height: side
         )
-        path.addLine(to: tip)
-        path.closeSubpath()
-        return path
+        // `Path` has no rounded-corners-per-corner initializer — build via
+        // `UIBezierPath` (which does) and bridge its `CGPath`.
+        var square = Path(
+            UIBezierPath(
+                roundedRect: squareRect,
+                byRoundingCorners: [.topLeft, .topRight, .bottomRight],
+                cornerRadii: CGSize(width: side / 2, height: side / 2)
+            ).cgPath
+        )
+        let toOrigin = CGAffineTransform(translationX: -headCenter.x, y: -headCenter.y)
+        let rotate = CGAffineTransform(rotationAngle: -45 * .pi / 180)
+        let back = CGAffineTransform(translationX: headCenter.x, y: headCenter.y)
+        square = square.applying(toOrigin.concatenating(rotate).concatenating(back))
+        return square
     }
 }
 
-/// One unified marker view for EVERY venue on the map — teardrop, demoted
-/// dot, or unrated speck all live here, driven purely by `MarkerPlacement`,
-/// so `CafeMapScreen` hosts exactly one annotation VIEW TYPE per venue id
-/// (bd#212's stable-identity/no-remove-insert perf requirement: a tier/size
-/// change is a value change on an already-hosted view, never a different
-/// view type MapKit would have to tear down and rebuild).
-///
-/// `Equatable` so SwiftUI can skip re-rendering a marker whose placement
-/// didn't actually change between two `body` evaluations that aren't a real
-/// re-plan (bd#212 perf requirement: "Equatable marker view").
+/// The numbered teardrop marker — the ONLY per-venue SwiftUI view left on
+/// the map. `Equatable` so SwiftUI can skip re-rendering a marker whose
+/// placement didn't actually change between two `body` evaluations that
+/// aren't a real re-plan (bd#212 perf requirement).
 struct TeardropMarkerView: View, Equatable {
     let placement: MarkerPlacement
 
@@ -69,65 +69,36 @@ struct TeardropMarkerView: View, Equatable {
         lhs.placement == rhs.placement
     }
 
-    private var diameter: CGFloat { placement.kind.diameter }
-
-    private var isTeardropShape: Bool {
-        if case .teardrop = placement.kind { return true }
-        return false
-    }
+    private var diameter: CGFloat { placement.kind.teardropDiameter ?? MapAnnotationPlanner.selectedDiameter }
+    /// Total frame height (head + tail) — see `MapAnnotationPlanner
+    /// .tailHeightFactor`'s doc comment for the `TeardropShape` geometry
+    /// this matches exactly.
+    private var frameHeight: CGFloat { diameter * MapAnnotationPlanner.tailHeightFactor }
+    /// How far the number must shift UP from the frame's own vertical
+    /// center to land at the HEAD's true center (the tail pulls the
+    /// frame's midpoint down) — the closed-form version of the geometry
+    /// `TeardropShape` draws: head center sits at `diameter/2` from the
+    /// frame's top; the frame's own center sits at `frameHeight/2`.
+    private var numberVerticalOffset: CGFloat { (diameter - frameHeight) / 2 }
 
     var body: some View {
-        Group {
-            switch placement.kind {
-            case .teardrop, .dot:
-                ratedHead
-            case .speck:
-                Circle()
-                    .fill(BrewDeskPalette.markerSpeckFill)
-                    .frame(width: diameter, height: diameter)
+        let fill = BrewDeskPalette.markerFill(score: placement.venue.workScore)
+        ZStack {
+            TeardropShape()
+                .fill(fill)
+                .overlay(TeardropShape().stroke(BrewDeskPalette.markerHairline, lineWidth: 0.75))
+                .shadow(color: .black.opacity(0.55), radius: 2, x: 0, y: 1)
+            if placement.showsNumber {
+                Text(verbatim: "\(placement.venue.workScore)")
+                    .font(BrewDeskFont.markerNumber(size: diameter * 0.58))
+                    .foregroundStyle(BrewDeskPalette.markerNumberColor(score: placement.venue.workScore))
+                    .offset(y: numberVerticalOffset)
             }
         }
-        // The shape/frame height differs (teardrop is taller than it is
-        // wide, a dot/speck is square) — a fixed OUTER frame keeps every
-        // marker's LAYOUT box (and therefore MapKit's own positioning of
-        // it) a stable size for a given diameter, regardless of kind, so a
-        // teardrop-to-dot demotion never itself shifts the annotation's
-        // measured frame origin out from under `.bottom` anchoring.
-        .frame(width: max(diameter, 4), height: max(diameter, 4) * MapAnnotationPlanner.tailHeightFactor, alignment: .bottom)
+        .frame(width: diameter, height: frameHeight, alignment: .bottom)
         .overlay(alignment: .top) {
             if placement.isSelected {
                 selectedHalo
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var ratedHead: some View {
-        let fill = BrewDeskPalette.markerFill(score: placement.venue.workScore)
-        let numberSize = diameter * 0.58
-        ZStack {
-            if isTeardropShape {
-                TeardropShape()
-                    .fill(fill)
-                    .overlay(TeardropShape().stroke(BrewDeskPalette.markerHairline, lineWidth: 0.75))
-                    .frame(width: diameter, height: diameter * MapAnnotationPlanner.tailHeightFactor, alignment: .bottom)
-                    .shadow(color: .black.opacity(0.55), radius: 2, x: 0, y: 1)
-            } else {
-                Circle()
-                    .fill(fill)
-                    .overlay(Circle().stroke(BrewDeskPalette.markerHairline, lineWidth: 0.75))
-                    .frame(width: diameter, height: diameter)
-                    .shadow(color: .black.opacity(0.55), radius: 2, x: 0, y: 1)
-            }
-            if placement.showsNumber {
-                Text(verbatim: "\(placement.venue.workScore)")
-                    .font(BrewDeskFont.markerNumber(size: numberSize))
-                    .foregroundStyle(BrewDeskPalette.markerNumberColor(score: placement.venue.workScore))
-                    // The teardrop's visual centroid sits slightly above its
-                    // frame's true vertical center (the tail pulls the
-                    // frame's midpoint down) — nudge the number up into the
-                    // round head rather than the tail.
-                    .offset(y: isTeardropShape ? -diameter * 0.15 : 0)
             }
         }
     }
@@ -142,7 +113,7 @@ struct TeardropMarkerView: View, Equatable {
             .foregroundStyle(BrewDeskPalette.markerHaloText)
             .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
             .fixedSize()
-            .offset(y: -diameter * 1.05)
+            .offset(y: -diameter * 0.35)
     }
 }
 

@@ -2,49 +2,60 @@ import CoreGraphics
 import MapKit
 import VenueKit
 
-/// What shape/size a single venue's marker should draw as right now
-/// (bd#212 "micro teardrops" — replaces the old pin/dot/cluster-stack
-/// three-representation model outright; there is no grouping of any kind
-/// left in the app).
+/// What a single venue's marker should draw as right now (bd#212 "micro
+/// teardrops" — replaces the old pin/dot/cluster-stack three-representation
+/// model outright; there is no grouping of any kind left in the app).
+///
+/// Only `.teardrop` is a real SwiftUI `Annotation`/`Button` — `.dot` and
+/// `.speck` are drawn as native MapKit `MapCircle` overlay content by
+/// `CafeMapScreen` (supervisor review of the first micro-teardrops pass:
+/// ~200 unrated specks as full SwiftUI annotation views, each wrapped in a
+/// 44pt `Button`, was the actual cost behind the missed hitchRatio target —
+/// a `MapCircle` is MapKit's own cheap overlay primitive, never a hosted
+/// SwiftUI view at all).
 public enum MarkerKind: Equatable, Sendable {
     /// Full teardrop, tip on the coordinate. `diameter` is the head
     /// diameter in points; the number renders only when the CALLER'S
     /// `showsNumber` is also true (see `MarkerPlacement`).
     case teardrop(diameter: CGFloat)
-    /// A plain filled circle, tier-colored like a teardrop but never
-    /// numbered — either because the zoom is too far out for a teardrop
-    /// shape at all, or because this candidate lost a screen-space
-    /// collision to a better-scored marker and was demoted (bd#212's
-    /// overlap rule).
-    case dot(diameter: CGFloat)
-    /// A faint, neutral, never-numbered mark for an UNRATED (unobserved)
-    /// venue — never tier-colored (bd#159's rule carried into bd#212).
-    case speck(diameter: CGFloat)
+    /// A plain tier-colored `MapCircle`, never numbered — either the zoom
+    /// is too far out for a teardrop shape at all, or this candidate lost a
+    /// screen-space collision to a better-scored teardrop and was demoted
+    /// (bd#212's overlap rule). Fixed real-world radius — see
+    /// `CafeMapScreen.demotedDotRadiusMeters`.
+    case dot
+    /// A faint, neutral `MapCircle` for an UNRATED (unobserved) venue —
+    /// never tier-colored (bd#159's rule carried into bd#212). Fixed
+    /// real-world radius — see `CafeMapScreen.speckRadiusMeters`.
+    case speck
 
-    var diameter: CGFloat {
-        switch self {
-        case let .teardrop(d), let .dot(d), let .speck(d): d
-        }
+    /// Only a `.teardrop` has a caller-chosen point-size; `.dot`/`.speck`
+    /// are sized in real-world meters by the view layer instead.
+    var teardropDiameter: CGFloat? {
+        if case let .teardrop(diameter) = self { diameter } else { nil }
     }
 }
 
 /// One venue's fully-resolved marker for this `plan()` call (bd#212).
 ///
-/// `id` is always the venue id — the ONE stable identity every annotation
-/// in `CafeMapScreen`'s `ForEach` keys off. A venue's kind/diameter/
-/// selection state can all change between two `plan()` calls (a re-plan
-/// after a camera settle, a new selection) without ever changing this id,
-/// which is what lets MapKit update the SAME annotation view in place
-/// instead of destroying and recreating it — the direct fix for the #211
-/// stalls (70-100 annotation views being torn down and rebuilt on every
-/// re-plan).
+/// `id` is always the venue id. A venue's kind/diameter/selection state can
+/// all change between two `plan()` calls (a re-plan after a camera settle,
+/// a new selection) without ever changing this id — within each of
+/// `CafeMapScreen`'s three `ForEach`s (teardrops/dots/specks) this keeps
+/// MapKit updating the SAME hosted content in place rather than tearing it
+/// down and rebuilding it. (A venue crossing a KIND boundary — e.g. a
+/// teardrop losing a fresh collision and demoting to a dot — does move
+/// between those three `ForEach`s, a real remove+insert; that's an accepted
+///, relatively rare trade-off for keeping the steady-state cost of ~150-200
+/// unrated specks at native-overlay prices instead of SwiftUI-annotation
+/// prices.)
 public struct MarkerPlacement: Identifiable, Equatable, Sendable {
     public let venue: Venue
     public let kind: MarkerKind
     /// True only for a full (never demoted) teardrop at `diameter >= 11` —
-    /// a demoted dot or a below-threshold teardrop never shows a number,
-    /// even if it's technically still "rated" (bd#212 spec: "The score
-    /// number shows only when the head is ≥ 11 pt").
+    /// a demoted dot never shows a number, even though it's still "rated"
+    /// (bd#212 spec: "The score number shows only when the head is ≥ 11
+    /// pt").
     public let showsNumber: Bool
     public let isSelected: Bool
 
@@ -62,7 +73,7 @@ public struct MarkerPlacement: Identifiable, Equatable, Sendable {
 /// re-shaped bd#204/#209, replaced outright by bd#212's micro-teardrop
 /// design — no clusters/stacks/counts of any kind remain). Representation
 /// only — no styling; views decide what a teardrop/dot/speck looks like
-/// (`MapAnnotationViews`) without touching this logic.
+/// (`MapAnnotationViews`/`CafeMapScreen`) without touching this logic.
 public struct MapAnnotationPlan: Equatable, Sendable {
     public let markers: [MarkerPlacement]
 
@@ -75,6 +86,13 @@ public struct MapAnnotationPlan: Equatable, Sendable {
     public func containsVenue(id: String) -> Bool {
         markers.contains { $0.id == id }
     }
+
+    /// Full teardrops — the only kind hosted as a real SwiftUI `Annotation`.
+    public var teardrops: [MarkerPlacement] { markers.filter { if case .teardrop = $0.kind { true } else { false } } }
+    /// Demoted rated venues — drawn as a native `MapCircle`.
+    public var dots: [MarkerPlacement] { markers.filter { $0.kind == .dot } }
+    /// Unrated venues — drawn as a native `MapCircle`.
+    public var specks: [MarkerPlacement] { markers.filter { $0.kind == .speck } }
 }
 
 /// Pure, unit-tested planning: viewport culling with a margin, then a
@@ -84,55 +102,57 @@ public struct MapAnnotationPlan: Equatable, Sendable {
 public enum MapAnnotationPlanner {
     /// Hard ceiling on total rendered annotations — rated venues first,
     /// then the nearest unrated specks fill whatever budget is left
-    /// (bd#212 spec: "~220 annotations"). Direct descendant of #209/#211's
-    /// `maxAnnotations` — same purpose (bound the perf-critical annotation
-    /// count), raised because bd#212 draws EVERY rated venue individually
-    /// (no stack ever absorbs overflow any more).
+    /// (bd#212 spec: "~220 annotations").
     public static let maxAnnotations = 220
     /// How many unrated candidates (nearest-to-centre) are even considered
-    /// once every rated venue has been placed — bounds the collision-check
-    /// work the same way the old `dotCandidateLimit` did.
+    /// once every rated venue has been placed.
     public static let unratedCandidateLimit = 150
     /// Extra region kept annotated on every side (fraction of the span), so
     /// a pan shorter than half a screen never uncovers un-annotated map.
     public static let cullMargin = 0.5
-    /// Map-view size used for screen-space collision math when the real
-    /// `mapSize` hasn't been measured yet (the very first `plan()` call, one
-    /// frame before `CafeMapScreen`'s `GeometryReader` reports a real size).
+    /// Map-view size used for screen-space collision/metres-per-point math
+    /// when the real `mapSize` hasn't been measured yet (the very first
+    /// `plan()` call, one frame before `CafeMapScreen`'s `GeometryReader`
+    /// reports a real size).
     public static let fallbackMapSize = CGSize(width: 390, height: 660)
-    /// Shared margin added around every marker's own visual size before two
-    /// footprints are tested for overlap. Tuned down from an initial 3pt
-    /// after a live-density screenshot check at hood zoom in West Village
-    /// (real production data): the first pass's generous padding plus a
-    /// 1.3x-diameter tail allowance demoted nearly every marker to an
-    /// unnumbered dot in a genuinely dense neighborhood, which undersells
-    /// the whole point of the redesign (real café evidence visible, not
-    /// hidden behind demotion). 1.5pt still guarantees a visible gap
-    /// between two adjacent markers' hairline edges.
-    public static let footprintPadding: CGFloat = 1.5
-    /// Total marker height as a multiple of head diameter (head circle +
-    /// tail) — the SAME factor `TeardropMarkerView`'s outer frame uses, so
-    /// the collision footprint always matches what's actually drawn.
-    /// Lowered from an initial 1.3 alongside `footprintPadding` (see its
-    /// comment) — a shorter, stubbier tail reads fine at these sizes and
-    /// keeps two nearby markers from fighting over vertical room they don't
-    /// visually need.
-    public static let tailHeightFactor: CGFloat = 1.1
+    /// Shared margin added around a teardrop's own head before two
+    /// footprints are tested for overlap. Supervisor review: the footprint
+    /// must be the REAL head size, not a generous collision box — "head
+    /// diameter + 1pt, tail excluded from the box" — since `.dot`/`.speck`
+    /// are no longer discrete competing widgets (they're translucent
+    /// `MapCircle` overlays MapKit draws natively), the ONLY thing that
+    /// still needs strict AABB collision is teardrop-vs-teardrop (and
+    /// teardrop-vs-exclusion-rect); a tight box means fewer venues demote
+    /// in a genuinely dense neighbourhood, matching the reference mock's
+    /// density of numbered pins.
+    public static let footprintPadding: CGFloat = 0.5
+    /// Total marker HEIGHT as a multiple of head diameter, for VIEW sizing
+    /// only (`TeardropMarkerView`'s outer frame) — head circle (1.0×) plus
+    /// the tail's natural extent under the CSS-style rotated-square
+    /// construction (`TeardropShape`): a 45°-rotated square's far corner
+    /// sits `0.5 + 0.5·√2 ≈ 1.2071`× the side away from the near corner.
+    /// NOT used for collision any more (see `footprintPadding`) — the tail
+    /// is deliberately excluded from the collision box.
+    public static let tailHeightFactor: CGFloat = 1.21
 
-    // MARK: - bd#212: zoom-driven sizing
+    // MARK: - bd#212 (supervisor revision): metres-per-point sizing
 
-    /// (span, head diameter) control points, widest span first — see the
-    /// design record: zoomed out (≥0.045°) draws a plain 4pt dot with no
-    /// number, all the way to "closest" (≤0.005°) at a 20pt max head.
-    /// Smoothly interpolated between points, clamped past either end.
-    private static let sizeStops: [(span: Double, diameter: CGFloat)] = [
-        (0.045, 4), (0.022, 12), (0.011, 17), (0.005, 20),
+    /// (metres/point, head diameter) control points, widest (most zoomed
+    /// out) first. Keying off real-world metres-per-screen-point — rather
+    /// than the requested `MKCoordinateRegion` span in degrees — survives
+    /// the phone's actual aspect ratio: MapKit fits the REQUESTED region to
+    /// the view, so the rendered span can end up larger than what was asked
+    /// for; metres/point is measured from the SETTLED camera and the map's
+    /// own width, so it's always the real, on-screen answer. Interpolated
+    /// on a LOG scale (each stop here is exactly half the previous one, a
+    /// natural fit for "zoom level" style progressions), clamped past
+    /// either end.
+    private static let sizeStopsByMetersPerPoint: [(mpp: Double, diameter: CGFloat)] = [
+        (7.2, 4), (3.6, 12), (1.8, 17), (0.9, 20),
     ]
-    /// (span, speck diameter) — unrated cafés: invisible zoomed out, a
-    /// faint 2pt fleck at neighborhood zoom, 3pt at street. Never larger.
-    private static let speckStops: [(span: Double, diameter: CGFloat)] = [
-        (0.045, 0), (0.022, 2), (0.011, 3),
-    ]
+    /// Beyond this many metres/point an unrated speck draws nothing at all
+    /// (too zoomed out to mean anything).
+    public static let speckVisibilityThresholdMetersPerPoint: Double = 5.0
     /// A teardrop shape needs enough pixels for the round head PLUS the
     /// pointed tail to read as a pin rather than a blob — below this the
     /// design intentionally "degrades to a plain dot" (spec's own words).
@@ -142,37 +162,40 @@ public enum MapAnnotationPlanner {
     public static let numberThreshold: CGFloat = 11
     /// Selected marker: fixed size regardless of zoom (bd#212 spec).
     public static let selectedDiameter: CGFloat = 30
-    /// A teardrop that loses a screen-space collision shrinks to this
-    /// fraction of the diameter it would otherwise have drawn at.
-    public static let demotionScale: CGFloat = 0.42
 
-    /// Piecewise-linear interpolation over `sizeStops`/`speckStops`,
-    /// clamped at both ends — smaller span (more zoomed in) always yields a
-    /// diameter >= a larger span's, by construction of the stop tables.
-    private static func interpolate(_ stops: [(span: Double, diameter: CGFloat)], span: Double) -> CGFloat {
-        guard let first = stops.first, let last = stops.last else { return 0 }
-        if span >= first.span { return first.diameter }
-        if span <= last.span { return last.diameter }
+    /// Piecewise LOG-scale interpolation over `sizeStopsByMetersPerPoint`,
+    /// clamped at both ends — a smaller metres/point (more zoomed in)
+    /// always yields a diameter >= a larger one's, by construction.
+    private static func interpolateLog(_ stops: [(mpp: Double, diameter: CGFloat)], mpp: Double) -> CGFloat {
+        guard let first = stops.first, let last = stops.last, mpp > 0 else { return stops.first?.diameter ?? 0 }
+        if mpp >= first.mpp { return first.diameter }
+        if mpp <= last.mpp { return last.diameter }
         for i in 0..<(stops.count - 1) {
             let hi = stops[i]
             let lo = stops[i + 1]
-            guard span <= hi.span, span >= lo.span else { continue }
-            let t = (hi.span - span) / (hi.span - lo.span)
+            guard mpp <= hi.mpp, mpp >= lo.mpp else { continue }
+            let t = (log(hi.mpp) - log(mpp)) / (log(hi.mpp) - log(lo.mpp))
             return hi.diameter + (lo.diameter - hi.diameter) * CGFloat(t)
         }
         return last.diameter
     }
 
-    /// Head diameter (points) for a RATED venue's marker at this
-    /// visible-region longitude span, before any collision demotion.
-    public static func headDiameter(forLongitudeSpan span: Double) -> CGFloat {
-        interpolate(sizeStops, span: span)
+    /// Head diameter (points) for a RATED venue's marker at this real,
+    /// settled metres-per-screen-point, before any collision demotion.
+    public static func headDiameter(forMetersPerPoint mpp: Double) -> CGFloat {
+        interpolateLog(sizeStopsByMetersPerPoint, mpp: mpp)
     }
 
-    /// Diameter (points) for an UNRATED venue's speck at this span; `0`
-    /// means "don't draw it at all" (zoomed all the way out).
-    public static func speckDiameter(forLongitudeSpan span: Double) -> CGFloat {
-        interpolate(speckStops, span: span)
+    /// Real-world metres spanned by one screen point at the settled camera
+    /// — (visible width in metres) / (map width in points). This is what
+    /// the phone's user actually SEES, unlike the requested region span,
+    /// which MapKit may render wider than asked once it fits the view's
+    /// aspect ratio.
+    public static func metersPerPoint(region: MKCoordinateRegion, mapWidth: CGFloat) -> Double {
+        guard mapWidth > 0 else { return 3.3 }
+        let metersPerDegreeLongitude = 111_320.0 * cos(region.center.latitude * .pi / 180)
+        let visibleWidthMeters = region.span.longitudeDelta * abs(metersPerDegreeLongitude)
+        return visibleWidthMeters / Double(mapWidth)
     }
 
     // MARK: - Plan
@@ -183,16 +206,18 @@ public enum MapAnnotationPlanner {
     ///     teardrop, seeded into the collision grid first so nothing may
     ///     ever be placed on top of it.
     ///   - exclusionRects: screen-space rects already "occupied" before any
-    ///     marker is placed (bd#210, kept unchanged for bd#212) — the
+    ///     TEARDROP is placed (bd#210, kept unchanged for bd#212) — the
     ///     search header, "Search this area" pill, locate button, shelf
-    ///     card. A candidate whose footprint reaches into one goes through
-    ///     the SAME demote/drop handling as a marker-vs-marker collision.
+    ///     card. `.dot`/`.speck` markers are native `MapCircle` overlays and
+    ///     are never checked against these — a low-priority density
+    ///     indicator sitting briefly under chrome isn't the same problem a
+    ///     hidden, un-tappable teardrop was.
     /// - Parameter region: the current camera viewport, or `nil` when it has
     ///   never been observed. A stale/unknown region must never render as an
     ///   empty plan while `venues` is non-empty (brewdesk#157) — falls back
-    ///   to the un-culled venue list, every one a full (un-demoted, un-sized)
-    ///   teardrop at the "closest" diameter, rather than trusting pixel math
-    ///   against a region already known to be wrong.
+    ///   to the un-culled venue list, every one a full (un-demoted) teardrop
+    ///   at the "closest" diameter, rather than trusting pixel math against
+    ///   a region already known to be wrong.
     public static func plan(
         venues: [Venue],
         region: MKCoordinateRegion?,
@@ -204,7 +229,7 @@ public enum MapAnnotationPlanner {
             let markers = venues.map {
                 MarkerPlacement(
                     venue: $0,
-                    kind: .teardrop(diameter: sizeStops.last!.diameter),
+                    kind: .teardrop(diameter: sizeStopsByMetersPerPoint.last!.diameter),
                     showsNumber: $0.isObserved,
                     isSelected: $0.id == selectedVenueID
                 )
@@ -217,13 +242,16 @@ public enum MapAnnotationPlanner {
 
         let size = (mapSize.width > 0 && mapSize.height > 0) ? mapSize : fallbackMapSize
         let projector = ScreenProjector(region: region, size: size)
+        // Only teardrops (and chrome exclusion rects) ever enter the
+        // collision grid — see `footprintPadding`'s doc comment.
         let grid = CollisionGrid()
         for rect in exclusionRects {
             grid.insert(AABB(minX: rect.minX, maxX: rect.maxX, minY: rect.minY, maxY: rect.maxY))
         }
 
-        let ratedDiameter = headDiameter(forLongitudeSpan: region.span.longitudeDelta)
-        let speckSize = speckDiameter(forLongitudeSpan: region.span.longitudeDelta)
+        let mpp = metersPerPoint(region: region, mapWidth: size.width)
+        let ratedDiameter = headDiameter(forMetersPerPoint: mpp)
+        let speckVisible = mpp <= speckVisibilityThresholdMetersPerPoint
 
         var placed: [MarkerPlacement] = []
         var totalPlaced = 0
@@ -232,7 +260,7 @@ public enum MapAnnotationPlanner {
         // the fixed 30pt size, seeded before anything else.
         var selectedVenue: Venue?
         if let selectedVenueID, let match = visible.first(where: { $0.id == selectedVenueID }) {
-            let box = footprint(diameter: selectedDiameter, at: projector.point(for: coordinate(of: match)))
+            let box = teardropFootprint(diameter: selectedDiameter, at: projector.point(for: coordinate(of: match)))
             grid.insert(box)
             placed.append(
                 MarkerPlacement(
@@ -246,55 +274,48 @@ public enum MapAnnotationPlanner {
             selectedVenue = match
         }
 
-        // 2. Rated (observed) venues, best score first — every one competes
-        // for a full teardrop; a screen-space collision demotes it to a
-        // small dot instead of dropping it outright (bd#212's overlap
-        // rule). Only a demoted dot that STILL collides (an extremely dense
-        // pocket) is ever silently skipped.
+        // 2. Rated (observed) venues, best score first. Below the shape
+        // threshold, every rated venue is simply a dot — no teardrop is
+        // even attempted, so no collision work happens at all at that
+        // zoom. At/above the threshold, each candidate competes for a full
+        // teardrop; a screen-space collision demotes it to a dot instead
+        // of dropping it (bd#212's overlap rule) — a dot is a cheap
+        // `MapCircle`, never itself collision-checked, so no rated venue is
+        // ever silently hidden by this pass any more.
         let rated = visible
             .filter { $0.isObserved && $0.id != selectedVenue?.id }
             .sorted(by: byScoreDescendingThenID)
+        let attemptTeardrops = ratedDiameter >= teardropShapeThreshold
         for candidate in rated {
             guard totalPlaced < maxAnnotations else { break }
-            let point = projector.point(for: coordinate(of: candidate))
-            let teardropBox = footprint(diameter: ratedDiameter, at: point)
-            if !grid.collides(teardropBox) {
-                grid.insert(teardropBox)
-                let showsNumber = ratedDiameter >= numberThreshold
-                let kind: MarkerKind = ratedDiameter >= teardropShapeThreshold
-                    ? .teardrop(diameter: ratedDiameter)
-                    : .dot(diameter: ratedDiameter)
-                placed.append(MarkerPlacement(venue: candidate, kind: kind, showsNumber: showsNumber))
-                totalPlaced += 1
-                continue
+            if attemptTeardrops {
+                let point = projector.point(for: coordinate(of: candidate))
+                let teardropBox = teardropFootprint(diameter: ratedDiameter, at: point)
+                if !grid.collides(teardropBox) {
+                    grid.insert(teardropBox)
+                    placed.append(MarkerPlacement(
+                        venue: candidate,
+                        kind: .teardrop(diameter: ratedDiameter),
+                        showsNumber: ratedDiameter >= numberThreshold
+                    ))
+                    totalPlaced += 1
+                    continue
+                }
             }
-            let demotedDiameter = ratedDiameter * demotionScale
-            let dotBox = footprint(diameter: demotedDiameter, at: point)
-            if !grid.collides(dotBox) {
-                grid.insert(dotBox)
-                placed.append(MarkerPlacement(venue: candidate, kind: .dot(diameter: demotedDiameter), showsNumber: false))
-                totalPlaced += 1
-            }
-            // Neither the full teardrop nor the demoted dot has room: this
-            // venue is dropped for this plan — the hard "no two markers
-            // overlap, ever" rule wins over "every venue must render."
+            placed.append(MarkerPlacement(venue: candidate, kind: .dot, showsNumber: false))
+            totalPlaced += 1
         }
 
         // 3. Unrated (unobserved) venues — faint neutral specks, nearest-
-        // to-centre first, never numbered, never tier-colored. `speckSize`
-        // is 0 at the widest zoom, which already renders nothing (the
-        // `guard speckSize > 0` below just makes that explicit and skips
-        // the collision work entirely at that zoom).
-        if speckSize > 0 {
+        // to-centre first, never numbered, never tier-colored, never
+        // collision-checked (native `MapCircle` overlays render fine
+        // overlapping each other).
+        if speckVisible {
             let unratedEligible = visible.filter { !$0.isObserved && $0.id != selectedVenue?.id }
             let nearest = nearestToCentre(unratedEligible, region: region, limit: unratedCandidateLimit)
             for candidate in nearest {
                 guard totalPlaced < maxAnnotations else { break }
-                let point = projector.point(for: coordinate(of: candidate))
-                let box = footprint(diameter: speckSize, at: point)
-                guard !grid.collides(box) else { continue }
-                grid.insert(box)
-                placed.append(MarkerPlacement(venue: candidate, kind: .speck(diameter: speckSize), showsNumber: false))
+                placed.append(MarkerPlacement(venue: candidate, kind: .speck, showsNumber: false))
                 totalPlaced += 1
             }
         }
@@ -310,18 +331,14 @@ public enum MapAnnotationPlanner {
         lhs.workScore != rhs.workScore ? lhs.workScore > rhs.workScore : lhs.id < rhs.id
     }
 
-    /// The footprint a marker of this diameter occupies for collision
-    /// purposes — a touch taller than wide to account for a teardrop's
-    /// pointed tail (a dot/speck's true footprint is smaller than this, but
-    /// treating every kind the same, conservative way keeps demotion from
-    /// ever re-colliding with what it just avoided).
-    static func footprint(diameter: CGFloat, at point: CGPoint) -> AABB {
-        let pad = footprintPadding * 2
-        let width = diameter + pad
-        let height = diameter * tailHeightFactor + pad
+    /// A teardrop's collision footprint: the real head size (diameter +
+    /// 1pt padding on every side), tail deliberately excluded — see
+    /// `footprintPadding`'s doc comment.
+    static func teardropFootprint(diameter: CGFloat, at point: CGPoint) -> AABB {
+        let side = diameter + footprintPadding * 2
         return AABB(
-            minX: point.x - width / 2, maxX: point.x + width / 2,
-            minY: point.y - height / 2, maxY: point.y + height / 2
+            minX: point.x - side / 2, maxX: point.x + side / 2,
+            minY: point.y - side / 2, maxY: point.y + side / 2
         )
     }
 
@@ -380,7 +397,7 @@ struct ScreenProjector {
     }
 }
 
-/// Axis-aligned bounding box used as every marker's collision footprint.
+/// Axis-aligned bounding box used as every teardrop's collision footprint.
 struct AABB {
     var minX, maxX, minY, maxY: CGFloat
 
