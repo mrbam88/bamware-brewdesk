@@ -1,101 +1,156 @@
 import SwiftUI
 import VenueKit
 
-/// Styling for the three map representations (brewdesk#54). Deliberately the
-/// ONLY place map-annotation looks live — the representation logic is
-/// `MapAnnotationPlanner`, so the brewdesk#55 visual pass edits this file
-/// without touching planning or `CafeMapScreen`.
+/// Styling for the map's markers (brewdesk#54, re-shaped bd#204/#209,
+/// replaced outright by bd#212's "micro teardrops" — the design Bilal chose
+/// after rejecting build 24's score-circle + count-stack markers. There is
+/// no grouping/clustering representation left anywhere in the app; every
+/// venue draws its OWN marker, sized by zoom and demoted to a small dot only
+/// on a genuine screen-space collision with a better-scored marker.
 ///
-/// Every view here is composite-cheap on purpose: solid fills, no materials,
-/// no shadows, no SF Symbol per pin. MapKit repositions annotation views every
-/// frame of a pan; blur-backed or shadowed views made that the #54 stutter.
-
-/// Full pin: score-forward solid capsule (fewer, smarter pins — #55).
+/// Deliberately the ONLY place map-marker looks live — `MapAnnotationPlanner`
+/// decides WHAT to draw (kind + diameter + selection), this file decides
+/// what it LOOKS like.
 ///
-/// Unobserved venues (bd#159, `!venue.isObserved`) render a neutral grey
-/// outline pin with no number instead of the engine's flat fallback score —
-/// the fill is a fixed grey, never red or green (founder is red-green
-/// colorblind), so it can never be mistaken for a low/high tier.
-struct VenueScorePin: View {
-    let venue: Venue
-    let isSelected: Bool
+/// Every view here stays composite-cheap on purpose: solid fills, one small
+/// shadow, no materials, no per-marker `GeometryReader`, text only when the
+/// head is big enough to read (bd#212 perf requirement — MapKit re-hosts
+/// every annotation view on-camera-settle, so a cheap view is what keeps the
+/// re-plan from itself becoming a hitch, same #54 lesson as before).
 
-    var body: some View {
-        Group {
-            if venue.isObserved {
-                Text("\(venue.workScore)")
-                    .font(.caption.monospacedDigit().bold())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 4)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .background(venue.scoreTier.color, in: Capsule())
-            } else {
-                Image(systemName: "questionmark")
-                    .font(.caption.bold())
-                    .foregroundStyle(BrewDeskPalette.unobserved)
-                    .padding(.horizontal, 4)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .background(.white, in: Capsule())
-                    .overlay(Capsule().stroke(BrewDeskPalette.unobserved, lineWidth: 1.5))
-            }
-        }
-        .overlay(Capsule().stroke(.white, lineWidth: isSelected ? 2.5 : 1))
-        .scaleEffect(isSelected ? 1.12 : 1)
+/// The classic map-pin silhouette: a round head with a pointed tail, tip at
+/// the BOTTOM-CENTER of the view's own frame — paired with
+/// `Annotation(..., anchor: .bottom)` in `CafeMapScreen` so the tip (not the
+/// shape's visual center) lands exactly on the venue's coordinate.
+struct TeardropShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let r = rect.width / 2
+        let center = CGPoint(x: rect.midX, y: rect.minY + r)
+        let tip = CGPoint(x: rect.midX, y: rect.maxY)
+        // The tail's two straight sides leave the circle this many degrees
+        // either side of straight-down — a moderate angle keeps the tail
+        // slim without pinching to a hairline at these tiny (4–30pt) sizes.
+        let theta = Angle.degrees(55).radians
+        let left = CGPoint(x: center.x - r * sin(theta), y: center.y + r * cos(theta))
+        let right = CGPoint(x: center.x + r * sin(theta), y: center.y + r * cos(theta))
+
+        var path = Path()
+        path.move(to: tip)
+        path.addLine(to: left)
+        // The long way around the circle — through the TOP, never back
+        // through the gap where the tail attaches.
+        path.addArc(
+            center: center,
+            radius: r,
+            startAngle: Angle(radians: atan2(left.y - center.y, left.x - center.x)),
+            endAngle: Angle(radians: atan2(right.y - center.y, right.x - center.x)),
+            clockwise: true
+        )
+        path.addLine(to: tip)
+        path.closeSubpath()
+        return path
     }
 }
 
-/// Mid-density venue: a score-tier dot with a comfortable tap frame.
-/// Unobserved venues get a neutral grey dot instead of a tier fill (bd#159)
-/// — same neutral, non-red/green treatment as `VenueScorePin`.
+/// One unified marker view for EVERY venue on the map — teardrop, demoted
+/// dot, or unrated speck all live here, driven purely by `MarkerPlacement`,
+/// so `CafeMapScreen` hosts exactly one annotation VIEW TYPE per venue id
+/// (bd#212's stable-identity/no-remove-insert perf requirement: a tier/size
+/// change is a value change on an already-hosted view, never a different
+/// view type MapKit would have to tear down and rebuild).
 ///
-/// bd#209: unobserved used to be `.white` fill + `.white` stroke — at
-/// street-level density, dozens of overlapping unobserved dots had the SAME
-/// fill and edge color as their neighbours, so the pile read as one
-/// borderless white blob ("worm") instead of individual cafés. Now a
-/// neutral mid-grey fill with a hairline DARKER grey stroke, so each dot
-/// keeps a visible edge against both the basemap and its neighbours even
-/// when several sit close together. `MapAnnotationPlanner`'s collision pass
-/// also now guarantees ≥14pt centre-to-centre spacing between any two
-/// placed dots, so true full overlap can no longer happen at all — this
-/// styling fix is what keeps a near-miss legible on top of that.
-///
-/// bd#211: observed used to tint by `venue.scoreTier.color` directly — four
-/// DIFFERENT hues (green/sage/olive/brick) with no number to anchor them,
-/// exactly the signal a red-green colorblind viewer can't read reliably.
-/// Now a SINGLE hue at three lightness steps (`BrewDeskPalette
-/// .observedDotColor(for:)`) — darkest/most saturated wins, lightest
-/// loses. Unobserved and observed are ALSO now differentiated by shape,
-/// not just color/lightness: unobserved is a hollow ring (no fill),
-/// observed is a filled disc — so even the lightest observed step reads as
-/// unmistakably different from "not checked yet" at a glance.
-struct VenueScoreDot: View {
-    let venue: Venue
+/// `Equatable` so SwiftUI can skip re-rendering a marker whose placement
+/// didn't actually change between two `body` evaluations that aren't a real
+/// re-plan (bd#212 perf requirement: "Equatable marker view").
+struct TeardropMarkerView: View, Equatable {
+    let placement: MarkerPlacement
+
+    static func == (lhs: TeardropMarkerView, rhs: TeardropMarkerView) -> Bool {
+        lhs.placement == rhs.placement
+    }
+
+    private var diameter: CGFloat { placement.kind.diameter }
+
+    private var isTeardropShape: Bool {
+        if case .teardrop = placement.kind { return true }
+        return false
+    }
 
     var body: some View {
         Group {
-            if venue.isObserved {
+            switch placement.kind {
+            case .teardrop, .dot:
+                ratedHead
+            case .speck:
                 Circle()
-                    .fill(BrewDeskPalette.observedDotColor(for: venue.scoreTier))
-                    .overlay(Circle().stroke(BrewDeskPalette.observedDotStroke, lineWidth: 1))
-            } else {
-                Circle()
-                    .strokeBorder(BrewDeskPalette.unobservedDotStroke, lineWidth: 2)
+                    .fill(BrewDeskPalette.markerSpeckFill)
+                    .frame(width: diameter, height: diameter)
             }
         }
-        .frame(width: 14, height: 14)
-        .frame(width: 30, height: 30)
-        .contentShape(Rectangle())
+        // The shape/frame height differs (teardrop is taller than it is
+        // wide, a dot/speck is square) — a fixed OUTER frame keeps every
+        // marker's LAYOUT box (and therefore MapKit's own positioning of
+        // it) a stable size for a given diameter, regardless of kind, so a
+        // teardrop-to-dot demotion never itself shifts the annotation's
+        // measured frame origin out from under `.bottom` anchoring.
+        .frame(width: max(diameter, 4), height: max(diameter, 4) * MapAnnotationPlanner.tailHeightFactor, alignment: .bottom)
+        .overlay(alignment: .top) {
+            if placement.isSelected {
+                selectedHalo
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var ratedHead: some View {
+        let fill = BrewDeskPalette.markerFill(score: placement.venue.workScore)
+        let numberSize = diameter * 0.58
+        ZStack {
+            if isTeardropShape {
+                TeardropShape()
+                    .fill(fill)
+                    .overlay(TeardropShape().stroke(BrewDeskPalette.markerHairline, lineWidth: 0.75))
+                    .frame(width: diameter, height: diameter * MapAnnotationPlanner.tailHeightFactor, alignment: .bottom)
+                    .shadow(color: .black.opacity(0.55), radius: 2, x: 0, y: 1)
+            } else {
+                Circle()
+                    .fill(fill)
+                    .overlay(Circle().stroke(BrewDeskPalette.markerHairline, lineWidth: 0.75))
+                    .frame(width: diameter, height: diameter)
+                    .shadow(color: .black.opacity(0.55), radius: 2, x: 0, y: 1)
+            }
+            if placement.showsNumber {
+                Text(verbatim: "\(placement.venue.workScore)")
+                    .font(BrewDeskFont.markerNumber(size: numberSize))
+                    .foregroundStyle(BrewDeskPalette.markerNumberColor(score: placement.venue.workScore))
+                    // The teardrop's visual centroid sits slightly above its
+                    // frame's true vertical center (the tail pulls the
+                    // frame's midpoint down) — nudge the number up into the
+                    // round head rather than the tail.
+                    .offset(y: isTeardropShape ? -diameter * 0.15 : 0)
+            }
+        }
+    }
+
+    private var selectedHalo: some View {
+        Text(placement.venue.name)
+            .font(BrewDeskFont.label(.caption2, weight: .semibold))
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(BrewDeskPalette.markerHaloBackground, in: Capsule())
+            .foregroundStyle(BrewDeskPalette.markerHaloText)
+            .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
+            .fixedSize()
+            .offset(y: -diameter * 1.05)
     }
 }
 
 /// Apple-only gap-fill marker (bd#182, feature-flagged — `AppleGapFillService
 /// .isEnabled`, default OFF): a grey outline café glyph, deliberately unlike
-/// every scored representation above (no capsule/number, no tier fill, a
-/// dashed rather than solid ring) — Apple's own unverified suggestion must
-/// never be mistaken for one of our claims at a glance. Grey only, never red
-/// or green (founder is red-green colorblind) — same `.unobserved` token
-/// `VenueScorePin`/`VenueScoreDot`/`VenueClusterPill` use for "not checked
-/// yet", reused here for "not even ours".
+/// every scored marker above — Apple's own unverified suggestion must never
+/// be mistaken for one of our claims at a glance. Grey only, never red or
+/// green (founder is red-green colorblind).
 struct AppleUnverifiedPin: View {
     var body: some View {
         Image(systemName: "cup.and.saucer")
@@ -110,68 +165,5 @@ struct AppleUnverifiedPin: View {
                     style: StrokeStyle(lineWidth: 1.5, dash: [3, 2])
                 )
             )
-    }
-}
-
-/// High-density cell: a "stack" of grouped cafés, deliberately UNLIKE a
-/// score pin in both shape and color (bd#204 — Bilal read cluster counts as
-/// out-of-range scores because the old pill was a tier-tinted capsule
-/// indistinguishable from `VenueScorePin`). Never a `ScoreTier` color, never
-/// a circle/capsule: a rounded-rectangle silhouette with a second, offset
-/// rect behind it to read as a pile of pins, a `square.stack` glyph, and the
-/// count — never the cell's best score, however evidenced the cell is. The
-/// shape difference (rect stack vs. circle) is what keeps the two legible in
-/// greyscale, not just the color (founder is red-green colorblind).
-struct VenueClusterPill: View {
-    let cluster: VenueCluster
-
-    /// "128", capped to "999+" only once the pill genuinely can't spell out
-    /// the count. bd#209: "99+" was hiding real information at exactly the
-    /// density where the count matters most (a "99+" versus "128" versus
-    /// "342" is a meaningfully different amount of café evidence behind one
-    /// stack) — the honest number now shows up to three digits, and only
-    /// four-digit-or-more density (unreachable in practice: `plan()` caps
-    /// total annotations at `MapAnnotationPlanner.maxAnnotations`, and a
-    /// stack's member count is bounded by whatever's left in view) falls
-    /// back to a capped display at all.
-    private var displayCount: String {
-        cluster.count > 999 ? "999+" : "\(cluster.count)"
-    }
-
-    var body: some View {
-        ZStack {
-            // The second, offset rect behind the front face — reads as a
-            // pile of grouped pins rather than one flat badge. Solid fill,
-            // no shadow/material (map annotations re-host every pan frame;
-            // see the file-level perf note above).
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(BrewDeskPalette.clusterSurface)
-                .frame(width: 40, height: 40)
-                .offset(x: 5, y: 5)
-
-            // Content drives sizing (not the other way around, bd#204 fix):
-            // an `.overlay`'d shape stays pinned to the frame's minimum, so
-            // "99+" wrapped onto a second line at the 44pt minimum. Sizing
-            // the HStack first and hanging the shape off its `.background`
-            // lets the pill grow past 44pt when the capped label needs it.
-            HStack(spacing: 3) {
-                Image(systemName: "square.stack")
-                    .font(.caption2.bold())
-                Text(displayCount)
-                    .font(.caption.monospacedDigit().bold())
-                    .fixedSize()
-            }
-            .foregroundStyle(BrewDeskPalette.clusterSurfaceText)
-            .padding(.horizontal, 8)
-            .frame(minWidth: 44, minHeight: 44)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(BrewDeskPalette.clusterSurface)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(BrewDeskPalette.clusterSurfaceStroke, lineWidth: 1)
-                    )
-            )
-        }
     }
 }

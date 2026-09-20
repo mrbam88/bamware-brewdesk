@@ -220,12 +220,12 @@ final class ReviewerSimulationTests: XCTestCase {
         let pins = app.mapPins
         XCTAssertTrue(pins.firstMatch.waitForExistence(timeout: 15),
                       "baselineCity fixture rendered no venue pins")
-        // No exact pin-count assertions (brewdesk#37 / #131): the annotation
-        // planner clusters at city zoom, so the number of individual pins is
-        // a layout decision, not a data fact. The count line proves the
-        // dataset actually loaded.
+        // No exact marker-count assertions (brewdesk#37 / #131): bd#212
+        // sizes/demotes markers by zoom and screen-space collision, so the
+        // number of individual markers is a layout decision, not a data
+        // fact. The count line proves the dataset actually loaded.
         let countLine = app.descendants(matching: .any).matching(
-            NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "map-count-line", "spot")
+            NSPredicate(format: "identifier == %@ AND label CONTAINS %@", "map-count-line", "rated")
         ).firstMatch
         XCTAssertTrue(countLine.waitForExistence(timeout: 5),
                       "Count line missing for the baselineCity fixture")

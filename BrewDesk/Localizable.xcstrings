@@ -2167,6 +2167,26 @@
           }
         }
       }
+    },
+    "%1$lld rated · %2$lld cafés": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld calificados · %2$lld cafés"
+          }
+        }
+      }
+    },
+    "Numbers are Work Fit": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los números son Work Fit"
+          }
+        }
+      }
     }
   },
   "version": "1.1"

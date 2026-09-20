@@ -99,6 +99,16 @@ public struct LaunchEnvironment: Sendable, Equatable {
     /// flag exists instead of depending on that. `nil` when absent or
     /// malformed.
     public let fixedLocation: FixedLocationFixture?
+    /// `-brewdesk.debug.initial-span <degrees>` (bd#212) — opens the map's
+    /// camera at this longitude/latitude span instead of the normal
+    /// GPS-fix/Browse-NYC default. A test/screenshot seam only for
+    /// scripting a specific zoom level (city/neighborhood/street) for
+    /// screenshot capture and `MapPerformanceUITests`' "dot zoom" run;
+    /// `CafeMapScreen` only ever applies it alongside `isUITestRun` (some
+    /// other `-UITest…` argument must also be present), so a real App
+    /// Store/TestFlight launch — which never carries one — can't be driven
+    /// by it. `nil` when absent, unparseable, or non-positive.
+    public let debugInitialSpan: Double?
     /// True when ANY `-UITest…` launch argument is present — the one seam
     /// that holds for every automated UI run, scenario or live. Every UI
     /// test that can reach user flows passes at least one (`-UITestSkipGates`
@@ -160,6 +170,9 @@ public struct LaunchEnvironment: Sendable, Equatable {
             .flatMap(Double.init)
         fixedLocation = Self.value(after: "-brewdesk.uitest-fixed-location", in: arguments)
             .flatMap(FixedLocationFixture.init(raw:))
+        debugInitialSpan = Self.value(after: "-brewdesk.debug.initial-span", in: arguments)
+            .flatMap(Double.init)
+            .flatMap { $0 > 0 ? $0 : nil }
         isUITestRun = arguments.contains { $0.hasPrefix("-UITest") }
     }
 

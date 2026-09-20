@@ -216,12 +216,19 @@ public struct CafeMapScreen: View {
                 Map(position: $position, selection: $appleFeatureSelection) {
                     UserAnnotation()
                     annotations(for: plan)
-                    // A venue chosen from a dot, cluster zoom-in, or the shelf
-                    // still shows a full selected pin even when the plan has
-                    // no pin for it.
+                    // A venue chosen from the shelf (or panned away from
+                    // since) still shows a full selected teardrop even when
+                    // it fell outside the current plan's culled/collision
+                    // pass (bd#212 — same fallback bd#209's selected pin
+                    // always used).
                     if let selected, !plan.containsVenue(id: selected.id) {
-                        Annotation("", coordinate: coordinate(of: selected)) {
-                            pinButton(for: selected, isSelected: true)
+                        Annotation("", coordinate: coordinate(of: selected), anchor: .bottom) {
+                            markerButton(for: MarkerPlacement(
+                                venue: selected,
+                                kind: .teardrop(diameter: MapAnnotationPlanner.selectedDiameter),
+                                showsNumber: selected.isObserved,
+                                isSelected: true
+                            ))
                         }
                     }
                     // Gap-fill (bd#182, feature-flagged, default OFF): grey
@@ -571,6 +578,25 @@ public struct CafeMapScreen: View {
                     coordinate: CLLocationCoordinate2D(latitude: fixture.lat, longitude: fixture.lng)
                 )
             }
+            // bd#212 VERIFY seam: opens the camera at a scripted zoom span
+            // instead of the normal GPS-fix/Browse-NYC default, so a
+            // screenshot pass or `MapPerformanceUITests`' "dot zoom" run can
+            // script city/neighborhood/street density directly rather than
+            // depending on a real pan/pinch to reach it. Gated by
+            // `isUITestRun` (true only when some `-UITest…` argument is ALSO
+            // present, same pattern `MapFrameStatsHUD.isEnabled` and every
+            // other `-brewdesk.*`/`-UITest*` seam in this file already
+            // uses) rather than `#if DEBUG`: `MapPerformanceUITests` runs
+            // this exact seam against a RELEASE + ENABLE_TESTABILITY build
+            // (the ticket's own perf-measurement configuration), where
+            // `#if DEBUG` would have compiled it out entirely. A real
+            // launch — App Store or TestFlight — never carries a `-UITest…`
+            // argument, so this can never drive one.
+            if launchEnvironment.isUITestRun, let span = launchEnvironment.debugInitialSpan {
+                let region = Self.region(lat: model.centerLat, lng: model.centerLng, span: span)
+                position = .region(region)
+                visibleRegion = region
+            }
         }
         .onDisappear {
             replanTask?.cancel()
@@ -597,16 +623,6 @@ public struct CafeMapScreen: View {
     static func pinLabel(for venue: Venue) -> String {
         let score = venue.isObserved ? "Work Fit \(venue.workScore)" : "not checked yet"
         return "\(venue.name), \(score), \(venue.neighborhood)"
-    }
-
-    /// bd#204: deliberately never mentions a score, even for a cell with
-    /// observed venues — the old wording ("best Work Fit N") is exactly the
-    /// score-shaped language that made Bilal read a cluster count as an
-    /// out-of-range score. A cluster is a "how many, go zoom in" affordance,
-    /// never a quality signal.
-    static func clusterLabel(for cluster: VenueCluster) -> String {
-        let noun = cluster.count == 1 ? "café" : "cafés"
-        return "\(cluster.count) \(noun) in this area. Double-tap to zoom in."
     }
 
     // MARK: - Search-driven camera fit (brewdesk#158)
@@ -1074,26 +1090,16 @@ public struct CafeMapScreen: View {
         return rects
     }
 
-    /// bd#204: the three representations are no longer mutually exclusive —
-    /// a dense viewport draws all three layers at once (top-ranked score
-    /// pins always on top, dots for the mid tier, clusters for whatever
-    /// overflows both), so this renders every non-empty layer unconditionally
-    /// rather than switching on a single case.
+    /// bd#212: one annotation per venue, no grouping of any kind — `id:
+    /// \.id` (the venue id) is what keeps a tier/size change an in-place
+    /// update of the SAME hosted annotation view rather than a remove+
+    /// insert (the direct #211 perf fix: 70-100 annotation views being torn
+    /// down and rebuilt on every re-plan).
     @MapContentBuilder
     private func annotations(for plan: MapAnnotationPlan) -> some MapContent {
-        ForEach(plan.pins) { venue in
-            Annotation("", coordinate: coordinate(of: venue)) {
-                pinButton(for: venue, isSelected: selected?.id == venue.id)
-            }
-        }
-        ForEach(plan.dots) { venue in
-            Annotation("", coordinate: coordinate(of: venue)) {
-                dotButton(for: venue)
-            }
-        }
-        ForEach(plan.clusters) { cluster in
-            Annotation("", coordinate: cluster.coordinate) {
-                clusterButton(for: cluster)
+        ForEach(plan.markers) { placement in
+            Annotation("", coordinate: coordinate(of: placement.venue), anchor: .bottom) {
+                markerButton(for: placement)
             }
         }
     }
@@ -1113,56 +1119,31 @@ public struct CafeMapScreen: View {
         }
     }
 
-    private func pinButton(for venue: Venue, isSelected: Bool) -> some View {
+    /// bd#212: the ONE button every venue's marker uses, whatever its
+    /// current `MarkerKind` — a teardrop, a demoted dot, and an unrated
+    /// speck all share this same tap handling. The min-44pt frame is
+    /// attached to the BUTTON, not baked into `TeardropMarkerView`'s own
+    /// layout, so a tiny 4pt dot still gets a full-size tap target without
+    /// the marker's own visual footprint (and therefore its collision math)
+    /// growing to match — matching the spec's "tap target stays ≥44pt even
+    /// though the visual is tiny."
+    private func markerButton(for placement: MarkerPlacement) -> some View {
         Button {
-            selected = venue
+            selected = placement.venue
         } label: {
-            VenueScorePin(venue: venue, isSelected: isSelected)
+            TeardropMarkerView(placement: placement)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Self.pinLabel(for: venue))
-        .accessibilityValue(isSelected ? "Selected" : "Not selected")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    private func dotButton(for venue: Venue) -> some View {
-        Button {
-            selected = venue
-        } label: {
-            VenueScoreDot(venue: venue)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Self.pinLabel(for: venue))
-    }
-
-    /// Tapping a cluster zooms one representation step in on it.
-    private func clusterButton(for cluster: VenueCluster) -> some View {
-        Button {
-            let span = visibleRegion?.span
-                ?? MKCoordinateSpan(latitudeDelta: 0.035, longitudeDelta: 0.035)
-            let zoomed = MKCoordinateRegion(
-                center: cluster.coordinate,
-                span: MKCoordinateSpan(
-                    latitudeDelta: span.latitudeDelta / 3,
-                    longitudeDelta: span.longitudeDelta / 3
-                )
-            )
-            // Programmatic move: the target region is known, so re-plan
-            // directly — no camera observation needed.
-            visibleRegion = zoomed
-            stopTrackingUserLocation()
-            if reduceMotion {
-                position = .region(zoomed)
-            } else {
-                withAnimation(.snappy) { position = .region(zoomed) }
-            }
-        } label: {
-            VenueClusterPill(cluster: cluster)
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("map-cluster")
-        .accessibilityLabel(Self.clusterLabel(for: cluster))
-        .accessibilityHint("Zooms in to show them")
+        // `alignment: .bottom` keeps the invisible tap-frame's growth
+        // symmetric around the marker's TIP (the frame's bottom edge,
+        // matching `Annotation(..., anchor: .bottom)`) rather than
+        // recentering the whole button and shifting the visual tip away
+        // from the venue's true coordinate.
+        .frame(minWidth: 44, minHeight: 44, alignment: .bottom)
+        .contentShape(Rectangle())
+        .accessibilityLabel(Self.pinLabel(for: placement.venue))
+        .accessibilityValue(placement.isSelected ? "Selected" : "Not selected")
+        .accessibilityAddTraits(placement.isSelected ? .isSelected : [])
     }
 
     // MARK: - Apple base-map features (bd#182)
@@ -1338,26 +1319,19 @@ public struct CafeMapScreen: View {
                 }
 
                 HStack {
-                    Text(countLine)
+                    Text(ratedCafeCountLine)
                         .font(.caption.bold())
                         .lineLimit(1)
                         .layoutPriority(1)
                     Spacer(minLength: 8)
-                    // bd#204: names both marker kinds explicitly — the old
-                    // "Scores show Work Fit" said nothing about clusters, so
-                    // a count pill under it read as another score. Three
-                    // fallback lengths (`ViewThatFits`) so the smallest
-                    // supported width and large Dynamic Type both still fit
-                    // on one line instead of clipping.
-                    ViewThatFits(in: .horizontal) {
-                        Text("Circles: Work Fit score · Stacks: cafés grouped")
-                        Text("Circles: score · Stacks: grouped")
-                        Text("Score · Grouped")
-                    }
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .multilineTextAlignment(.trailing)
+                    // bd#212: no clusters/stacks left to explain — the only
+                    // thing on the map that needs a legend now is what the
+                    // marker number itself means.
+                    Text("Numbers are Work Fit")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .multilineTextAlignment(.trailing)
                 }
                 .padding(.horizontal, 6)
                 .accessibilityIdentifier("map-count-line")
@@ -1386,20 +1360,19 @@ public struct CafeMapScreen: View {
         .padding(.top, 8)
     }
 
-    /// "N of M spots" — the two competing counts (a plain venue count and
-    /// `DatasetStatStrip`'s dataset total) collapsed into one line
-    /// (brewdesk#118). Both numbers stay dynamic: `N` is the live, filtered
-    /// `model.venues.count`; `M` is the dataset total from `model.health`
-    /// once it loads, and falls back to the plain count (never a hardcoded
-    /// figure) before health answers.
-    private var countLine: String {
-        guard let total = model.health?.venueCount else {
-            return localizedWorkSpotCount(model.venues.count)
-        }
+    /// "N rated · M cafés" (bd#212 — replaces "N of M spots" now that every
+    /// café draws its own marker instead of collapsing into a count
+    /// cluster; "rated" is the number a viewer actually cares about, so it
+    /// leads). `rated` is the live, filtered `model.venues` with real Work
+    /// Fit evidence (bd#159's `isObserved`); `total` is the plain loaded
+    /// count — both dynamic, never hardcoded.
+    private var ratedCafeCountLine: String {
+        let rated = model.venues.filter(\.isObserved).count
+        let total = model.venues.count
         return String(
-            format: String(localized: "%1$lld of %2$lld spots"),
+            format: String(localized: "%1$lld rated · %2$lld cafés"),
             locale: .current,
-            model.venues.count,
+            rated,
             total
         )
     }

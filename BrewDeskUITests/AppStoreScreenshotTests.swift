@@ -23,7 +23,8 @@ final class AppStoreScreenshotTests: XCTestCase {
         /// Shape, not literal: the Union Square load is a real API count
         /// from a real-viewport query (bd#108), no longer a fixed number.
         /// bd#37's rank-independence rule applies to counts too — match
-        /// the pattern "<digits> work spots", not a specific total.
+        /// the pattern "<digits> rated · <digits> cafés" (bd#212), not a
+        /// specific total.
         let workCafeCountPattern: String
         let oneWorkCafe: String
         let detailsNav: String
@@ -38,8 +39,8 @@ final class AppStoreScreenshotTests: XCTestCase {
             startWhereYouAre: "Start where you are.",
             useUnionSquare: "Use Union Square instead",
             searchField: "Search spots",
-            workCafeCountPattern: "^[0-9,]+ of [0-9,]+ spots$",
-            oneWorkCafe: "1 of ",
+            workCafeCountPattern: "^[0-9,]+ rated · [0-9,]+ cafés$",
+            oneWorkCafe: "1 rated · ",
             detailsNav: "Details",
             workability: "Workability"
         )
@@ -53,8 +54,8 @@ final class AppStoreScreenshotTests: XCTestCase {
             startWhereYouAre: "Empieza donde estás.",
             useUnionSquare: "Usar Union Square",
             searchField: "Buscar lugares",
-            workCafeCountPattern: "^[0-9.,]+ de [0-9.,]+ lugares$",
-            oneWorkCafe: "1 de ",
+            workCafeCountPattern: "^[0-9.,]+ calificados · [0-9.,]+ cafés$",
+            oneWorkCafe: "1 calificados · ",
             detailsNav: "Detalles",
             workability: "Aptitud para trabajar"
         )
