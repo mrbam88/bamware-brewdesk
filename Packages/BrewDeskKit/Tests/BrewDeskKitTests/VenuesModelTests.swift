@@ -570,6 +570,213 @@ private actor ControlledVenueService: VenueListing {
     }
 }
 
+/// bd#200 — "Search must be city-wide". Root cause: `venues` was a purely
+/// LOCAL filter over `loadedVenues` (the current viewport's ≤500 pins
+/// within ≤3km), so a café outside that viewport — however exact the typed
+/// name — could never appear. These pin the new, SEPARATE citywide server
+/// search (`q=<text>` over a 40km radius) that widens `venues` alongside
+/// the unchanged instant local filter.
+@Suite @MainActor struct CityWideSearchTests {
+    private func venue(
+        id: String, name: String,
+        lat: Double = VenuesModel.coverageCenterLat, lng: Double = VenuesModel.coverageCenterLng,
+        neighborhood: String = "Union Square"
+    ) -> Venue {
+        let observedAt = "2026-08-01T00:00:00Z"
+        let claim = Claim(value: "fast", source: "curated", confidence: 0.9, observedAt: observedAt)
+        return Venue(
+            id: id, name: name, lat: lat, lng: lng, address: nil,
+            neighborhood: neighborhood, borough: "Manhattan", hoursRaw: nil, vertical: "cafe",
+            attributes: VenueAttributes(wifi: claim, outlets: claim, laptopPolicy: claim, noise: claim),
+            vibeTags: [], workScore: 70, lastVerified: nil, distanceM: nil
+        )
+    }
+
+    private func loadedModel(_ api: SearchControlledService) async -> VenuesModel {
+        let model = VenuesModel(api: api)
+        await model.load(model.request)
+        return model
+    }
+
+    private func poll(timeout: TimeInterval = 5, _ condition: @MainActor () -> Bool) async throws {
+        let deadline = ContinuousClock.now + .seconds(Int(timeout))
+        while ContinuousClock.now < deadline {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        Issue.record("timed out waiting for condition")
+    }
+
+    @Test func serverResultAppearsForANameNotInLoadedVenues() async throws {
+        // The bug, reproduced: "Conwell" is nowhere in the loaded viewport.
+        let local = [venue(id: "local-1", name: "Fixture Roasters")]
+        let conwell = venue(
+            id: "conwell", name: "Conwell Coffee Hall",
+            lat: 40.7139, lng: -74.0090, neighborhood: "Financial District"
+        )
+        let api = SearchControlledService(localVenues: local)
+        let model = await loadedModel(api)
+
+        model.searchQuery = "conwell"
+        model.submitSearch()
+        #expect(model.venues.isEmpty)                 // local alone has nothing — not yet fixed
+        #expect(model.isSearchingServer)
+
+        try await api.waitForSearchRequest("conwell")
+        await api.succeed("conwell", with: [conwell])
+
+        try await poll { model.venues.map(\.id) == ["conwell"] }
+        #expect(model.venues.map(\.id) == ["conwell"])
+        #expect(!model.isSearchingServer)
+    }
+
+    @Test func staleResponseIsDroppedWhenASecondQuerySupersedesIt() async throws {
+        let api = SearchControlledService(localVenues: [])
+        let model = await loadedModel(api)
+
+        model.searchQuery = "aaa"
+        model.submitSearch()
+        try await api.waitForSearchRequest("aaa")
+
+        model.searchQuery = "bbb"
+        model.submitSearch()
+        try await api.waitForSearchRequest("bbb")
+
+        // Resolve the SUPERSEDED query after the newer one is already
+        // in flight — its answer must never reach `venues`.
+        await api.succeed("aaa", with: [venue(id: "aaa-result", name: "Aaa Cafe")])
+        await api.succeed("bbb", with: [venue(id: "bbb-result", name: "Bbb Cafe")])
+
+        try await poll { model.venues.map(\.id) == ["bbb-result"] }
+        #expect(model.venues.map(\.id) == ["bbb-result"])
+    }
+
+    @Test func clearingRestoresTheViewportSetWithoutWaitingOnTheServer() async throws {
+        let local = [
+            venue(id: "local-1", name: "Fixture Roasters"),
+            venue(id: "local-2", name: "Fixture Library"),
+        ]
+        let api = SearchControlledService(localVenues: local)
+        let model = await loadedModel(api)
+
+        model.searchQuery = "roasters"
+        model.submitSearch()
+        #expect(model.venues.map(\.id) == ["local-1"])
+        try await api.waitForSearchRequest("roasters")   // left unresolved on purpose
+
+        model.clearSearch()
+
+        #expect(model.searchQuery.isEmpty)
+        #expect(Set(model.venues.map(\.id)) == Set(["local-1", "local-2"]))
+        #expect(!model.isSearchingServer)                // the pending request was dropped, not awaited
+    }
+
+    @Test func unionDeduplicatesAndOrdersPrefixMatchesFirstThenByDistance() async throws {
+        // "near" is loaded locally AND comes back from the server (as a
+        // distinct value with the same id) — must appear exactly once.
+        let near = venue(id: "near", name: "Prefix Cafe Near", lat: 40.7360, lng: -73.9912)
+        let farPrefix = venue(id: "far", name: "Prefix Cafe Far", lat: 40.80, lng: -73.95, neighborhood: "Uptown")
+        let containsMatch = venue(id: "contains", name: "A Prefix-Adjacent Diner", lat: 40.7361, lng: -73.9913)
+        let duplicateOfNear = venue(id: "near", name: "Prefix Cafe Near", lat: 40.7360, lng: -73.9912)
+
+        let api = SearchControlledService(localVenues: [near])
+        let model = await loadedModel(api)
+
+        model.searchQuery = "prefix"
+        model.submitSearch()
+        try await api.waitForSearchRequest("prefix")
+        await api.succeed("prefix", with: [duplicateOfNear, farPrefix, containsMatch])
+
+        try await poll { model.venues.count == 3 }
+        // De-duped to one "near"; prefix matches ("near", "far") rank
+        // before the contains match; the nearer prefix match wins first.
+        #expect(model.venues.map(\.id) == ["near", "far", "contains"])
+    }
+
+    @Test func networkFailureKeepsLocalResultsAndFlagsTheFailure() async throws {
+        let local = [venue(id: "local-1", name: "Prefix Cafe")]
+        let api = SearchControlledService(localVenues: local)
+        let model = await loadedModel(api)
+
+        model.searchQuery = "prefix"
+        model.submitSearch()
+        #expect(model.venues.map(\.id) == ["local-1"])   // instant local match, unaffected
+
+        try await api.waitForSearchRequest("prefix")
+        await api.fail("prefix")
+
+        try await poll { !model.isSearchingServer }
+        #expect(model.serverSearchFailed)
+        #expect(model.venues.map(\.id) == ["local-1"])   // still there — never cleared on failure
+    }
+
+    @Test func belowMinimumLengthNeverFiresARequest() async throws {
+        let api = SearchControlledService(localVenues: [])
+        let model = await loadedModel(api)
+        let callsAfterLoad = await api.searchCallCount
+
+        model.searchQuery = "a"
+        model.submitSearch()
+
+        #expect(!model.isSearchingServer)
+        #expect(await api.searchCallCount == callsAfterLoad)
+    }
+}
+
+private actor SearchControlledService: VenueListing {
+    private enum TestError: Error { case timedOut }
+    private let localVenues: [Venue]
+    private var pendingRequests: Set<String> = []
+    private var outcomes: [String: Result<[Venue], Error>] = [:]
+    private(set) var searchCallCount = 0
+
+    init(localVenues: [Venue]) {
+        self.localVenues = localVenues
+    }
+
+    func fetchVenues(_ query: VenueQuery) async throws -> [Venue] { localVenues }
+
+    /// A `search`-less call (the viewport load `VenuesModel.load` always
+    /// makes) answers immediately with `localVenues`. A `search` call
+    /// blocks until the test resolves it via `succeed`/`fail`, keyed by the
+    /// exact search text — mirrors `ControlledVenueService` above, scoped
+    /// to bd#200's separate citywide request.
+    func fetchVenuesResult(_ query: VenueQuery) async throws -> VenueLoadResult {
+        guard let search = query.search, !search.isEmpty else {
+            return VenueLoadResult(venues: localVenues, coverage: .researched)
+        }
+        searchCallCount += 1
+        pendingRequests.insert(search)
+        while true {
+            try Task.checkCancellation()
+            if let outcome = outcomes.removeValue(forKey: search) {
+                switch outcome {
+                case .success(let venues): return VenueLoadResult(venues: venues, coverage: .researched)
+                case .failure(let error): throw error
+                }
+            }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+    }
+
+    func waitForSearchRequest(_ text: String) async throws {
+        let deadline = ContinuousClock.now + .seconds(10)
+        while ContinuousClock.now < deadline {
+            if pendingRequests.contains(text) { return }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        throw TestError.timedOut
+    }
+
+    func succeed(_ text: String, with venues: [Venue]) {
+        outcomes[text] = .success(venues)
+    }
+
+    func fail(_ text: String, with error: Error = URLError(.notConnectedToInternet)) {
+        outcomes[text] = .failure(error)
+    }
+}
+
 @Suite @MainActor struct SchemaV2FilterTests {
     @Test func categoryFiltersNeverReachTheQuery() {
         // brewdesk#77 — filtering is local; the wire predicate (store.ts)

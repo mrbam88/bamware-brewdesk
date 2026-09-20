@@ -29,4 +29,32 @@ public enum VenueSearch {
         text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    /// bd#200: widens the candidate pool for a settled search with venues the
+    /// SERVER found city-wide that the local viewport filter (`apply` above)
+    /// never had a chance to match — a café across town the current viewport
+    /// never loaded. `local` already carries `apply`'s own prefix/contains
+    /// rank; `serverOnly` is whatever the caller determined isn't already in
+    /// `local` (by id). Re-ranks the union: exact/prefix name matches first,
+    /// then by distance from `centerLat/Lng` — a citywide result set has no
+    /// single "loaded order" to fall back on the way a single viewport does,
+    /// so distance is the tiebreaker instead of server order.
+    public static func mergeCityWide(
+        query: String, local: [Venue], serverOnly: [Venue], centerLat: Double, centerLng: Double
+    ) -> [Venue] {
+        let needle = normalize(query)
+        func rank(_ venue: Venue) -> Int {
+            normalize(venue.name).hasPrefix(needle) ? 0 : 1
+        }
+        func distanceM(_ venue: Venue) -> Double {
+            VenuesModel.metersBetween(centerLat, centerLng, venue.lat, venue.lng)
+        }
+        var seen = Set<String>()
+        let deduped = (local + serverOnly).filter { seen.insert($0.id).inserted }
+        return deduped.sorted { a, b in
+            let (ra, rb) = (rank(a), rank(b))
+            if ra != rb { return ra < rb }
+            return distanceM(a) < distanceM(b)
+        }
+    }
 }
