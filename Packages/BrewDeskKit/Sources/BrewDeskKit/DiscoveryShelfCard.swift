@@ -377,7 +377,7 @@ struct DiscoveryShelfCard: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
-            "\(venue.name), \(venue.isObserved ? "Work Fit \(venue.workScore)" : "not checked yet"), \(venue.neighborhood)"
+            "\(venue.name), \(venue.displayScore.map { "Work Fit \($0)" } ?? "not rated yet"), \(venue.neighborhood)"
         )
     }
 
@@ -398,8 +398,8 @@ struct DiscoveryShelfCard: View {
     private func venueCard(_ venue: Venue, fillsWidth: Bool) -> some View {
         HStack(spacing: 12) {
             VStack(spacing: 3) {
-                if venue.isObserved {
-                    Text("\(venue.workScore)")
+                if let score = venue.displayScore {
+                    Text("\(score)")
                         .font(.title2.monospacedDigit().bold())
                     Text("WORK FIT")
                         .font(.caption2.weight(.heavy))
@@ -407,14 +407,18 @@ struct DiscoveryShelfCard: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 } else {
-                    // Not a score — the engine's flat neutral fallback
-                    // (ve#64) with no real evidence behind it (bd#159).
-                    Text("Not checked yet")
+                    // Not a score — never `workScore`'s flat neutral
+                    // fallback (ve#64/bd#159), and never a number at all
+                    // (brewdesk#213): an en dash plus a caption, matching
+                    // the rated tile's own two-line shape.
+                    Text(verbatim: "–")
+                        .font(.title2.monospacedDigit().bold())
+                        .accessibilityHidden(true)
+                    Text("NOT RATED")
                         .font(.caption2.weight(.heavy))
                         .tracking(0.5)
-                        .lineLimit(2)
+                        .lineLimit(1)
                         .minimumScaleFactor(0.7)
-                        .multilineTextAlignment(.center)
                 }
             }
             .foregroundStyle(BrewDeskPalette.clusterSurfaceText)
@@ -425,10 +429,19 @@ struct DiscoveryShelfCard: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 14)
                     .stroke(
-                        venue.isObserved ? venue.scoreTier.color : BrewDeskPalette.unobserved,
+                        venue.displayScore != nil ? venue.scoreTier.color : BrewDeskPalette.unobserved,
                         lineWidth: 2
                     )
             )
+            // brewdesk#213: an explicit, single label rather than relying on
+            // SwiftUI's automatic multi-Text grouping (which doesn't
+            // reliably drop the `.accessibilityHidden` en dash from the
+            // merged result) — also lets a UI test scope its "no digit
+            // shown" assertion to just this tile, not the whole card (which
+            // legitimately carries other digits, e.g. a provenance date).
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(venue.displayScore.map { "Work Fit \($0)" } ?? "Not rated yet")
+            .accessibilityIdentifier("shelf-score-tile")
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(venue.name)

@@ -1,11 +1,18 @@
 import XCTest
 
-/// bd#159 — a venue with no real evidence behind its score must never show
-/// the engine's flat neutral fallback number as if it were measured. All
-/// fixture-driven (`-UITestScenario fixtureOK`), which now carries one
-/// unobserved venue ("Fixture Unchecked Spot", all-estimate claims)
-/// alongside the three original observed fixtures — see
+/// bd#159, brewdesk#213 — a venue with no real evidence behind its score
+/// must never show the engine's flat neutral fallback number as if it were
+/// measured. All fixture-driven (`-UITestScenario fixtureOK`), which now
+/// carries one unrated venue ("Fixture Unchecked Spot", all-estimate
+/// claims) alongside the three original rated fixtures — see
 /// `ScenarioVenueService.fixtureVenues`.
+///
+/// brewdesk#213: "Fixture Unchecked Spot" carries an EXPLICIT
+/// `scoreDisplay: .notRated` (`ScenarioVenueService.unobservedFixtureVenue`)
+/// — the modern server contract (a real JSON `null`), not just the older
+/// `isObserved` heuristic on its own — so this file doubles as the ticket's
+/// required "scenario fixture containing a `scoreDisplay: null` venue" UI
+/// coverage: no digit anywhere in its shelf tile or its detail badge.
 ///
 /// New file, not `SearchUITests.swift`/`UITestHelpers.swift` (owned by the
 /// brewdesk#158 agent in parallel) — reuses `spotsTab`/`mapPin(named:)`
@@ -34,7 +41,7 @@ final class UnobservedScoreUITests: XCTestCase {
 
     /// The shelf's default `.medium` detent is a horizontal `LazyHStack`
     /// rail — at four cards it only materializes ~3 within the initial
-    /// viewport, so the fourth (always the unobserved one, sorted last)
+    /// viewport, so the fourth (always the unrated one, sorted last)
     /// never enters the AX tree without a drag. `.full` switches
     /// `DiscoveryShelfCard` to a vertical list, where all four rows fit the
     /// screen at once and all render immediately. Same drag mechanics as
@@ -83,20 +90,32 @@ final class UnobservedScoreUITests: XCTestCase {
     // MARK: - Shelf card
 
     @MainActor
-    func testUnobservedVenueShelfCardShowsNotCheckedYetNeverTheNumber() throws {
+    func testUnobservedVenueShelfCardShowsNotRatedYetNeverTheNumber() throws {
         let app = launchFixtures()
         dragShelfToFullDetent(app)
 
         let unchecked = shelfButtons(app).matching(
             NSPredicate(format: "label BEGINSWITH %@", "Fixture Unchecked Spot,")
         ).firstMatch
-        XCTAssertTrue(unchecked.waitForExistence(timeout: wait), "Unobserved fixture venue missing from the shelf")
-        XCTAssertTrue(unchecked.label.contains("not checked yet"),
-                      "VoiceOver label should read \"not checked yet\", got: \(unchecked.label)")
+        XCTAssertTrue(unchecked.waitForExistence(timeout: wait), "Unrated fixture venue missing from the shelf")
+        XCTAssertTrue(unchecked.label.contains("not rated yet"),
+                      "VoiceOver label should read \"not rated yet\", got: \(unchecked.label)")
         XCTAssertFalse(unchecked.label.contains("Work Fit"),
                        "VoiceOver must never read the neutral fallback score, got: \(unchecked.label)")
-        XCTAssertTrue(app.staticTexts["Not checked yet"].firstMatch.exists,
-                      "Shelf card should show the \"Not checked yet\" badge text, never a number")
+
+        // brewdesk#213 acceptance criterion: no digit appears in the tile —
+        // en dash + "NOT RATED" caption instead of a number. Scoped to just
+        // the score tile's own explicit accessibility label (not the whole
+        // card, which also carries a provenance date like "Updated July
+        // 31" — a legitimate digit elsewhere on the same card).
+        let tile = unchecked.descendants(matching: .any)["shelf-score-tile"].firstMatch
+        XCTAssertTrue(tile.waitForExistence(timeout: wait), "Missing the shelf score tile")
+        XCTAssertEqual(tile.label, "Not rated yet",
+                       "Shelf tile should read \"Not rated yet\", got: \(tile.label)")
+        XCTAssertNil(
+            tile.label.rangeOfCharacter(from: .decimalDigits),
+            "Shelf tile must show no digit for a null-scoreDisplay venue, got: \(tile.label)"
+        )
 
         // An observed fixture still shows its real score, for contrast.
         let roasters = shelfButtons(app).matching(
@@ -124,11 +143,11 @@ final class UnobservedScoreUITests: XCTestCase {
         let labels = (0..<buttons.count).map { buttons.element(boundBy: $0).label }
         XCTAssertEqual(labels.count, 4, "Expected all four fixtureOK venues on the shelf list")
 
-        let unobservedIndex = try XCTUnwrap(labels.firstIndex { $0.contains("not checked yet") })
+        let unobservedIndex = try XCTUnwrap(labels.firstIndex { $0.contains("not rated yet") })
         XCTAssertEqual(unobservedIndex, labels.count - 1,
-                       "Unobserved venue must sort last; order was: \(labels)")
+                       "Unrated venue must sort last; order was: \(labels)")
         for (index, label) in labels.enumerated() where index != unobservedIndex {
-            XCTAssertTrue(label.contains("Work Fit"), "Expected an observed score at index \(index): \(label)")
+            XCTAssertTrue(label.contains("Work Fit"), "Expected a rated score at index \(index): \(label)")
         }
     }
 
@@ -148,8 +167,15 @@ final class UnobservedScoreUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
         capture("detail-header-unobserved")
 
-        XCTAssertTrue(app.staticTexts["Not checked yet"].firstMatch.waitForExistence(timeout: wait),
-                      "Detail header should show the \"Not checked yet\" badge, not a number")
+        let badge = app.descendants(matching: .any)["score-badge"]
+        XCTAssertTrue(badge.waitForExistence(timeout: wait), "Missing the detail score badge")
+        XCTAssertTrue(app.staticTexts["Not rated yet"].firstMatch.waitForExistence(timeout: wait),
+                      "Detail header should show the \"Not rated yet\" badge, not a number")
+        // brewdesk#213 acceptance criterion: no digit in the detail badge
+        // for a null-scoreDisplay venue.
+        XCTAssertNil(badge.label.rangeOfCharacter(from: .decimalDigits),
+                     "Detail badge must show no digit for a null-scoreDisplay venue, got: \(badge.label)")
+
         let explanation = app.descendants(matching: .any)["unobserved-explanation"]
         XCTAssertTrue(explanation.waitForExistence(timeout: wait), "Missing the one-line unobserved explanation")
         XCTAssertTrue(explanation.label.contains("haven't checked"),

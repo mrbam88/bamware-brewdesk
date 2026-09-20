@@ -21,7 +21,10 @@ struct MapAnnotationPlannerTests {
     /// marker size at the region's span.
     private let wideMapSize = CGSize(width: 2_400, height: 2_400)
 
-    private func venue(id: String, lat: Double, lng: Double, score: Int = 50, observed: Bool = true) -> Venue {
+    private func venue(
+        id: String, lat: Double, lng: Double, score: Int = 50, observed: Bool = true,
+        scoreDisplay: ScoreDisplay = .notProvided
+    ) -> Venue {
         let observedAt = "2026-08-01T00:00:00Z"
         let unobservedClaim = Claim(value: "unknown", source: "estimate", confidence: 0.3, observedAt: observedAt)
         return Venue(
@@ -52,7 +55,8 @@ struct MapAnnotationPlannerTests {
             vibeTags: [],
             workScore: score,
             lastVerified: nil,
-            distanceM: nil
+            distanceM: nil,
+            scoreDisplay: scoreDisplay
         )
     }
 
@@ -317,6 +321,36 @@ struct MapAnnotationPlannerTests {
         let plan = MapAnnotationPlanner.plan(venues: rated + unrated, region: testRegion, mapSize: mapSize)
         #expect(plan.annotationCount <= MapAnnotationPlanner.maxAnnotations)
         #expect(plan.markers.allSatisfy { $0.venue.isObserved }, "no unrated speck should have taken a slot from a rated venue")
+    }
+
+    // MARK: - brewdesk#213: planner keys off `isRated`, not `isObserved` directly
+
+    /// The server's explicit `scoreDisplay` must override the client-side
+    /// `isObserved` heuristic in BOTH directions: a venue whose claims look
+    /// "observed" but the server says `scoreDisplay: null` must speck, and a
+    /// venue whose claims look estimate-only but the server sends a real
+    /// number must still get a numbered teardrop.
+    @Test func plannerHonorsExplicitScoreDisplayOverTheObservedHeuristic() throws {
+        let serverSaysUnrated = venue(
+            id: "server-null", lat: 40.7359, lng: -73.9911, score: 40,
+            observed: true, scoreDisplay: .notRated
+        )
+        let serverSaysRated = venue(
+            id: "server-rated", lat: 40.7370, lng: -73.9900, score: 77,
+            observed: false, scoreDisplay: .rated(77)
+        )
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width, lat: 40.7359, lng: -73.9911)
+        let plan = MapAnnotationPlanner.plan(
+            venues: [serverSaysUnrated, serverSaysRated], region: testRegion, mapSize: mapSize
+        )
+
+        #expect(plan.specks.contains { $0.id == "server-null" },
+                "isObserved-true venue with an explicit scoreDisplay:null must speck, not teardrop")
+        #expect(!plan.dots.contains { $0.id == "server-null" } && !plan.teardrops.contains { $0.id == "server-null" })
+
+        let ratedMarker = try #require(plan.markers.first { $0.id == "server-rated" })
+        #expect(ratedMarker.kind != .speck,
+                "isObserved-false venue with an explicit scoreDisplay:rated must never speck")
     }
 
     // MARK: - bd#210: chrome exclusion rects (teardrops only, bd#212 revision)
