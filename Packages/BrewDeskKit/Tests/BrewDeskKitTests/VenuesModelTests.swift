@@ -671,6 +671,54 @@ private actor ControlledVenueService: VenueListing {
         #expect(!model.isSearchingServer)                // the pending request was dropped, not awaited
     }
 
+    /// bd#219: reproduces `selectSearchResult`'s own downstream effect —
+    /// `scheduleSurroundingsLoad` calls `model.updateViewport(...)` for the
+    /// selected café's location, and `DiscoveryRootView`'s
+    /// `.task(id: request)` then loads it, exactly like a real
+    /// "Search this area"/locate-me viewport change already does. Clearing
+    /// the search afterward must show THAT newly loaded surroundings set,
+    /// never the original viewport's venues re-appearing on top of the new
+    /// camera position.
+    @Test func clearingSearchAfterASelectionKeepsTheExploredSurroundings() async throws {
+        let local = [venue(id: "local-1", name: "Fixture Roasters")]
+        let farCafe = venue(
+            id: "far-cafe", name: "Fixture Ferry Roasters",
+            lat: 40.6437, lng: -74.0787, neighborhood: "St. George"
+        )
+        let farNeighbor = venue(
+            id: "far-neighbor", name: "Ferry Terminal Coffee",
+            lat: 40.6440, lng: -74.0790, neighborhood: "St. George"
+        )
+        let api = SelectionSurroundingsService(initialVenues: local, surroundingsVenues: [farCafe, farNeighbor])
+        let model = VenuesModel(api: api)
+        await model.load(model.request)
+        #expect(model.venues.map(\.id) == ["local-1"])
+
+        model.searchQuery = "ferry"
+        model.submitSearch()
+        try await api.waitForSearchRequest("ferry")
+        await api.succeedSearch("ferry", with: [farCafe])
+        try await poll { model.venues.map(\.id) == ["far-cafe"] }
+
+        // The selection's own surroundings reload.
+        #expect(model.updateViewport(lat: farCafe.lat, lng: farCafe.lng, radiusM: 500))
+        #expect(model.centerSource == .exploredViewport)
+        await model.load(model.request)
+        try await poll { Set(model.venues.map(\.id)) == Set(["far-cafe", "far-neighbor"]) }
+
+        model.clearSearch()
+
+        #expect(model.searchQuery.isEmpty)
+        #expect(
+            Set(model.venues.map(\.id)) == Set(["far-cafe", "far-neighbor"]),
+            "clearing the search after a selection must keep the newly explored surroundings"
+        )
+        #expect(
+            !model.venues.map(\.id).contains("local-1"),
+            "the original viewport set must not be restored on top of the new (Brooklyn) camera"
+        )
+    }
+
     @Test func unionDeduplicatesAndOrdersPrefixMatchesFirstThenByDistance() async throws {
         // "near" is loaded locally AND comes back from the server (as a
         // distinct value with the same id) — must appear exactly once.
@@ -774,6 +822,60 @@ private actor SearchControlledService: VenueListing {
 
     func fail(_ text: String, with error: Error = URLError(.notConnectedToInternet)) {
         outcomes[text] = .failure(error)
+    }
+}
+
+/// bd#219: unlike `SearchControlledService` above (one fixed `localVenues`
+/// set for every viewport fetch), this varies the VIEWPORT answer by
+/// coordinate — `initialVenues` at the model's starting coverage-default
+/// center, `surroundingsVenues` for any other center — so a test can prove
+/// what actually loads once a selection's surroundings reload
+/// (`model.updateViewport` + a re-`load`) moves the viewport to a whole new
+/// location, not just what a citywide search widened `venues` with locally.
+private actor SelectionSurroundingsService: VenueListing {
+    private enum TestError: Error { case timedOut }
+    private let initialVenues: [Venue]
+    private let surroundingsVenues: [Venue]
+    private var pendingSearch: Set<String> = []
+    private var searchOutcomes: [String: [Venue]] = [:]
+
+    init(initialVenues: [Venue], surroundingsVenues: [Venue]) {
+        self.initialVenues = initialVenues
+        self.surroundingsVenues = surroundingsVenues
+    }
+
+    private func venues(for query: VenueQuery) -> [Venue] {
+        query.lat == VenuesModel.coverageCenterLat && query.lng == VenuesModel.coverageCenterLng
+            ? initialVenues : surroundingsVenues
+    }
+
+    func fetchVenues(_ query: VenueQuery) async throws -> [Venue] { venues(for: query) }
+
+    func fetchVenuesResult(_ query: VenueQuery) async throws -> VenueLoadResult {
+        guard let search = query.search, !search.isEmpty else {
+            return VenueLoadResult(venues: venues(for: query), coverage: .researched)
+        }
+        pendingSearch.insert(search)
+        while true {
+            try Task.checkCancellation()
+            if let result = searchOutcomes.removeValue(forKey: search) {
+                return VenueLoadResult(venues: result, coverage: .researched)
+            }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+    }
+
+    func waitForSearchRequest(_ text: String) async throws {
+        let deadline = ContinuousClock.now + .seconds(10)
+        while ContinuousClock.now < deadline {
+            if pendingSearch.contains(text) { return }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        throw TestError.timedOut
+    }
+
+    func succeedSearch(_ text: String, with venues: [Venue]) {
+        searchOutcomes[text] = venues
     }
 }
 

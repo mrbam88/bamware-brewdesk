@@ -129,15 +129,60 @@ final class SearchUITests: XCTestCase {
         XCTAssertEqual(app.keyboards.count, 1, "keyboard did not appear after typing")
 
         // A point inside the map, clear of the header card (top) and the
-        // shelf card (bottom half at its default medium detent).
+        // shelf card. bd#219: while the search field has focus (as it is
+        // here — this taps BEFORE any dismiss), `DiscoveryShelfCard` is at
+        // `fullHeight` (~70% of the map) regardless of its resting detent,
+        // not the medium-detent ~50% a fixed normalized offset used to
+        // assume — the old 0.35 sat inside that fuller search-mode shelf,
+        // so this only ever dismissed the keyboard via the SHELF's own
+        // touch gesture (a bug in its own right, since fixed: see the
+        // `minimumDistance: 8` change on that gesture) rather than the MAP
+        // tap this test is actually about. The real gap between the header
+        // and the search-focused shelf is narrow (measured ~70pt on a
+        // 874pt-tall window) — computed here from the header's own real
+        // frame, with a fixed point margin, rather than a hand-picked
+        // normalized fraction that a different device height/Dynamic Type
+        // size would silently put back inside one of the two.
+        let headerFrame = app.descendants(matching: .any)["map-header-card"].frame
+        let windowFrame = app.windows.firstMatch.frame
+        let tapY = min(headerFrame.maxY + 55, windowFrame.height * 0.3)
         app.windows.firstMatch
-            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: tapY / windowFrame.height))
             .tap()
         XCTAssertEqual(app.keyboards.count, 0, "tapping the map did not dismiss the keyboard")
         XCTAssertEqual(field.value as? String, "Gre", "map-tap dismiss must keep the typed text")
 
+        // bd#182/bd#219: the tap point above is chosen to clear this
+        // screen's own SwiftUI chrome (header, shelf), but MapKit's base
+        // layer can still render a selectable Apple POI label anywhere on
+        // it (bd#182's `.mapFeatureSelectionContent`) — landing on one
+        // opens `AppleFeatureCard` a moment later as an unrelated side
+        // effect of proving this test's actual point (a plain map tap
+        // resigns focus). Polls rather than a single check-then-swipe: the
+        // sheet's own presentation can still be mounting the instant after
+        // the tap. Dismisses defensively so the assertions below aren't
+        // blocked by an incidental sheet this test isn't about.
+        let appleFeatureCard = app.otherElements["apple-feature-card"]
+        let dismissDeadline = Date().addingTimeInterval(2)
+        while Date() < dismissDeadline {
+            if appleFeatureCard.exists {
+                // Swiping on the CARD element itself (not the whole app) —
+                // the card only covers the bottom ~260-280pt of the screen,
+                // so a generic `app.swipeDown()` starting from the window's
+                // center misses its drag handle entirely.
+                appleFeatureCard.swipeDown()
+                _ = appleFeatureCard.waitForNonExistence(timeout: 2)
+            }
+            if field.isHittable { break }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+
+        XCTAssertTrue(field.waitUntilHittable(timeout: wait), "search field never became hittable again after the dismiss")
         field.tap()
-        XCTAssertEqual(app.keyboards.count, 1, "keyboard did not return on refocus")
+        XCTAssertTrue(
+            Self.waitFor(timeout: wait) { app.keyboards.count == 1 },
+            "keyboard did not return on refocus"
+        )
         // brewdesk#158: the app ships a "Cancel" trailing control while the
         // search field has focus (`search-cancel`, `CafeMapScreen.swift`'s
         // `searchHeader`) — there is no separate keyboard "Done" button, and
@@ -259,5 +304,148 @@ final class SearchUITests: XCTestCase {
                       "(got \(matchCount()) matches, want 2)")
         XCTAssertTrue(app.mapPin(named: "Fixture Ferry Roasters").waitUntilHittable(timeout: wait),
                       "citywide search result pin is not hittable")
+    }
+
+    /// bd#219 — "selecting a far-away café must fly the map to it
+    /// (Google-Maps-like)". Root cause: the shelf's row-tap callback only
+    /// ever set a plain, un-biased `.region(...)` with no walking-scale
+    /// fly-to, AND a late citywide server answer's own `scheduleSearchFit`
+    /// re-fit (bd#200/#158) could land AFTER the tap and override the
+    /// selection's camera position entirely. Reuses bd#200's
+    /// `cityWideSearch` fixture and `Fixture Ferry Roasters` (St. George,
+    /// ~13.5km from the default Union Square viewport — see
+    /// `testCityWideSearchFindsACafeOutsideTheViewport` above) rather than
+    /// adding a new one. This must FAIL on `origin/main` (no fly-to or
+    /// selection guard exists there) and PASS on the fix branch.
+    @MainActor
+    func testSelectingAFarAwaySearchResultFliesTheMapToIt() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-UITestSkipGates", "-UITestScenario", "cityWideSearch"]
+        app.launch()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
+        app.spotsTab.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["map-header-card"].waitForExistence(timeout: wait))
+
+        let farCafeLat = 40.6437
+        let farCafeLng = -74.0787
+        // bd#219: the fly-to deliberately biases the camera CENTER north of
+        // the café (`CafeMapScreen.flyToNorthBiasFraction` — a FIXED 22% of
+        // the ~900-1000m walking-scale span, ≈200m) so the café lands in
+        // the visible area above the post-selection shelf rather than dead
+        // center behind it. 400m comfortably covers that deterministic
+        // shift plus animation/device rounding, while staying far tighter
+        // than every ORIGINAL failure mode this ticket fixes (camera left
+        // on the ~8km-away starting viewport, or zoomed out to fit all of
+        // NYC), so it still proves a real fly-to happened without asserting
+        // a dead-center distance the design never promised.
+        let toleranceMeters = 400.0
+
+        let field = searchField(app)
+        field.tap()
+        field.typeText("Ferry Roasters")
+
+        // Scoped to the SHELF specifically (not `mapPin(named:)`, which
+        // deliberately matches either the shelf row or the real MapKit
+        // annotation — see its own doc comment): the ticket's flow is "type
+        // the name, tap the row", and tapping the real annotation instead
+        // would bypass `selectSearchResult` entirely (a plain pin tap just
+        // sets `selected` with no fly-to/guard behavior).
+        let shelf = app.descendants(matching: .any)["map-discovery-shelf"]
+        XCTAssertTrue(shelf.waitForExistence(timeout: wait), "discovery shelf missing")
+        let row = shelf.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Ferry Roasters,")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: wait), "search result row for the far café never appeared")
+        // bd#219: `waitUntilHittable` (not a bare `.tap()` the instant the
+        // row exists) — the row can appear an instant before the search
+        // list's own crossfade/layout settles, and a tap landing mid-settle
+        // risks missing the row's real hit-test area even though the
+        // accessibility tree already reports it as "existing".
+        XCTAssertTrue(row.waitUntilHittable(timeout: wait), "search result row never became hittable")
+        // `isHittable` can flip true a beat before the search list's own
+        // settle/crossfade animation actually finishes, AND before
+        // `scheduleSearchFit`'s own in-flight "fit all results" pass (still
+        // running from typing — this row only exists once its citywide
+        // server answer landed, which is the SAME event that can retrigger
+        // that fit) has applied and gotten out of the way. A tap that lands
+        // before both settle risks a `Button` tap gesture racing a list
+        // reflow (brewdesk#158's own comment on this exact hazard) and
+        // being lost. A fixed settle wait is cheap insurance against both.
+        Thread.sleep(forTimeInterval: 1.5)
+        row.tap()
+
+        let center = app.descendants(matching: .any)["map-camera-center"]
+        XCTAssertTrue(center.waitForExistence(timeout: wait), "map camera center accessibility element missing")
+
+        // (a) within 3s the camera center is within ~150m of the far café.
+        let flyDeadline = Date().addingTimeInterval(3)
+        var closest = Double.greatestFiniteMagnitude
+        while Date() < flyDeadline {
+            if let coordinate = Self.parseCoordinate(center.value as? String) {
+                closest = min(closest, Self.metersBetween(coordinate.lat, coordinate.lng, farCafeLat, farCafeLng))
+                if closest <= toleranceMeters { break }
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        XCTAssertLessThanOrEqual(
+            closest, toleranceMeters,
+            "tapping the far café's search result never flew the camera within \(toleranceMeters)m of it " +
+            "(closest: \(closest)m) — camera-center value: \(center.value ?? "nil")"
+        )
+
+        // (c) the detail sheet's heading shows the far café's own name.
+        let heading = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Fixture Ferry Roasters")).firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: wait), "detail sheet never opened on the far café")
+
+        // (b) still there 4s later — no late fit (a delayed citywide answer
+        // re-running `scheduleSearchFit`, or this selection's own
+        // surroundings reload changing `model.venues` again) pulls it away.
+        Thread.sleep(forTimeInterval: 4)
+        guard let stillThere = Self.parseCoordinate(center.value as? String) else {
+            XCTFail("camera center unreadable after the settle window")
+            return
+        }
+        let driftedMeters = Self.metersBetween(stillThere.lat, stillThere.lng, farCafeLat, farCafeLng)
+        XCTAssertLessThanOrEqual(
+            driftedMeters, toleranceMeters,
+            "the camera drifted \(driftedMeters)m off the far café 4s after selecting it — a late fit pulled it away"
+        )
+
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = "search-select-flies-to-far-cafe"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+
+    // MARK: - Helpers
+
+    /// `"lat,lng"` (see `CafeMapScreen.cameraCenterAccessibilityValue`).
+    /// Duplicated from `MapLocateButtonUITests` — UI test targets can't
+    /// import the app's package target to share it.
+    private static func parseCoordinate(_ raw: String?) -> (lat: Double, lng: Double)? {
+        guard let raw else { return nil }
+        let parts = raw.components(separatedBy: ",")
+        guard parts.count == 2, let lat = Double(parts[0]), let lng = Double(parts[1]) else { return nil }
+        return (lat, lng)
+    }
+
+    /// Polls `condition` until it's true or `timeout` elapses — for state
+    /// (like the keyboard's own appear animation) that settles a beat after
+    /// the triggering tap rather than synchronously with it.
+    private static func waitFor(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if condition() { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        } while Date() < deadline
+        return condition()
+    }
+
+    private static func metersBetween(_ lat1: Double, _ lng1: Double, _ lat2: Double, _ lng2: Double) -> Double {
+        let earthRadiusM = 6_371_000.0
+        let dLat = (lat2 - lat1) * .pi / 180
+        let dLng = (lng2 - lng1) * .pi / 180
+        let a = sin(dLat / 2) * sin(dLat / 2)
+            + cos(lat1 * .pi / 180) * cos(lat2 * .pi / 180) * sin(dLng / 2) * sin(dLng / 2)
+        let c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return earthRadiusM * c
     }
 }

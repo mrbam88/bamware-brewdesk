@@ -42,16 +42,20 @@ struct CafeMapScreenSearchFitTests {
         #expect(CafeMapScreen.searchFitRegion(for: [], mapHeight: 800, shelfClearance: 260) == nil)
     }
 
-    @Test func singleResultCentersAtNeighborhoodZoom() throws {
+    @Test func singleResultCentersAtWalkingZoom() throws {
         let target = venue(id: "a", lat: 40.7359, lng: -73.9911)
         // No shelf/height info supplied ⇒ no vertical bias, so the fit is
-        // exactly the neighborhood-zoom span centered on the venue.
+        // exactly the walking-zoom span centered on the venue. bd#219: a
+        // lone result is a selection target (Google-Maps-style pin drop),
+        // not a neighborhood overview — this is the same span
+        // `selectSearchResult`'s fly-to reuses this function to produce.
         let region = CafeMapScreen.searchFitRegion(for: [target], mapHeight: 0, shelfClearance: 0)
         let unwrapped = try #require(region)
         #expect(unwrapped.center.latitude == target.lat)
         #expect(unwrapped.center.longitude == target.lng)
-        #expect(unwrapped.span.latitudeDelta == 0.012)
-        #expect(unwrapped.span.longitudeDelta == 0.012)
+        #expect(unwrapped.span.latitudeDelta == CafeMapScreen.walkingZoomSpan)
+        #expect(unwrapped.span.longitudeDelta == CafeMapScreen.walkingZoomSpan)
+        #expect(CafeMapScreen.walkingZoomSpan >= 0.008 && CafeMapScreen.walkingZoomSpan <= 0.010)
     }
 
     @Test func multipleResultsFitThePaddedBoundingBox() throws {
@@ -98,5 +102,48 @@ struct CafeMapScreenSearchFitTests {
         let region = CafeMapScreen.searchFitRegion(for: [target], mapHeight: 200, shelfClearance: 260)
         let unwrapped = try #require(region)
         #expect(unwrapped.center.latitude == target.lat)
+    }
+
+    // MARK: - Selection guard (bd#219)
+
+    /// `selectSearchResult` itself needs a running `Map` (it drives
+    /// `@State`/animation), so these exercise the pure guard it and
+    /// `scheduleSearchFit` both consult — `shouldApplySearchFit` — directly.
+    @Test func lateAnswerAfterASelectionProducesNoFitIntent() {
+        // Once `searchSelectionQuery` (set by `selectSearchResult`) equals
+        // the current query, a late server search answer — or the
+        // selection's own surroundings reload changing `model.venues` again
+        // — must never re-fit the camera for that same query.
+        #expect(!CafeMapScreen.shouldApplySearchFit(forQuery: "sey", selectionQuery: "sey"))
+    }
+
+    @Test func stillTypingOrBrowsingWithNoSelectionProducesAFitIntent() {
+        #expect(CafeMapScreen.shouldApplySearchFit(forQuery: "sey", selectionQuery: nil))
+        // A genuinely different, later query is never blocked by a stale
+        // selection recorded for an earlier one.
+        #expect(CafeMapScreen.shouldApplySearchFit(forQuery: "devocion", selectionQuery: "sey"))
+    }
+
+    @Test func blankQueryNeverProducesAFitIntent() {
+        #expect(!CafeMapScreen.shouldApplySearchFit(forQuery: "   ", selectionQuery: nil))
+        #expect(!CafeMapScreen.shouldApplySearchFit(forQuery: "", selectionQuery: nil))
+    }
+
+    /// `selectSearchResult`'s fly-to reuses this exact function for its
+    /// single-result path — proving the region it produces (one result,
+    /// walking scale, biased north of the shelf) IS the fly-to intent, not
+    /// a second, divergent calculation.
+    @Test func selectionProducesExactlyOneFlyToIntentWithTheVisibleAreaOffset() throws {
+        let target = venue(id: "far", lat: 40.6437, lng: -74.0787)
+        let region = CafeMapScreen.searchFitRegion(for: [target], mapHeight: 800, shelfClearance: 260)
+        let unwrapped = try #require(region)
+        // Longitude is never shelf-shifted, so it stays exactly at the
+        // walking-zoom span; latitude is inflated/shifted by the shelf bias
+        // (asserted directly below), matching `shelfClearanceShiftsTheFitNorthOfTheRawCenter`.
+        #expect(unwrapped.span.longitudeDelta == CafeMapScreen.walkingZoomSpan)
+        #expect(unwrapped.span.latitudeDelta > CafeMapScreen.walkingZoomSpan, "shelf clearance widens the latitude span")
+        #expect(unwrapped.center.latitude < target.lat, "must bias north, clear of the shelf")
+        #expect(unwrapped.center.longitude == target.lng)
+        #expect(abs(target.lat - unwrapped.center.latitude) <= unwrapped.span.latitudeDelta / 2)
     }
 }
