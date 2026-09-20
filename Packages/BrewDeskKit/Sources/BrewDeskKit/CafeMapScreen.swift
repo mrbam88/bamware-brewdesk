@@ -67,6 +67,22 @@ public struct CafeMapScreen: View {
     @FocusState private var searchFocused: Bool
     /// Full map height, captured once per layout for the `.full` card height.
     @State private var mapHeight: CGFloat = 0
+    /// Full map size, captured alongside `mapHeight` (bd#209) — the
+    /// annotation planner needs both dimensions to convert a venue's
+    /// coordinate into a screen point for its collision-free layout pass.
+    @State private var mapSize: CGSize = .zero
+    /// Memoizes `MapAnnotationPlanner.plan(...)` (bd#209). `body` here
+    /// re-evaluates on every state change this screen has — a locate-button
+    /// pulse frame, a shelf-detent drag, search focus — not just a camera
+    /// settle (the brewdesk#54 invariant only promises mid-GESTURE frames
+    /// skip it; SwiftUI still re-runs `body` for plenty else). #204/#208's
+    /// planner was cheap enough that recomputing it on every one of those
+    /// renders was invisible; bd#209's collision-aware layout is not, so an
+    /// unrelated re-render now reuses the last plan instead of rebuilding
+    /// it. A plain reference box, not `@State` itself, so writing the cache
+    /// during body's own evaluation can never trigger a further
+    /// invalidation — the same reasoning `mapInteraction` above documents.
+    @State private var planCache = PlanCacheBox()
     /// Dynamic Type–aware estimates of the shelf card's height per detent, so
     /// map controls and attribution ride above the card the way detail
     /// content clears the action dock (same safe-area mechanism).
@@ -123,7 +139,7 @@ public struct CafeMapScreen: View {
     }
 
     public var body: some View {
-        let plan = MapAnnotationPlanner.plan(venues: model.venues, region: visibleRegion)
+        let plan = cachedPlan()
         // bd#192: purely derived from state already tracked elsewhere —
         // `isSearchingThisArea` keeps the pill (with its progress state) up
         // through the tap's own fetch, and once that clears, the pill's
@@ -329,10 +345,11 @@ public struct CafeMapScreen: View {
         } message: {
             Text("Turn on Location Services for BrewDesk in Settings to center the map on where you are.")
         }
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.height
-        } action: { height in
-            mapHeight = height
+        .onGeometryChange(for: CGSize.self) { proxy in
+            proxy.size
+        } action: { size in
+            mapHeight = size.height
+            mapSize = size
         }
         .safeAreaInset(edge: .top) { searchHeader }
         .overlay { loadStatus }
@@ -727,8 +744,16 @@ public struct CafeMapScreen: View {
         // different place. Keep the camera exactly where the user left it —
         // only the pins (via `model.venues`) change.
         guard model.centerSource != .exploredViewport else { return }
-        position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
-        visibleRegion = Self.region(lat: model.centerLat, lng: model.centerLng)
+        // bd#209: a REAL location fix (`.userLocation`) replacing the Union
+        // Square/NYC fallback opens at a walking-scale span (~0.014) — the
+        // first view should read as "your neighbourhood," not half of
+        // Manhattan. The Browse-NYC fallback (`.coverageDefault`) keeps the
+        // original wider span unchanged — that's the screen the ticket says
+        // not to touch.
+        let span = model.centerSource == .userLocation ? Self.firstFixSpan : Self.defaultSpan
+        let region = Self.region(lat: model.centerLat, lng: model.centerLng, span: span)
+        position = .region(region)
+        visibleRegion = region
     }
 
     /// The camera center as "lat,lng" — see the `map-camera-center`
@@ -895,6 +920,33 @@ public struct CafeMapScreen: View {
 
     // MARK: - Annotations (representation from MapAnnotationPlanner,
     // styling from MapAnnotationViews — see brewdesk#54/#55)
+
+    /// `MapAnnotationPlanner.plan(...)`, memoized against `planCache` (see
+    /// its doc comment) — `body` re-evaluates far more often than the
+    /// camera actually settles, and bd#209's collision-aware layout is
+    /// expensive enough that recomputing it on every one of those renders
+    /// is what actually regressed #208's frame timing, not the algorithm's
+    /// own per-call cost.
+    private func cachedPlan() -> MapAnnotationPlan {
+        let key = PlanCacheKey(
+            venues: model.venues,
+            region: visibleRegion.map(RegionSnapshot.init),
+            mapSize: mapSize,
+            selectedID: selected?.id
+        )
+        if let cachedKey = planCache.key, cachedKey == key, let cached = planCache.plan {
+            return cached
+        }
+        let plan = MapAnnotationPlanner.plan(
+            venues: model.venues,
+            region: visibleRegion,
+            mapSize: mapSize,
+            selectedVenueID: selected?.id
+        )
+        planCache.key = key
+        planCache.plan = plan
+        return plan
+    }
 
     /// bd#204: the three representations are no longer mutually exclusive —
     /// a dense viewport draws all three layers at once (top-ranked score
@@ -1255,10 +1307,19 @@ public struct CafeMapScreen: View {
             || spanRatio < 0.75 || spanRatio > 1.33
     }
 
-    private static func region(lat: Double, lng: Double) -> MKCoordinateRegion {
+    /// The screen's original camera span (Browse NYC fallback, and every
+    /// call site not covered by bd#209's item E below).
+    private static let defaultSpan = 0.035
+    /// bd#209: the span a REAL first location fix opens at — walking scale,
+    /// so the first view reads as a neighbourhood instead of half of
+    /// Manhattan. See `applyCenterChange` for the one call site that uses
+    /// this instead of `defaultSpan`.
+    private static let firstFixSpan = 0.014
+
+    private static func region(lat: Double, lng: Double, span: Double = defaultSpan) -> MKCoordinateRegion {
         MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: lat, longitude: lng),
-            span: MKCoordinateSpan(latitudeDelta: 0.035, longitudeDelta: 0.035)
+            span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
         )
     }
 
@@ -1323,4 +1384,19 @@ private struct RegionSnapshot: Equatable {
         latDelta = region.span.latitudeDelta
         lngDelta = region.span.longitudeDelta
     }
+}
+
+/// Everything `MapAnnotationPlanner.plan(...)`'s output actually depends on
+/// (bd#209) — see `planCache`'s doc comment on why this exists.
+private struct PlanCacheKey: Equatable {
+    let venues: [Venue]
+    let region: RegionSnapshot?
+    let mapSize: CGSize
+    let selectedID: String?
+}
+
+/// Plain reference box, not `@State` itself — see `planCache`'s doc comment.
+private final class PlanCacheBox {
+    var key: PlanCacheKey?
+    var plan: MapAnnotationPlan?
 }

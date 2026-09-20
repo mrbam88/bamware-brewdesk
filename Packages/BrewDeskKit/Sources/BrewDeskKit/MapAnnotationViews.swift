@@ -45,15 +45,26 @@ struct VenueScorePin: View {
 }
 
 /// Mid-density venue: a score-tier dot with a comfortable tap frame.
-/// Unobserved venues get a hollow grey/white dot instead of a tier fill
-/// (bd#159) — same neutral, non-red/green treatment as `VenueScorePin`.
+/// Unobserved venues get a neutral grey dot instead of a tier fill (bd#159)
+/// — same neutral, non-red/green treatment as `VenueScorePin`.
+///
+/// bd#209: unobserved used to be `.white` fill + `.white` stroke — at
+/// street-level density, dozens of overlapping unobserved dots had the SAME
+/// fill and edge color as their neighbours, so the pile read as one
+/// borderless white blob ("worm") instead of individual cafés. Now a
+/// neutral mid-grey fill with a hairline DARKER grey stroke, so each dot
+/// keeps a visible edge against both the basemap and its neighbours even
+/// when several sit close together. `MapAnnotationPlanner`'s collision pass
+/// also now guarantees ≥14pt centre-to-centre spacing between any two
+/// placed dots, so true full overlap can no longer happen at all — this
+/// styling fix is what keeps a near-miss legible on top of that.
 struct VenueScoreDot: View {
     let venue: Venue
 
     var body: some View {
         Circle()
-            .fill(venue.isObserved ? venue.scoreTier.color : .white)
-            .stroke(venue.isObserved ? .white : BrewDeskPalette.unobserved, lineWidth: 1.5)
+            .fill(venue.isObserved ? venue.scoreTier.color : BrewDeskPalette.unobserved)
+            .stroke(venue.isObserved ? .white : BrewDeskPalette.unobservedDotStroke, lineWidth: 1)
             .frame(width: 14, height: 14)
             .frame(width: 30, height: 30)
             .contentShape(Rectangle())
@@ -97,11 +108,17 @@ struct AppleUnverifiedPin: View {
 struct VenueClusterPill: View {
     let cluster: VenueCluster
 
-    /// "125", capped to "99+" once the pill can no longer read the exact
-    /// count at a glance — the display is metadata about density, not a
-    /// precise figure worth spelling out past two digits.
+    /// "128", capped to "999+" only once the pill genuinely can't spell out
+    /// the count. bd#209: "99+" was hiding real information at exactly the
+    /// density where the count matters most (a "99+" versus "128" versus
+    /// "342" is a meaningfully different amount of café evidence behind one
+    /// stack) — the honest number now shows up to three digits, and only
+    /// four-digit-or-more density (unreachable in practice: `plan()` caps
+    /// total annotations at `MapAnnotationPlanner.maxAnnotations`, and a
+    /// stack's member count is bounded by whatever's left in view) falls
+    /// back to a capped display at all.
     private var displayCount: String {
-        cluster.count > 99 ? "99+" : "\(cluster.count)"
+        cluster.count > 999 ? "999+" : "\(cluster.count)"
     }
 
     var body: some View {

@@ -69,6 +69,15 @@ public enum BrewDeskPalette {
     /// (founder is red-green colorblind). Static, like the tier fills — it
     /// sits behind fixed white badge/pin text in both appearances.
     public static let unobserved = Color(red: 0.58, green: 0.58, blue: 0.60)
+    /// Hairline stroke for an unobserved map dot (bd#209) — a darker shade
+    /// of `unobserved`, never white. At street-level density dozens of
+    /// unobserved dots used to stack into a single white-filled,
+    /// white-stroked "worm": a white fill next to a white stroke gave every
+    /// overlapping dot the SAME edge color as its neighbour's fill, so the
+    /// pile read as one blob with no visible boundaries. A neutral grey fill
+    /// with a darker grey edge keeps each dot legible as its own shape even
+    /// when several sit close together, without introducing red/green.
+    public static let unobservedDotStroke = Color(red: 0.38, green: 0.38, blue: 0.40)
     /// Muted secondary-text tone (light mode only; dark mode is
     /// `secondaryText` below — "sand becomes text-secondary" in dark).
     /// Between ramp steps 2 and 3: step 3 alone (`#897746`) undershoots

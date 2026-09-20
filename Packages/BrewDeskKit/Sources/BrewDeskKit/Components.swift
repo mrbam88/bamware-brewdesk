@@ -23,6 +23,17 @@ extension ScoreTier {
 /// fallback (ve#64), not a measurement, and must never be printed as if it
 /// were one. The neutral state uses a grey fill, never red/green (founder
 /// is red-green colorblind), and VoiceOver never reads the number.
+///
+/// bd#209: previously solid tier-color fill behind fixed white text — passed
+/// for `great`/`mixed`/`weak` (roast/sand/berry all clear 7:1+ against
+/// white) but the `good` tier's sage (`moss`) only reaches ~3.35:1 against
+/// white, under the 4.5:1 bar for body text. Rather than re-tuning `moss`
+/// (a fill token shared with pins/icons elsewhere), the badge now uses a
+/// neutral, appearance-adaptive tile — `surfaceSecondary` fill,
+/// `clusterSurfaceText` label (already verified 4.5:1+ in both appearances,
+/// same token `VenueClusterPill` uses) — with the tier color moved to a
+/// ring around the tile. Tier is still visible (ring hue + the number
+/// itself), it just no longer has to double as the text color.
 struct ScoreBadge: View {
     let venue: Venue
 
@@ -37,10 +48,16 @@ struct ScoreBadge: View {
             }
         }
         .font(BrewDeskFont.label(.subheadline))
-        .foregroundStyle(.white)
+        .foregroundStyle(BrewDeskPalette.clusterSurfaceText)
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(venue.isObserved ? ScoreTier(score: venue.workScore).color : BrewDeskPalette.unobserved, in: Capsule())
+        .background(BrewDeskPalette.surfaceSecondary, in: Capsule())
+        .overlay(
+            Capsule().stroke(
+                venue.isObserved ? ScoreTier(score: venue.workScore).color : BrewDeskPalette.unobserved,
+                lineWidth: 2
+            )
+        )
     }
 }
 
