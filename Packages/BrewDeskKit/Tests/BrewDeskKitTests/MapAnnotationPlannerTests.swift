@@ -275,9 +275,14 @@ struct MapAnnotationPlannerTests {
             )
         }
         // Five venues sharing one grid cell, skewed toward its edge — their
-        // true average is nowhere near that cell's geometric centre.
-        let cornerLat = 40.7359 + 0.02
-        let cornerLng = -73.9911 + 0.02
+        // true average is nowhere near that cell's geometric centre. 0.01°
+        // stays inside the map's actual PIXEL bounds at this region/mapSize
+        // (span 0.035 ⇒ ±0.0175 is the strict on-screen half-extent; the
+        // larger ±0.035 cull margin also accepts venues that never fit on
+        // screen at all, which bd#210's edge-of-map bounds check on stack
+        // nudging correctly refuses to place a marker at).
+        let cornerLat = 40.7359 + 0.01
+        let cornerLng = -73.9911 + 0.01
         let target = (0..<5).map { i in
             venue(id: "target\(i)", lat: cornerLat + Double(i) * 0.0002, lng: cornerLng + Double(i) * 0.0002, score: 40, observed: false)
         }
@@ -341,6 +346,95 @@ struct MapAnnotationPlannerTests {
         // No pinned venue is also counted in a dot.
         let pinIDs = Set(plan.pins.map(\.id))
         #expect(plan.dots.allSatisfy { !pinIDs.contains($0.id) })
+    }
+
+    // MARK: - bd#210: chrome exclusion rects
+
+    @Test func noPlacedPinOrStackIntersectsAnExclusionRect() {
+        // A top-band exclusion (mimics the search header + status bar) and a
+        // corner exclusion (mimics the locate button) — both large enough
+        // that a dense 400-venue grid is guaranteed to have real candidates
+        // land inside them.
+        let testRegion = region()
+        let exclusions = [
+            CGRect(x: 0, y: 0, width: mapSize.width, height: 140),
+            CGRect(x: mapSize.width - 80, y: mapSize.height - 140, width: 68, height: 68),
+        ]
+        let venues = grid(count: 400, extent: 0.03)
+        let plan = MapAnnotationPlanner.plan(
+            venues: venues, region: testRegion, mapSize: mapSize, exclusionRects: exclusions
+        )
+
+        let projector = ScreenProjector(region: testRegion, size: mapSize)
+        let exclusionBoxes = exclusions.map { AABB(minX: $0.minX, maxX: $0.maxX, minY: $0.minY, maxY: $0.maxY) }
+        for pin in plan.pins {
+            let box = projector.footprint(.pin, at: CLLocationCoordinate2D(latitude: pin.lat, longitude: pin.lng))
+            for exclusion in exclusionBoxes {
+                #expect(!box.intersects(exclusion), "pin \(pin.id) sits under an exclusion rect")
+            }
+        }
+        for dot in plan.dots {
+            let box = projector.footprint(.dot, at: CLLocationCoordinate2D(latitude: dot.lat, longitude: dot.lng))
+            for exclusion in exclusionBoxes {
+                #expect(!box.intersects(exclusion), "dot \(dot.id) sits under an exclusion rect")
+            }
+        }
+        for cluster in plan.clusters {
+            let box = projector.footprint(.stack, at: cluster.coordinate)
+            for exclusion in exclusionBoxes {
+                #expect(!box.intersects(exclusion), "stack \(cluster.id) sits under an exclusion rect")
+            }
+        }
+        // Exclusion rects never break the base guarantee: still zero
+        // marker-vs-marker overlaps.
+        assertNoOverlaps(footprints(for: plan, region: testRegion, mapSize: mapSize))
+    }
+
+    @Test func pinUnderAnExclusionRectDemotesToADotWhenTheDotFootprintClears() {
+        let testRegion = region()
+        let projector = ScreenProjector(region: testRegion, size: mapSize)
+        let target = venue(id: "under-chrome", lat: 40.7359, lng: -73.9911, score: 90)
+        let point = projector.point(for: CLLocationCoordinate2D(latitude: target.lat, longitude: target.lng))
+        // Stops 15pt short of the venue's own point on the X axis: inside
+        // the pin's 26pt half-width (collides) but outside the dot's 10pt
+        // half-width (clears).
+        let exclusion = CGRect(x: point.x - 100, y: point.y - 50, width: 85, height: 100)
+        let plan = MapAnnotationPlanner.plan(
+            venues: [target], region: testRegion, mapSize: mapSize, exclusionRects: [exclusion]
+        )
+        #expect(plan.pins.isEmpty, "a pin under chrome must never render as a pin")
+        #expect(plan.dots.map(\.id) == ["under-chrome"], "demotes to a dot once the smaller dot footprint clears the exclusion rect")
+    }
+
+    @Test func dotFullyInsideAnExclusionRectWithNothingNearbyIsSkipped() {
+        let testRegion = region()
+        let projector = ScreenProjector(region: testRegion, size: mapSize)
+        // Unobserved (never a pin candidate) and alone — nothing nearby to
+        // absorb it into a stack, so a collision here can only be dropped.
+        let target = venue(id: "chrome-dot", lat: 40.7360, lng: -73.9912, score: 10, observed: false)
+        let point = projector.point(for: CLLocationCoordinate2D(latitude: target.lat, longitude: target.lng))
+        let exclusion = CGRect(x: point.x - 40, y: point.y - 40, width: 80, height: 80)
+        let plan = MapAnnotationPlanner.plan(
+            venues: [target], region: testRegion, mapSize: mapSize, exclusionRects: [exclusion]
+        )
+        #expect(plan.annotationCount == 0, "a lone venue fully under chrome, with nothing nearby to absorb it into, must not render")
+    }
+
+    @Test func planWithExclusionRectsStaysDeterministicAndWithinTheCap() {
+        let testRegion = region()
+        let exclusions = [
+            CGRect(x: 0, y: 0, width: mapSize.width, height: 140),
+            CGRect(x: mapSize.width - 80, y: mapSize.height - 140, width: 68, height: 68),
+        ]
+        let venues = grid(count: 400, extent: 0.03)
+        let first = MapAnnotationPlanner.plan(
+            venues: venues, region: testRegion, mapSize: mapSize, exclusionRects: exclusions
+        )
+        let second = MapAnnotationPlanner.plan(
+            venues: venues, region: testRegion, mapSize: mapSize, exclusionRects: exclusions
+        )
+        #expect(first == second, "identical input (including exclusion rects) must plan identically")
+        #expect(first.annotationCount <= MapAnnotationPlanner.maxAnnotations)
     }
 
     // MARK: - bd#209: determinism

@@ -152,7 +152,17 @@ public enum MapAnnotationPlanner {
     ///   - selectedVenueID: the currently-selected venue, if any. Placed
     ///     first and unconditionally as a full pin — nothing else may ever
     ///     cover it — matching `CafeMapScreen`'s existing "selected pin
-    ///     always visible" contract.
+    ///     always visible" contract. Not checked against `exclusionRects`
+    ///     (out of scope — see bd#210's PR notes).
+    ///   - exclusionRects: screen-space rects (same coordinate space as
+    ///     `mapSize` — the map view's own local frame) that are already
+    ///     "occupied" before any marker is placed (bd#210) — fixed app
+    ///     chrome (the search header, the "Search this area" pill, the
+    ///     locate button, the shelf card) that would otherwise sit on top of
+    ///     a marker drawn at its real coordinate. Seeded into the collision
+    ///     grid first, so every later phase's normal collision handling
+    ///     (pin → demote to dot, stack → nudge/merge, dot → absorb/homeless/
+    ///     drop) already covers them with no separate code path.
     /// - Parameter region: the current camera viewport, or `nil` when it has
     ///   never been observed (cold start before the first camera settle) or a
     ///   `MapProxy` conversion failed. Either way this must never render as
@@ -167,7 +177,8 @@ public enum MapAnnotationPlanner {
         venues: [Venue],
         region: MKCoordinateRegion?,
         mapSize: CGSize = .zero,
-        selectedVenueID: String? = nil
+        selectedVenueID: String? = nil,
+        exclusionRects: [CGRect] = []
     ) -> MapAnnotationPlan {
         guard let region else {
             return MapAnnotationPlan(pins: venues, dots: [], clusters: [])
@@ -181,6 +192,13 @@ public enum MapAnnotationPlanner {
         let size = (mapSize.width > 0 && mapSize.height > 0) ? mapSize : fallbackMapSize
         let projector = ScreenProjector(region: region, size: size)
         let grid = CollisionGrid()
+        // bd#210: chrome occupies its screen space before any marker gets a
+        // chance at it — a pin/stack/dot whose footprint reaches into one of
+        // these rects is handled by the SAME demote/nudge/absorb machinery a
+        // marker-vs-marker collision already goes through below.
+        for rect in exclusionRects {
+            grid.insert(AABB(minX: rect.minX, maxX: rect.maxX, minY: rect.minY, maxY: rect.maxY))
+        }
         var totalPlaced = 0
 
         var pinsOut: [Venue] = []
@@ -472,10 +490,27 @@ public enum MapAnnotationPlanner {
     /// input) at increasing multiples of the marker's own footprint, 8
     /// compass directions per ring, 3 rings. `nil` means every position
     /// tried also collided.
+    /// bd#210: a candidate must stay fully within the map's own visible
+    /// bounds, not just be collision-free — without this, a stack fleeing
+    /// an exclusion rect near an edge (the search header at the top, the
+    /// shelf at the bottom) could get nudged clean off the map: still
+    /// "placed" and present in the accessibility tree, but not actually
+    /// visible or tappable (reproduced by `MapPerformanceUITests
+    /// .testScriptedPanFrameTimingAtDotZoom`'s "no hittable cluster pill"
+    /// failure). A candidate that fails this is treated exactly like a
+    /// collision — the ring search keeps looking, and running out falls
+    /// through to the existing merge-into-nearest-stack/drop fallback.
     private static func freePoint(
         near desired: CGPoint, kind: MarkerKind, projector: ScreenProjector, grid: CollisionGrid
     ) -> CGPoint? {
-        if !grid.collides(projector.footprint(kind, at: desired)) { return desired }
+        func isValid(_ point: CGPoint) -> Bool {
+            let box = projector.footprint(kind, at: point)
+            guard box.minX >= 0, box.maxX <= projector.size.width,
+                  box.minY >= 0, box.maxY <= projector.size.height
+            else { return false }
+            return !grid.collides(box)
+        }
+        if isValid(desired) { return desired }
         let step = max(kind.paddedSize.width, kind.paddedSize.height)
         let directions: [(CGFloat, CGFloat)] = [
             (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1),
@@ -486,7 +521,7 @@ public enum MapAnnotationPlanner {
                     x: desired.x + dx * step * CGFloat(ring),
                     y: desired.y + dy * step * CGFloat(ring)
                 )
-                if !grid.collides(projector.footprint(kind, at: candidate)) { return candidate }
+                if isValid(candidate) { return candidate }
             }
         }
         return nil
