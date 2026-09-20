@@ -145,4 +145,40 @@ final class MapSearchAreaGPSRegressionUITests: XCTestCase {
 
         capture("gps-regression-query-after-3s-of-ticks")
     }
+
+    /// bd#210 regression: bd#209's walking-scale initial camera (~0.014°
+    /// span once a real fix lands) no longer matched `VenuesModel`'s
+    /// `defaultRadiusM` (2,500m) — the mismatch alone made
+    /// `needsSearchAreaPill` see a >2x radius "change" and show the pill
+    /// on cold start with zero gestures. Fixed two ways:
+    /// `VenuesModel.syncRadiusToCamera` (the radius itself no longer
+    /// mismatches) and `CafeMapScreen.userHasMovedCamera` (a backstop —
+    /// the pill can never show before a real drag/pinch/double-tap
+    /// regardless). This proves both: the pill stays absent through the
+    /// fixed fix landing AND settling (3s, past `-brewdesk.uitest-fixed-
+    /// location`'s ~1s re-delivery interval), then appears once the user
+    /// actually pans.
+    @MainActor
+    func testPillNeverAppearsAtColdStartThenAppearsAfterAPan() throws {
+        let app = launchWithFixedLocation()
+        XCTAssertTrue(element(app, "map-header-card").waitForExistence(timeout: wait))
+
+        let deadline = Date().addingTimeInterval(3)
+        while Date() < deadline {
+            XCTAssertFalse(
+                app.buttons["map-search-area"].exists,
+                "the pill must not appear before the user has panned/zoomed, even once the fixed GPS fix has settled"
+            )
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        capture("gps-regression-pill-absent-at-cold-start")
+
+        panFarWest(app)
+
+        XCTAssertTrue(
+            app.buttons["map-search-area"].waitForExistence(timeout: wait),
+            "panning far enough after a fixed GPS fix should still surface the pill"
+        )
+        capture("gps-regression-pill-appears-after-pan")
+    }
 }

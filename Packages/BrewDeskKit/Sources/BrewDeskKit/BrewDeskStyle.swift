@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import VenueKit
 
 /// Warm Utilitarian (brewdesk#98): green/sand/sage system, replacing the
 /// espresso/cream coffee palette. Every role below is a 9-step ramp from
@@ -55,9 +56,14 @@ public enum BrewDeskPalette {
     public static let foam = hex(neutralRamp[8])
     /// Tertiary sage — "good" tier fill, icon glyphs, subtle tints.
     public static let moss = hex(tertiaryRamp[5])
-    /// Destructive — "mixed" tier / error fill and icon glyphs.
+    /// Destructive — "weak" tier fill (bd#211; previously unused by any
+    /// tier despite its doc history, and previously misdescribed here —
+    /// `berry` below was the actual pre-bd#211 "weak" fill) and general
+    /// error fill/icon glyphs.
     public static let clay = hex(destructiveRamp[5])
-    /// Destructive, deeper — "weak" tier fill.
+    /// Destructive, deeper. No longer a tier fill as of bd#211 (see `clay`
+    /// above) — still used for other destructive states (e.g. "closed"
+    /// status) elsewhere in the app.
     public static let berry = hex(destructiveRamp[4])
     /// Sand, deepened for legibility under white text — "mixed" tier fill.
     /// Replaces the old teal `ocean` (unused after the tier re-map onto
@@ -69,6 +75,69 @@ public enum BrewDeskPalette {
     /// (founder is red-green colorblind). Static, like the tier fills — it
     /// sits behind fixed white badge/pin text in both appearances.
     public static let unobserved = Color(red: 0.58, green: 0.58, blue: 0.60)
+    /// Hairline stroke for an unobserved map dot (bd#209) — a darker shade
+    /// of `unobserved`, never white. At street-level density dozens of
+    /// unobserved dots used to stack into a single white-filled,
+    /// white-stroked "worm": a white fill next to a white stroke gave every
+    /// overlapping dot the SAME edge color as its neighbour's fill, so the
+    /// pile read as one blob with no visible boundaries. A neutral grey fill
+    /// with a darker grey edge keeps each dot legible as its own shape even
+    /// when several sit close together, without introducing red/green.
+    ///
+    /// Adaptive (supervisor check at live density, 2026-09-20): the fixed dark
+    /// grey vanished against the dark basemap, so unrated cafés were invisible
+    /// in dark mode. Dark grey on the light map, light grey on the dark map.
+    public static let unobservedDotStroke = adaptive(
+        light: Color(red: 0.38, green: 0.38, blue: 0.40),
+        dark: Color(red: 0.80, green: 0.81, blue: 0.83)
+    )
+
+    // MARK: - bd#211: observed dot fills — single hue, lightness-only tier
+
+    /// Observed map dots used to tint by `ScoreTier.color` directly — four
+    /// DIFFERENT hues (green/sage/olive/brick), exactly the kind of signal a
+    /// red-green colorblind viewer can't reliably read, and dots carry no
+    /// number to fall back on (unlike a pin). These three tokens replace
+    /// that: ONE hue (the brand primary green, ~161°) at three lightness
+    /// steps — darkest/most saturated = best tier, lightest = weakest.
+    /// Capped at 3 steps though there are 4 tiers: `mixed` and `weak` share
+    /// the lightest step (`observedDotWeak`) — dots are the high-density,
+    /// lower-priority representation; a venue where great-vs-good-vs-mixed-
+    /// vs-weak actually matters always wins a PIN slot instead (bd#204/
+    /// #209), where the real number carries that distinction.
+    ///
+    /// Adaptive per appearance rather than one fixed ramp: a single color
+    /// can't hit 3:1 against both a light AND a dark basemap at once (the
+    /// luminance a light background needs is structurally different from
+    /// what a dark one needs), so light mode uses darker steps and dark
+    /// mode uses lighter ones, each internally ordered the same way.
+    /// Verified (see the bd#211 PR's contrast table): every step is
+    /// >=3:1 against `page` in its own appearance, and every adjacent pair
+    /// within an appearance is >=1.6:1 apart. Hue spread across all three
+    /// steps, either appearance, is under 2° — see `ScoreBadgeContrastTests
+    /// .observedDotPaletteIsSingleHueAndLightnessOrdered`.
+    static let observedDotGreat = adaptive(light: hex("#0E201A"), dark: hex("#367863"))
+    static let observedDotGood = adaptive(light: hex("#20483B"), dark: hex("#48A084"))
+    static let observedDotWeak = adaptive(light: hex("#306B59"), dark: hex("#86C8B3"))
+
+    /// `ScoreTier` → the 3-step dot ramp above.
+    public static func observedDotColor(for tier: ScoreTier) -> Color {
+        switch tier {
+        case .great: observedDotGreat
+        case .good: observedDotGood
+        case .mixed, .weak: observedDotWeak
+        }
+    }
+
+    /// Hairline stroke for an OBSERVED dot — flips which way it's lighter
+    /// than the fill, by appearance, so it always reads as a defined edge:
+    /// light mode's fills are very dark (see above), so a light stroke
+    /// separates the dot from a light basemap the same way the old
+    /// always-white stroke did; dark mode's fills are lighter (so they
+    /// already read against a dark basemap on their own), and a dark
+    /// stroke instead defines the edge crisply rather than washing out
+    /// against an already-light fill.
+    public static let observedDotStroke = adaptive(light: foam, dark: hex("#0A1411"))
     /// Muted secondary-text tone (light mode only; dark mode is
     /// `secondaryText` below — "sand becomes text-secondary" in dark).
     /// Between ramp steps 2 and 3: step 3 alone (`#897746`) undershoots

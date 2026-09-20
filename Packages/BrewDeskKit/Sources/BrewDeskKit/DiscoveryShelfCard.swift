@@ -385,6 +385,16 @@ struct DiscoveryShelfCard: View {
     /// label: at accessibility sizes the old 72×82 tile clipped to "7 WOR"
     /// (ui-review-2026-08-21 finding 7). The tile now scales with the score's
     /// text style and the caption rides Dynamic Type via `.caption2`.
+    ///
+    /// bd#209: this used to print the tier color itself as TEXT on a 14%-
+    /// opacity tint of that same color — on `great` (roast, a dark green)
+    /// that rendered as dark-green-on-dark-green, effectively unreadable,
+    /// and doubly bad for a red-green colorblind reader because the only
+    /// thing separating the number from its tile was that exact hue-on-hue
+    /// mismatch. Same fix as `ScoreBadge`: a neutral, high-contrast tile
+    /// (`surfaceSecondary` + `clusterSurfaceText`, verified 4.5:1+ in both
+    /// appearances) with the tier communicated by a ring instead of by
+    /// making the text itself the tier hue.
     private func venueCard(_ venue: Venue, fillsWidth: Bool) -> some View {
         HStack(spacing: 12) {
             VStack(spacing: 3) {
@@ -407,13 +417,17 @@ struct DiscoveryShelfCard: View {
                         .multilineTextAlignment(.center)
                 }
             }
-            .foregroundStyle(venue.isObserved ? venue.scoreTier.color : BrewDeskPalette.unobserved)
+            .foregroundStyle(BrewDeskPalette.clusterSurfaceText)
             .padding(.horizontal, 8)
             .padding(.vertical, 12)
             .frame(minWidth: scoreTileMinWidth, minHeight: scoreTileMinHeight)
-            .background(
-                (venue.isObserved ? venue.scoreTier.color : BrewDeskPalette.unobserved).opacity(0.14),
-                in: RoundedRectangle(cornerRadius: 14)
+            .background(BrewDeskPalette.surfaceSecondary, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14)
+                    .stroke(
+                        venue.isObserved ? venue.scoreTier.color : BrewDeskPalette.unobserved,
+                        lineWidth: 2
+                    )
             )
 
             VStack(alignment: .leading, spacing: 5) {

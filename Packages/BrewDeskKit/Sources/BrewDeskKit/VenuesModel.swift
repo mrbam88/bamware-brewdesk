@@ -452,6 +452,28 @@ public final class VenuesModel {
         return changed
     }
 
+    /// bd#210: `updateCenterIfNeeded` (the passive, location-driven path
+    /// `DiscoveryRootView`'s `.task(id: request)` calls on every fix) only
+    /// ever carries lat/lng — it never had a radius to update, so the very
+    /// first fetch after a real GPS fix kept querying at `defaultRadiusM`
+    /// (2,500m) while bd#209's walking-scale initial camera (~0.014° span)
+    /// implies a radius under a third of that. The mismatch alone — not any
+    /// real user pan — made `CafeMapScreen.needsSearchAreaPill` see a >2×
+    /// radius "change" on cold start and show the pill with zero gestures.
+    /// `CafeMapScreen.applyCenterChange()` calls this right after computing
+    /// the region the camera will actually show, so by the time
+    /// `visibleRegion` settles to match, `radiusM` already does too.
+    /// Deliberately NOT `centerOnUser`/`updateViewport` — both would touch
+    /// `centerSource`/`followsUser`, which `updateCenterIfNeeded` already
+    /// set correctly; this only ever corrects the radius.
+    @discardableResult
+    public func syncRadiusToCamera(_ radiusM: Int) -> Bool {
+        let clampedRadius = min(max(radiusM, Self.minRadiusM), Self.maxRadiusM)
+        guard self.radiusM != clampedRadius else { return false }
+        self.radiusM = clampedRadius
+        return true
+    }
+
     nonisolated static func metersBetween(
         _ lat1: Double, _ lng1: Double, _ lat2: Double, _ lng2: Double
     ) -> Double {

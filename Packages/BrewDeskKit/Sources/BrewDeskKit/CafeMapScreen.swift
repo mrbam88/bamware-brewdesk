@@ -67,6 +67,22 @@ public struct CafeMapScreen: View {
     @FocusState private var searchFocused: Bool
     /// Full map height, captured once per layout for the `.full` card height.
     @State private var mapHeight: CGFloat = 0
+    /// Full map size, captured alongside `mapHeight` (bd#209) — the
+    /// annotation planner needs both dimensions to convert a venue's
+    /// coordinate into a screen point for its collision-free layout pass.
+    @State private var mapSize: CGSize = .zero
+    /// Memoizes `MapAnnotationPlanner.plan(...)` (bd#209). `body` here
+    /// re-evaluates on every state change this screen has — a locate-button
+    /// pulse frame, a shelf-detent drag, search focus — not just a camera
+    /// settle (the brewdesk#54 invariant only promises mid-GESTURE frames
+    /// skip it; SwiftUI still re-runs `body` for plenty else). #204/#208's
+    /// planner was cheap enough that recomputing it on every one of those
+    /// renders was invisible; bd#209's collision-aware layout is not, so an
+    /// unrelated re-render now reuses the last plan instead of rebuilding
+    /// it. A plain reference box, not `@State` itself, so writing the cache
+    /// during body's own evaluation can never trigger a further
+    /// invalidation — the same reasoning `mapInteraction` above documents.
+    @State private var planCache = PlanCacheBox()
     /// Dynamic Type–aware estimates of the shelf card's height per detent, so
     /// map controls and attribution ride above the card the way detail
     /// content clears the action dock (same safe-area mechanism).
@@ -110,6 +126,33 @@ public struct CafeMapScreen: View {
     /// poll clears the flag immediately instead of waiting on an event
     /// that already happened.
     @State private var searchAreaFetchTask: Task<Void, Never>?
+    /// bd#210: true once a real drag/pinch/double-tap gesture has settled —
+    /// the ONLY thing allowed to make `showSearchAreaPill` visible. A
+    /// programmatic camera move (first GPS fix, "Browse NYC", search fit,
+    /// locate-me) resets this false, so a data/radius mismatch from one of
+    /// THOSE never shows the pill with zero user interaction — the ticket's
+    /// own bug ("pill visible at launch with no gesture") was exactly a
+    /// radius mismatch on the first GPS fix masquerading as "you moved the
+    /// map." (The radius mismatch itself is also fixed directly —
+    /// `VenuesModel.syncRadiusToCamera` — this flag is the belt-and-braces
+    /// backstop.)
+    @State private var userHasMovedCamera = false
+    /// bd#210: chrome frames the annotation planner treats as already-
+    /// occupied, all measured in `Self.mapPlaneSpace` (the SAME local
+    /// coordinate space `mapSize` implicitly uses — nothing between the
+    /// view `mapSize`/these are measured on and the actual `Map` changes
+    /// its own frame, only adds floating overlays/insets on top of it).
+    /// `searchAreaPillFrame` is `nil` whenever the pill itself isn't in the
+    /// view tree — never a stale rect from the last time it was visible.
+    @State private var searchHeaderFrame: CGRect = .zero
+    @State private var searchAreaPillFrame: CGRect?
+    @State private var locateButtonFrame: CGRect = .zero
+    @State private var shelfFrame: CGRect = .zero
+    /// Named coordinate space for the chrome-exclusion measurements above —
+    /// declared on the OUTERMOST modifier of this screen's `body` (every
+    /// overlay/safeAreaInset attached anywhere in the chain is a structural
+    /// descendant of it) so every measurement shares one reference frame.
+    nonisolated private static let mapPlaneSpace = "CafeMapScreen.mapPlane"
 
     public init(
         model: VenuesModel,
@@ -123,7 +166,7 @@ public struct CafeMapScreen: View {
     }
 
     public var body: some View {
-        let plan = MapAnnotationPlanner.plan(venues: model.venues, region: visibleRegion)
+        let plan = cachedPlan()
         // bd#192: purely derived from state already tracked elsewhere —
         // `isSearchingThisArea` keeps the pill (with its progress state) up
         // through the tap's own fetch, and once that clears, the pill's
@@ -135,7 +178,11 @@ public struct CafeMapScreen: View {
         // bd#200: a text search already re-queries city-wide on its own —
         // the "Search this area" pill (a LOCAL viewport re-fetch) would be a
         // confusing second, unrelated affordance while one's in flight.
-        let showSearchAreaPill = model.searchQuery.isEmpty && (isSearchingThisArea || visibleRegion.map {
+        // bd#210: `userHasMovedCamera` gates the whole thing — a
+        // center/radius mismatch from a PROGRAMMATIC move (first GPS fix,
+        // "Browse NYC", search fit, locate-me) must never show this with no
+        // actual gesture; see the property's own doc comment.
+        let showSearchAreaPill = userHasMovedCamera && model.searchQuery.isEmpty && (isSearchingThisArea || visibleRegion.map {
             Self.needsSearchAreaPill(
                 loadedCenterLat: model.centerLat,
                 loadedCenterLng: model.centerLng,
@@ -212,6 +259,7 @@ public struct CafeMapScreen: View {
                         }
                         .onEnded { _ in
                             mapInteraction.isActive = false
+                            userHasMovedCamera = true
                             scheduleReplan(proxy: proxy, size: geometry.size)
                         }
                 )
@@ -223,6 +271,7 @@ public struct CafeMapScreen: View {
                         }
                         .onEnded { _ in
                             mapInteraction.isActive = false
+                            userHasMovedCamera = true
                             scheduleReplan(proxy: proxy, size: geometry.size)
                         }
                 )
@@ -231,6 +280,7 @@ public struct CafeMapScreen: View {
                     TapGesture(count: 2)
                         .onEnded {
                             stopTrackingUserLocation()
+                            userHasMovedCamera = true
                             scheduleReplan(proxy: proxy, size: geometry.size)
                         }
                 )
@@ -316,7 +366,18 @@ public struct CafeMapScreen: View {
                 SearchAreaPill(isSearching: isSearchingThisArea, action: searchThisArea)
                     .padding(.top, 8)
                     .transition(.opacity)
+                    // bd#210: measured only while the pill actually exists in
+                    // the view tree — `showSearchAreaPill` going false below
+                    // this view disappearing entirely, never a stale rect.
+                    .onGeometryChange(for: CGRect.self) { proxy in
+                        proxy.frame(in: .named(Self.mapPlaneSpace))
+                    } action: { rect in
+                        searchAreaPillFrame = rect
+                    }
             }
+        }
+        .onChange(of: showSearchAreaPill) { _, visible in
+            if !visible { searchAreaPillFrame = nil }
         }
         .animation(reduceMotion ? nil : .snappy, value: showSearchAreaPill)
         .alert("Location Access Needed", isPresented: $showLocationDeniedAlert) {
@@ -329,12 +390,20 @@ public struct CafeMapScreen: View {
         } message: {
             Text("Turn on Location Services for BrewDesk in Settings to center the map on where you are.")
         }
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.height
-        } action: { height in
-            mapHeight = height
+        .onGeometryChange(for: CGSize.self) { proxy in
+            proxy.size
+        } action: { size in
+            mapHeight = size.height
+            mapSize = size
         }
-        .safeAreaInset(edge: .top) { searchHeader }
+        .safeAreaInset(edge: .top) {
+            searchHeader
+                .onGeometryChange(for: CGRect.self) { proxy in
+                    proxy.frame(in: .named(Self.mapPlaneSpace))
+                } action: { rect in
+                    searchHeaderFrame = rect
+                }
+        }
         .overlay { loadStatus }
         // The honest bottom sheet (brewdesk#76): an in-tab overlay with real
         // detents — bottom-aligned to the tab content's safe area, so the tab
@@ -366,6 +435,17 @@ public struct CafeMapScreen: View {
                     .onChanged { _ in searchFocused = false }
             )
             .scrollDismissesKeyboard(.immediately)
+            // bd#210: the shelf's REAL rendered frame at whatever detent
+            // it's currently at — not `shelfClearance`'s constant estimate
+            // (deliberately detent-invariant so the MAP doesn't jump; the
+            // exclusion rect is the opposite — it should track the card
+            // exactly, so a marker under a `.peek` shelf is fine but the
+            // same marker under `.full` is excluded).
+            .onGeometryChange(for: CGRect.self) { proxy in
+                proxy.frame(in: .named(Self.mapPlaneSpace))
+            } action: { rect in
+                shelfFrame = rect
+            }
         }
         // The locate button (bd#185, replacing the stock
         // `MapUserLocationButton()` — see its own doc comment for why) and,
@@ -394,6 +474,11 @@ public struct CafeMapScreen: View {
                     pulseScale: locateButtonScale,
                     action: handleLocateTap
                 )
+                .onGeometryChange(for: CGRect.self) { proxy in
+                    proxy.frame(in: .named(Self.mapPlaneSpace))
+                } action: { rect in
+                    locateButtonFrame = rect
+                }
             }
             .padding(.trailing, 12)
             .padding(.bottom, shelfClearance)
@@ -493,6 +578,15 @@ public struct CafeMapScreen: View {
             gapFillTask?.cancel()
             searchAreaFetchTask?.cancel()
         }
+        // bd#210: declared LAST (outermost) so every overlay/safeAreaInset
+        // attached anywhere above — the search header, the search-area
+        // pill, the locate button, the shelf card — is a structural
+        // descendant of this exact view and can resolve `.named(…)`
+        // against the SAME reference frame `mapSize` is measured in
+        // (nothing between them changes the base view's own bounds; every
+        // modifier in between only adds floating overlays/insets on top of
+        // it).
+        .coordinateSpace(name: Self.mapPlaneSpace)
     }
 
     // MARK: - Spoken labels (brewdesk#159)
@@ -540,6 +634,8 @@ public struct CafeMapScreen: View {
             // settle (same pattern as the cluster-zoom handler above).
             visibleRegion = region
             stopTrackingUserLocation()
+            // bd#210: a search fit is programmatic, not a gesture.
+            userHasMovedCamera = false
             if reduceMotion {
                 position = .region(region)
             } else {
@@ -671,6 +767,10 @@ public struct CafeMapScreen: View {
         model.centerOnUser(
             lat: model.centerLat, lng: model.centerLng, radiusM: Self.radiusMeters(for: region)
         )
+        // bd#210: an explicit locate-me tap is a programmatic move, not a
+        // gesture — resets the "Search this area" pill's gate the same way
+        // `applyCenterChange()`'s other programmatic moves do.
+        userHasMovedCamera = false
         if reduceMotion {
             position = .region(region)
         } else {
@@ -727,8 +827,31 @@ public struct CafeMapScreen: View {
         // different place. Keep the camera exactly where the user left it —
         // only the pins (via `model.venues`) change.
         guard model.centerSource != .exploredViewport else { return }
-        position = .region(Self.region(lat: model.centerLat, lng: model.centerLng))
-        visibleRegion = Self.region(lat: model.centerLat, lng: model.centerLng)
+        // bd#209: a REAL location fix (`.userLocation`) replacing the Union
+        // Square/NYC fallback opens at a walking-scale span (~0.014) — the
+        // first view should read as "your neighbourhood," not half of
+        // Manhattan. The Browse-NYC fallback (`.coverageDefault`) keeps the
+        // original wider span unchanged — that's the screen the ticket says
+        // not to touch.
+        let span = model.centerSource == .userLocation ? Self.firstFixSpan : Self.defaultSpan
+        let region = Self.region(lat: model.centerLat, lng: model.centerLng, span: span)
+        // bd#210: a real fix syncs the query radius to the span the camera
+        // is ABOUT to show, in the same synchronous update as `visibleRegion`
+        // below — `updateCenterIfNeeded` (the passive path this reacts to)
+        // never had a radius to carry, so without this the first fetch after
+        // a fix stayed at `defaultRadiusM` while the camera opened much
+        // tighter, which alone made `needsSearchAreaPill` see a spurious
+        // >2× radius "change" with no gesture involved.
+        if model.centerSource == .userLocation {
+            model.syncRadiusToCamera(Self.radiusMeters(for: region))
+        }
+        // bd#210: this is always a PROGRAMMATIC move (a fix landing, or
+        // "Browse NYC" via `browseCoverageCenter()` — both land here since
+        // neither is `.exploredViewport`), never a gesture — the pill must
+        // stay gated off until a real drag/pinch/double-tap sets it back.
+        userHasMovedCamera = false
+        position = .region(region)
+        visibleRegion = region
     }
 
     /// The camera center as "lat,lng" — see the `map-camera-center`
@@ -895,6 +1018,61 @@ public struct CafeMapScreen: View {
 
     // MARK: - Annotations (representation from MapAnnotationPlanner,
     // styling from MapAnnotationViews — see brewdesk#54/#55)
+
+    /// `MapAnnotationPlanner.plan(...)`, memoized against `planCache` (see
+    /// its doc comment) — `body` re-evaluates far more often than the
+    /// camera actually settles, and bd#209's collision-aware layout is
+    /// expensive enough that recomputing it on every one of those renders
+    /// is what actually regressed #208's frame timing, not the algorithm's
+    /// own per-call cost.
+    private func cachedPlan() -> MapAnnotationPlan {
+        let exclusionRects = chromeExclusionRects()
+        let key = PlanCacheKey(
+            venues: model.venues,
+            region: visibleRegion.map(RegionSnapshot.init),
+            mapSize: mapSize,
+            selectedID: selected?.id,
+            exclusionRects: exclusionRects
+        )
+        if let cachedKey = planCache.key, cachedKey == key, let cached = planCache.plan {
+            return cached
+        }
+        let plan = MapAnnotationPlanner.plan(
+            venues: model.venues,
+            region: visibleRegion,
+            mapSize: mapSize,
+            selectedVenueID: selected?.id,
+            exclusionRects: exclusionRects
+        )
+        planCache.key = key
+        planCache.plan = plan
+        return plan
+    }
+
+    /// bd#210: the chrome rects the planner treats as already-occupied —
+    /// (a) top of the map through the search header's bottom edge + 8pt
+    /// (covers the status bar too, since the map itself renders full-bleed
+    /// behind it — see `Self.mapPlaneSpace`'s doc comment), (b) the
+    /// "Search this area" pill's own frame while it's actually on screen,
+    /// (c) the locate button, (d) the shelf card at whatever detent it's
+    /// currently resting at. All measured, never hard-coded, so this stays
+    /// correct across Dynamic Type sizes, device widths, and shelf drags.
+    private func chromeExclusionRects() -> [CGRect] {
+        var rects: [CGRect] = []
+        if mapSize.width > 0 {
+            rects.append(CGRect(x: 0, y: 0, width: mapSize.width, height: searchHeaderFrame.maxY + 8))
+        }
+        if let searchAreaPillFrame {
+            rects.append(searchAreaPillFrame)
+        }
+        if locateButtonFrame != .zero {
+            rects.append(locateButtonFrame)
+        }
+        if shelfFrame != .zero {
+            rects.append(shelfFrame)
+        }
+        return rects
+    }
 
     /// bd#204: the three representations are no longer mutually exclusive —
     /// a dense viewport draws all three layers at once (top-ranked score
@@ -1255,10 +1433,19 @@ public struct CafeMapScreen: View {
             || spanRatio < 0.75 || spanRatio > 1.33
     }
 
-    private static func region(lat: Double, lng: Double) -> MKCoordinateRegion {
+    /// The screen's original camera span (Browse NYC fallback, and every
+    /// call site not covered by bd#209's item E below).
+    private static let defaultSpan = 0.035
+    /// bd#209: the span a REAL first location fix opens at — walking scale,
+    /// so the first view reads as a neighbourhood instead of half of
+    /// Manhattan. See `applyCenterChange` for the one call site that uses
+    /// this instead of `defaultSpan`.
+    private static let firstFixSpan = 0.014
+
+    private static func region(lat: Double, lng: Double, span: Double = defaultSpan) -> MKCoordinateRegion {
         MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: lat, longitude: lng),
-            span: MKCoordinateSpan(latitudeDelta: 0.035, longitudeDelta: 0.035)
+            span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
         )
     }
 
@@ -1323,4 +1510,21 @@ private struct RegionSnapshot: Equatable {
         latDelta = region.span.latitudeDelta
         lngDelta = region.span.longitudeDelta
     }
+}
+
+/// Everything `MapAnnotationPlanner.plan(...)`'s output actually depends on
+/// (bd#209, extended bd#210 with the chrome exclusion rects) — see
+/// `planCache`'s doc comment on why this exists.
+private struct PlanCacheKey: Equatable {
+    let venues: [Venue]
+    let region: RegionSnapshot?
+    let mapSize: CGSize
+    let selectedID: String?
+    let exclusionRects: [CGRect]
+}
+
+/// Plain reference box, not `@State` itself — see `planCache`'s doc comment.
+private final class PlanCacheBox {
+    var key: PlanCacheKey?
+    var plan: MapAnnotationPlan?
 }

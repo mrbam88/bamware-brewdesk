@@ -7,12 +7,27 @@ extension ScoreTier {
     /// green → sage → sand → destructive (was moss/ocean/clay/berry). Fill
     /// only — these sit behind fixed white badge/pin text in both
     /// appearances, so each value stays static rather than adaptive.
+    ///
+    /// bd#211: `.weak` moved from `berry` to `clay` — a supervisor review
+    /// flagged a tier reading as "red" in a live screenshot. Verified: at
+    /// hue ~11–12°, `berry` and `clay` are hue-siblings from the same
+    /// destructive ramp (this swap is about `clay`'s brighter/more-orange
+    /// value reading less like blood-red and more like terracotta, not a
+    /// hue change), and a deuteranopia/protanopia simulation of all four
+    /// tiers shows `great`/`good` collapse toward neutral grey while
+    /// `mixed`/`weak` collapse toward olive — neither destructive-ramp
+    /// value simulates as anything resembling the green tiers, so this was
+    /// never actually a green-vs-red confusion risk for a colorblind
+    /// viewer. It reads as "red" to ORDINARY vision, though, which is
+    /// reason enough on its own: `clay` is a genuinely lighter, warmer
+    /// value than `berry` for that specific complaint. Pins still carry
+    /// the real number as their primary signal either way.
     public var color: Color {
         switch self {
         case .great: BrewDeskPalette.roast
         case .good: BrewDeskPalette.moss
         case .mixed: BrewDeskPalette.sand
-        case .weak: BrewDeskPalette.berry
+        case .weak: BrewDeskPalette.clay
         }
     }
 }
@@ -23,6 +38,17 @@ extension ScoreTier {
 /// fallback (ve#64), not a measurement, and must never be printed as if it
 /// were one. The neutral state uses a grey fill, never red/green (founder
 /// is red-green colorblind), and VoiceOver never reads the number.
+///
+/// bd#209: previously solid tier-color fill behind fixed white text — passed
+/// for `great`/`mixed`/`weak` (roast/sand/berry all clear 7:1+ against
+/// white) but the `good` tier's sage (`moss`) only reaches ~3.35:1 against
+/// white, under the 4.5:1 bar for body text. Rather than re-tuning `moss`
+/// (a fill token shared with pins/icons elsewhere), the badge now uses a
+/// neutral, appearance-adaptive tile — `surfaceSecondary` fill,
+/// `clusterSurfaceText` label (already verified 4.5:1+ in both appearances,
+/// same token `VenueClusterPill` uses) — with the tier color moved to a
+/// ring around the tile. Tier is still visible (ring hue + the number
+/// itself), it just no longer has to double as the text color.
 struct ScoreBadge: View {
     let venue: Venue
 
@@ -37,10 +63,16 @@ struct ScoreBadge: View {
             }
         }
         .font(BrewDeskFont.label(.subheadline))
-        .foregroundStyle(.white)
+        .foregroundStyle(BrewDeskPalette.clusterSurfaceText)
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(venue.isObserved ? ScoreTier(score: venue.workScore).color : BrewDeskPalette.unobserved, in: Capsule())
+        .background(BrewDeskPalette.surfaceSecondary, in: Capsule())
+        .overlay(
+            Capsule().stroke(
+                venue.isObserved ? ScoreTier(score: venue.workScore).color : BrewDeskPalette.unobserved,
+                lineWidth: 2
+            )
+        )
     }
 }
 
