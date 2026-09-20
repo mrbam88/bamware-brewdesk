@@ -7,12 +7,27 @@ extension ScoreTier {
     /// green → sage → sand → destructive (was moss/ocean/clay/berry). Fill
     /// only — these sit behind fixed white badge/pin text in both
     /// appearances, so each value stays static rather than adaptive.
+    ///
+    /// bd#211: `.weak` moved from `berry` to `clay` — a supervisor review
+    /// flagged a tier reading as "red" in a live screenshot. Verified: at
+    /// hue ~11–12°, `berry` and `clay` are hue-siblings from the same
+    /// destructive ramp (this swap is about `clay`'s brighter/more-orange
+    /// value reading less like blood-red and more like terracotta, not a
+    /// hue change), and a deuteranopia/protanopia simulation of all four
+    /// tiers shows `great`/`good` collapse toward neutral grey while
+    /// `mixed`/`weak` collapse toward olive — neither destructive-ramp
+    /// value simulates as anything resembling the green tiers, so this was
+    /// never actually a green-vs-red confusion risk for a colorblind
+    /// viewer. It reads as "red" to ORDINARY vision, though, which is
+    /// reason enough on its own: `clay` is a genuinely lighter, warmer
+    /// value than `berry` for that specific complaint. Pins still carry
+    /// the real number as their primary signal either way.
     public var color: Color {
         switch self {
         case .great: BrewDeskPalette.roast
         case .good: BrewDeskPalette.moss
         case .mixed: BrewDeskPalette.sand
-        case .weak: BrewDeskPalette.berry
+        case .weak: BrewDeskPalette.clay
         }
     }
 }

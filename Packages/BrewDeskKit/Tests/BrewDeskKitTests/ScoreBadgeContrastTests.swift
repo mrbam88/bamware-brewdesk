@@ -66,4 +66,84 @@ struct ScoreBadgeContrastTests {
         let ratio = contrastRatio(.white, BrewDeskPalette.moss, style: .light)
         #expect(ratio < 4.5, "if this ever passes, the badge redesign's rationale (bd#209) needs re-checking")
     }
+
+    // MARK: - bd#211: observed dot palette — single hue, lightness-ordered
+
+    private func rgb(_ color: Color, style: UIUserInterfaceStyle) -> (r: Double, g: Double, b: Double) {
+        let resolved = UIColor(color).resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        resolved.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return (Double(r), Double(g), Double(b))
+    }
+
+    /// Hue in degrees (0..<360), HSL convention — 0 undefined (achromatic)
+    /// components report 0, which never happens for the saturated brand
+    /// green this palette uses.
+    private func hueDegrees(_ c: (r: Double, g: Double, b: Double)) -> Double {
+        let maxC = max(c.r, c.g, c.b)
+        let minC = min(c.r, c.g, c.b)
+        let delta = maxC - minC
+        guard delta > 0 else { return 0 }
+        var hue: Double
+        if maxC == c.r {
+            hue = 60 * (((c.g - c.b) / delta).truncatingRemainder(dividingBy: 6))
+        } else if maxC == c.g {
+            hue = 60 * (((c.b - c.r) / delta) + 2)
+        } else {
+            hue = 60 * (((c.r - c.g) / delta) + 4)
+        }
+        if hue < 0 { hue += 360 }
+        return hue
+    }
+
+    /// bd#211: the whole point of the redesign — observed dots used to tint
+    /// by `ScoreTier.color` (four different hues), which a red-green
+    /// colorblind viewer can't reliably read on a marker with no number.
+    /// Every step of the new ramp must share ONE hue family (brand green,
+    /// spread under 15°) in BOTH appearances, and lightness must strictly
+    /// increase from `great` (darkest/most saturated) to `weak`/`mixed`
+    /// (lightest) — tier is legible by lightness alone.
+    @Test func observedDotPaletteIsSingleHueAndLightnessOrdered() {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let steps = [
+                BrewDeskPalette.observedDotGreat,
+                BrewDeskPalette.observedDotGood,
+                BrewDeskPalette.observedDotWeak,
+            ].map { rgb($0, style: style) }
+
+            let hues = steps.map(hueDegrees)
+            let spread = (hues.max() ?? 0) - (hues.min() ?? 0)
+            #expect(spread < 15, "\(style == .light ? "light" : "dark") mode dot palette hue spread \(spread)° — must read as one hue family")
+
+            let luminances = steps.map { c in
+                relativeLuminance(UIColor(red: c.r, green: c.g, blue: c.b, alpha: 1))
+            }
+            #expect(
+                luminances[0] < luminances[1] && luminances[1] < luminances[2],
+                "\(style == .light ? "light" : "dark") mode dot palette must be strictly lightness-ordered great < good < weak, got \(luminances)"
+            )
+
+            // Each step must clear the ticket's own >=1.6:1 adjacent-step bar.
+            for i in 1..<luminances.count {
+                let ratio = (luminances[i] + 0.05) / (luminances[i - 1] + 0.05)
+                #expect(ratio >= 1.6, "\(style == .light ? "light" : "dark") mode step \(i) only \(ratio):1 from its neighbour, need >=1.6:1")
+            }
+        }
+    }
+
+    /// Every dot step should clear 3:1 against the app's own background in
+    /// its own appearance — the best available proxy for "the map", since
+    /// the real basemap's colors aren't something this package controls or
+    /// can script against directly.
+    @Test func observedDotPaletteClearsThreeToOneAgainstItsOwnAppearanceBackground() {
+        let lightSteps: [Color] = [BrewDeskPalette.observedDotGreat, BrewDeskPalette.observedDotGood, BrewDeskPalette.observedDotWeak]
+        for step in lightSteps {
+            let ratio = contrastRatio(step, BrewDeskPalette.page, style: .light)
+            #expect(ratio >= 3, "light mode dot step vs. page background: \(ratio):1")
+        }
+        for step in lightSteps {
+            let ratio = contrastRatio(step, BrewDeskPalette.page, style: .dark)
+            #expect(ratio >= 3, "dark mode dot step vs. page background: \(ratio):1")
+        }
+    }
 }

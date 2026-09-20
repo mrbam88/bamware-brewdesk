@@ -58,16 +58,33 @@ struct VenueScorePin: View {
 /// also now guarantees ≥14pt centre-to-centre spacing between any two
 /// placed dots, so true full overlap can no longer happen at all — this
 /// styling fix is what keeps a near-miss legible on top of that.
+///
+/// bd#211: observed used to tint by `venue.scoreTier.color` directly — four
+/// DIFFERENT hues (green/sage/olive/brick) with no number to anchor them,
+/// exactly the signal a red-green colorblind viewer can't read reliably.
+/// Now a SINGLE hue at three lightness steps (`BrewDeskPalette
+/// .observedDotColor(for:)`) — darkest/most saturated wins, lightest
+/// loses. Unobserved and observed are ALSO now differentiated by shape,
+/// not just color/lightness: unobserved is a hollow ring (no fill),
+/// observed is a filled disc — so even the lightest observed step reads as
+/// unmistakably different from "not checked yet" at a glance.
 struct VenueScoreDot: View {
     let venue: Venue
 
     var body: some View {
-        Circle()
-            .fill(venue.isObserved ? venue.scoreTier.color : BrewDeskPalette.unobserved)
-            .stroke(venue.isObserved ? .white : BrewDeskPalette.unobservedDotStroke, lineWidth: 1)
-            .frame(width: 14, height: 14)
-            .frame(width: 30, height: 30)
-            .contentShape(Rectangle())
+        Group {
+            if venue.isObserved {
+                Circle()
+                    .fill(BrewDeskPalette.observedDotColor(for: venue.scoreTier))
+                    .overlay(Circle().stroke(BrewDeskPalette.observedDotStroke, lineWidth: 1))
+            } else {
+                Circle()
+                    .strokeBorder(BrewDeskPalette.unobservedDotStroke, lineWidth: 1.5)
+            }
+        }
+        .frame(width: 14, height: 14)
+        .frame(width: 30, height: 30)
+        .contentShape(Rectangle())
     }
 }
 
