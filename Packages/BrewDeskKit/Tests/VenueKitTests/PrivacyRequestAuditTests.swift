@@ -175,6 +175,44 @@ import Testing
         #expect(probe.headerValue(VenueQuery.viewportHeaderName) == nil)
     }
 
+    // MARK: bd#202 — community-write bearer token stays engine-only
+
+    /// The `Authorization` header venue-engine PR #145's `communityAuth`
+    /// will require: attached only on the two bearer-carrying writes, never
+    /// on a GET, and — because `VenueAPI` only ever talks to `baseURL` —
+    /// never reaches any host but the engine. See `CommunityAuthTests` for
+    /// the full header-present/absent/refresh/retry contract; this test's
+    /// job is only the privacy bar this suite already polices.
+    @Test func bearerTokenNeverReachesAnyHostButTheEngine() async throws {
+        RecordingURLProtocol.reset()
+        let api = VenueAPI(
+            baseURL: Self.engine,
+            session: RecordingURLProtocol.makeSession(),
+            tokenProvider: { "audit-token" }
+        )
+        _ = try await api.fetchVenues(VenueQuery(limit: 10))
+        _ = try await api.submitObservation(
+            venueId: "curated-devocin",
+            submittedBy: "device-audit",
+            answers: ObservationAnswers(
+                laptopFriendlyToday: .yes, seatsAvailable: .plenty, outletsWorking: .few,
+                noise: .quiet, wifiQuality: .fast
+            )
+        )
+        _ = try await api.submitSpeedTest(venueId: "curated-devocin", mbpsDown: 42)
+
+        let requests = RecordingURLProtocol.requests
+        #expect(requests.count == 3)
+        #expect(requests.allSatisfy { $0.host == Self.engineHost })
+
+        let get = try #require(requests.first { $0.method == "GET" })
+        #expect(get.headerValue("Authorization") == nil)
+
+        let posts = requests.filter { $0.method == "POST" }
+        #expect(posts.count == 2)
+        #expect(posts.allSatisfy { $0.headerValue("Authorization") == "Bearer audit-token" })
+    }
+
     // MARK: Wire vocabulary guard
 
     /// The complete set of query names `VenueQuery` can emit. Adding a name

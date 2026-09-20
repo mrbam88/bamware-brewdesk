@@ -138,6 +138,75 @@ import Testing
         #expect(!engineDown.contains("500"))
     }
 
+    // MARK: Sign-in required (bd#202 — VenueAPIError.authenticationRequired)
+
+    /// `VenueAPI.postAuthenticated`'s "401 twice" outcome (refreshed once,
+    /// still rejected) surfaces here as `.signInRequired`, not the generic
+    /// `.failed(message:)` banner — and every answer is untouched, since
+    /// they're plain stored properties independent of `phase`.
+    @Test func authenticationRequiredMovesToSignInPhaseAndKeepsTheDraft() async {
+        let service = MockObservationService(authFailuresRemaining: 1)
+        let model = completedModel(service: service, submittedBy: "device-abc")
+
+        await model.submit()
+
+        #expect(model.phase == .signInRequired)
+        #expect(model.isComplete)
+        #expect(model.laptopFriendly == .yes)
+        #expect(model.seats == .plenty)
+        #expect(model.outlets == .few)
+        #expect(model.noise == .moderate)
+        #expect(model.wifiQuality == .slow)
+        #expect(service.ledger.submissions.isEmpty)
+    }
+
+    /// "After a successful sign-in the submit can be retried" (issue #202):
+    /// the same `submit()` call, with no re-answering, succeeds once the
+    /// service stops throwing `authenticationRequired` (standing in for the
+    /// user having signed in via the sheet).
+    @Test func submitAfterSignInRequiredRetriesAndSucceeds() async {
+        let service = MockObservationService(authFailuresRemaining: 1)
+        let model = completedModel(service: service)
+
+        await model.submit()
+        #expect(model.phase == .signInRequired)
+
+        await model.submit()
+        #expect(model.phase == .submitted)
+        #expect(service.ledger.submissions.count == 1)
+    }
+
+    @Test func cancelSignInPromptReturnsToEditingAndKeepsAnswers() async {
+        let service = MockObservationService(authFailuresRemaining: 1)
+        let model = completedModel(service: service)
+        await model.submit()
+        #expect(model.phase == .signInRequired)
+
+        model.cancelSignInPrompt()
+
+        #expect(model.phase == .editing)
+        #expect(model.isComplete)
+    }
+
+    @Test func cancelSignInPromptIsANoOpFromOtherPhases() {
+        let model = completedModel(service: MockObservationService())
+        model.cancelSignInPrompt()
+        #expect(model.phase == .editing)
+    }
+
+    /// Editing any answer while the sign-in sheet is up clears it back to
+    /// `.editing`, the same way it already clears `.failed` — mirrors
+    /// `changingAnAnswerClearsTheFailureBanner`.
+    @Test func changingAnAnswerClearsTheSignInPrompt() async {
+        let service = MockObservationService(authFailuresRemaining: 1)
+        let model = completedModel(service: service)
+        await model.submit()
+        #expect(model.phase == .signInRequired)
+
+        model.select(noise: .loud)
+        #expect(model.phase == .editing)
+    }
+
     // MARK: Submitter identity (brewdesk#48 upgrade point)
 
     @Test func submitterIDIsMintedOnceAndStable() throws {
@@ -209,9 +278,14 @@ private struct MockObservationService: VenueObservationSubmitting {
         private let lock = NSLock()
         private var recorded: [Submission] = []
         private var failures: Int
+        /// bd#202: separate counter so a test can script "the write comes
+        /// back `authenticationRequired`" independent of the generic
+        /// engine-down failure above.
+        private var authFailures: Int
 
-        init(failuresRemaining: Int) {
+        init(failuresRemaining: Int, authFailuresRemaining: Int) {
             failures = failuresRemaining
+            authFailures = authFailuresRemaining
         }
 
         var submissions: [Submission] {
@@ -226,6 +300,14 @@ private struct MockObservationService: VenueObservationSubmitting {
             }
         }
 
+        func consumeAuthFailure() -> Bool {
+            lock.withLock {
+                guard authFailures > 0 else { return false }
+                authFailures -= 1
+                return true
+            }
+        }
+
         func record(_ submission: Submission) {
             lock.withLock { recorded.append(submission) }
         }
@@ -233,8 +315,8 @@ private struct MockObservationService: VenueObservationSubmitting {
 
     let ledger: Ledger
 
-    init(failuresRemaining: Int = 0) {
-        ledger = Ledger(failuresRemaining: failuresRemaining)
+    init(failuresRemaining: Int = 0, authFailuresRemaining: Int = 0) {
+        ledger = Ledger(failuresRemaining: failuresRemaining, authFailuresRemaining: authFailuresRemaining)
     }
 
     func submitObservation(
@@ -242,6 +324,9 @@ private struct MockObservationService: VenueObservationSubmitting {
         submittedBy: String,
         answers: ObservationAnswers
     ) async throws -> Venue {
+        if ledger.consumeAuthFailure() {
+            throw VenueAPIError.authenticationRequired
+        }
         if ledger.consumeFailure() {
             throw VenueAPIError.http(statusCode: 500)
         }
