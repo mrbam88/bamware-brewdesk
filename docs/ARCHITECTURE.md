@@ -61,6 +61,33 @@ This is interface segregation, not a generic repository framework. Discovery
 tests should not implement speed-test methods, and Saved should not depend on
 the entire client.
 
+## Score display contract (brewdesk#213)
+
+The engine sends `workScore` (always a number — a flat neutral placeholder
+for a venue with no real evidence, never `nil`) and an additive
+`scoreDisplay` alongside it: a number for a rated café (equal to
+`workScore`), JSON `null` for a genuinely unrated one, or the key absent
+entirely on an older server / a metro outside the rollout.
+
+`decodeIfPresent` cannot tell "key absent" from "key present with `null`"
+apart — both collapse to `nil` — so `Venue` is NOT a synthesized `Codable`
+any more. Its manual `init(from:)`/`encode(to:)` call `container.contains(
+.scoreDisplay)` before decoding, producing `ScoreDisplay`:
+
+- `.rated(Int)` — the wire number.
+- `.notRated` — an explicit server `null`. `displayScore` is `nil`, ALWAYS,
+  even if the client's own `isObserved` heuristic disagrees. Never falls
+  back to `workScore`.
+- `.notProvided` — the key was absent. `displayScore` falls back to
+  `isObserved ? workScore : nil` — the pre-#213 behavior, unchanged, so the
+  app keeps working against a server that hasn't shipped the field.
+
+Every score-rendering surface (map marker split, shelf tile, detail badge,
+list rows, share text, VoiceOver labels, ordering) reads `Venue.displayScore`
+/ `Venue.isRated`, never `workScore`/`isObserved` directly, so the server's
+explicit opinion always wins when it has one. Encoding round-trips all three
+states — `.notProvided` omits the key rather than fabricating a `null`.
+
 ## Discovery state flow
 
 `DiscoveryRootView` owns the shared `VenuesModel`. Explore and Nearby receive

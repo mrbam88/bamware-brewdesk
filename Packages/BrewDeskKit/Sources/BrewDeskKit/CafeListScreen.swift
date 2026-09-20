@@ -179,11 +179,13 @@ struct VenueRow: View {
         )
     }
 
-    /// "Work Fit 84" when the venue has real evidence, "not checked yet"
-    /// when `workScore` is the engine's flat neutral fallback (bd#159) —
-    /// VoiceOver must never read that neutral number as a score.
+    /// "Work Fit 84" when the venue has an evidenced score, "not rated yet"
+    /// when it doesn't — driven by `displayScore` (brewdesk#213), which
+    /// honors the server's own `scoreDisplay` over the `isObserved`
+    /// heuristic. VoiceOver must never read the engine's flat neutral
+    /// fallback `workScore` as a real score.
     private var scoreAccessibilityPhrase: String {
-        venue.isObserved ? "Work Fit \(venue.workScore)" : "not checked yet"
+        venue.displayScore.map { "Work Fit \($0)" } ?? "not rated yet"
     }
 
     /// Laptop hostility is shown openly, never hidden: red "No laptops" for

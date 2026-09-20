@@ -483,10 +483,15 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         )
     }
 
-    /// bd#159 fixture venue: every scored claim is `source: "estimate"`, so
-    /// `Venue.isObserved` is false — the deterministic stand-in for a venue
-    /// the engine has never actually checked, as opposed to `baselineVenue`
-    /// below (OSM-sourced, still counts as observed at confidence 0.4).
+    /// bd#159 / brewdesk#213 fixture venue: every scored claim is
+    /// `source: "estimate"`, so `Venue.isObserved` is false — the
+    /// deterministic stand-in for a venue the engine has never actually
+    /// checked, as opposed to `baselineVenue` below (OSM-sourced, still
+    /// counts as observed at confidence 0.4). Carries an EXPLICIT
+    /// `scoreDisplay: .notRated` (brewdesk#213) rather than relying on the
+    /// `.notProvided`/`isObserved` fallback alone — this is the fixture the
+    /// ticket's UI test targets: a venue whose server payload is the modern
+    /// `scoreDisplay: null` contract, not just the older heuristic.
     private static func unobservedFixtureVenue(
         id: String,
         name: String,
@@ -518,7 +523,8 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             workScore: 52,
             lastVerified: nil,
             distanceM: 260,
-            venueType: "cafe"
+            venueType: "cafe",
+            scoreDisplay: .notRated
         )
     }
 

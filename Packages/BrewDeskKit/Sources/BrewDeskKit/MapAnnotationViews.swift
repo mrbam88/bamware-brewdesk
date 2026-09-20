@@ -89,7 +89,11 @@ struct TeardropMarkerView: View, Equatable {
                 .overlay(TeardropShape().stroke(BrewDeskPalette.markerHairline, lineWidth: 0.75))
                 .shadow(color: .black.opacity(0.55), radius: 2, x: 0, y: 1)
             if placement.showsNumber {
-                Text(verbatim: "\(placement.venue.workScore)")
+                // brewdesk#213: `showsNumber` is only ever true for a rated
+                // venue (`isRated`), so `displayScore` is never nil here —
+                // the `workScore` fallback only guards the type, it never
+                // actually fires.
+                Text(verbatim: "\(placement.venue.displayScore ?? placement.venue.workScore)")
                     .font(BrewDeskFont.markerNumber(size: diameter * 0.58))
                     .foregroundStyle(BrewDeskPalette.markerNumberColor(score: placement.venue.workScore))
                     .offset(y: numberVerticalOffset)

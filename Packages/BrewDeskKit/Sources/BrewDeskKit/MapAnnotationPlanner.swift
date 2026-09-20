@@ -236,7 +236,9 @@ public enum MapAnnotationPlanner {
                 MarkerPlacement(
                     venue: $0,
                     kind: .teardrop(diameter: sizeStopsByMetersPerPoint.last!.diameter),
-                    showsNumber: $0.isObserved,
+                    // brewdesk#213: `isRated` honors the server's explicit
+                    // `scoreDisplay` over the `isObserved` heuristic.
+                    showsNumber: $0.isRated,
                     isSelected: $0.id == selectedVenueID
                 )
             }
@@ -272,7 +274,7 @@ public enum MapAnnotationPlanner {
                 MarkerPlacement(
                     venue: match,
                     kind: .teardrop(diameter: selectedDiameter),
-                    showsNumber: match.isObserved,
+                    showsNumber: match.isRated,
                     isSelected: true
                 )
             )
@@ -289,7 +291,7 @@ public enum MapAnnotationPlanner {
         // `MapCircle`, never itself collision-checked, so no rated venue is
         // ever silently hidden by this pass any more.
         let rated = visible
-            .filter { $0.isObserved && $0.id != selectedVenue?.id }
+            .filter { $0.isRated && $0.id != selectedVenue?.id }
             .sorted(by: byScoreDescendingThenID)
         let attemptTeardrops = ratedDiameter >= teardropShapeThreshold
         for candidate in rated {
@@ -317,7 +319,7 @@ public enum MapAnnotationPlanner {
         // collision-checked (native `MapCircle` overlays render fine
         // overlapping each other).
         if speckVisible {
-            let unratedEligible = visible.filter { !$0.isObserved && $0.id != selectedVenue?.id }
+            let unratedEligible = visible.filter { !$0.isRated && $0.id != selectedVenue?.id }
             let nearest = nearestToCentre(unratedEligible, region: region, limit: unratedCandidateLimit)
             for candidate in nearest {
                 guard totalPlaced < maxAnnotations else { break }

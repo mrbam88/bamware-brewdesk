@@ -195,6 +195,152 @@ import Testing
     }
 }
 
+/// `Venue.scoreDisplay`/`displayScore`/`isRated` (brewdesk#213): the server's
+/// additive honest-score signal — a JSON number, an explicit JSON `null`, or
+/// the key entirely absent (older server / metro outside the rollout) must
+/// decode to three DISTINCT states, never collapsed to the same "nil".
+@Suite struct ScoreDisplayTests {
+    private static let observedAt = "2026-08-01T00:00:00Z"
+
+    /// `isObserved` toggles which claim confidence/source the venue carries
+    /// — lets every test below prove `scoreDisplay`, when present, wins
+    /// over the `isObserved` heuristic in EITHER direction.
+    private static func json(scoreDisplayField: String?, isObserved: Bool) -> String {
+        let claimSource = isObserved ? "curated" : "estimate"
+        let claimConfidence = isObserved ? 0.9 : 0.2
+        let scoreDisplayKey = scoreDisplayField.map { ",\"scoreDisplay\":\($0)" } ?? ""
+        return """
+        {"id":"v1","name":"Spot","lat":40.7,"lng":-74.0,"address":null,
+         "neighborhood":"SoHo","borough":"Manhattan","hoursRaw":null,"vertical":"cafe",
+         "attributes":{
+           "wifi":{"value":"fast","source":"\(claimSource)","confidence":\(claimConfidence),"observedAt":"\(observedAt)"},
+           "outlets":{"value":"some","source":"\(claimSource)","confidence":\(claimConfidence),"observedAt":"\(observedAt)"},
+           "laptopPolicy":{"value":"unrestricted","source":"\(claimSource)","confidence":\(claimConfidence),"observedAt":"\(observedAt)"},
+           "noise":{"value":"moderate","source":"\(claimSource)","confidence":\(claimConfidence),"observedAt":"\(observedAt)"}
+         },
+         "vibeTags":[],"workScore":40,"lastVerified":null\(scoreDisplayKey)}
+        """
+    }
+
+    private static func decode(_ json: String) throws -> Venue {
+        try JSONDecoder().decode(Venue.self, from: Data(json.utf8))
+    }
+
+    // MARK: - Decoding: number / null / absent are three distinct states
+
+    @Test func aNumberDecodesAsRated() throws {
+        let venue = try Self.decode(Self.json(scoreDisplayField: "72", isObserved: true))
+        #expect(venue.scoreDisplay == .rated(72))
+        #expect(venue.isRated)
+        #expect(venue.displayScore == 72)
+    }
+
+    @Test func explicitNullDecodesAsNotRatedNeverFallsBackToWorkScore() throws {
+        // isObserved: true on purpose — an explicit server `null` must win
+        // over the client-side heuristic, not just agree with it by luck.
+        let venue = try Self.decode(Self.json(scoreDisplayField: "null", isObserved: true))
+        #expect(venue.scoreDisplay == .notRated)
+        #expect(venue.isRated == false)
+        #expect(venue.displayScore == nil)
+        #expect(venue.isObserved) // heuristic alone would have said "rated" — proves the override
+    }
+
+    @Test func absentKeyDecodesAsNotProvidedAndFallsBackToIsObserved() throws {
+        let rated = try Self.decode(Self.json(scoreDisplayField: nil, isObserved: true))
+        #expect(rated.scoreDisplay == .notProvided)
+        #expect(rated.isRated)
+        #expect(rated.displayScore == rated.workScore)
+
+        let unrated = try Self.decode(Self.json(scoreDisplayField: nil, isObserved: false))
+        #expect(unrated.scoreDisplay == .notProvided)
+        #expect(unrated.isRated == false)
+        #expect(unrated.displayScore == nil)
+    }
+
+    /// The exact ambiguity `container.contains(_:)` exists to resolve:
+    /// absent and null must never collapse to the same `Venue` state.
+    @Test func absentAndNullAreDistinctScoreDisplayStates() throws {
+        let absent = try Self.decode(Self.json(scoreDisplayField: nil, isObserved: false))
+        let null = try Self.decode(Self.json(scoreDisplayField: "null", isObserved: false))
+        #expect(absent.scoreDisplay != null.scoreDisplay)
+        #expect(absent.scoreDisplay == .notProvided)
+        #expect(null.scoreDisplay == .notRated)
+    }
+
+    @Test func ratedNumberEqualsWorkScoreOnTheWireButComesFromScoreDisplay() throws {
+        // Mirrors the real contract: for a rated café, scoreDisplay ==
+        // workScore, but displayScore must read scoreDisplay, not workScore.
+        let json = """
+        {"id":"v1","name":"Spot","lat":40.7,"lng":-74.0,"address":null,
+         "neighborhood":"SoHo","borough":"Manhattan","hoursRaw":null,"vertical":"cafe",
+         "attributes":{
+           "wifi":{"value":"fast","source":"curated","confidence":0.9,"observedAt":"\(Self.observedAt)"},
+           "outlets":{"value":"some","source":"curated","confidence":0.9,"observedAt":"\(Self.observedAt)"},
+           "laptopPolicy":{"value":"unrestricted","source":"curated","confidence":0.9,"observedAt":"\(Self.observedAt)"},
+           "noise":{"value":"moderate","source":"curated","confidence":0.9,"observedAt":"\(Self.observedAt)"}
+         },
+         "vibeTags":[],"workScore":72,"lastVerified":null,"scoreDisplay":72}
+        """
+        let venue = try Self.decode(json)
+        #expect(venue.workScore == 72)
+        #expect(venue.displayScore == 72)
+    }
+
+    // MARK: - Round trip (caches/snapshots must preserve all three states)
+
+    @Test func allThreeScoreDisplayStatesRoundTripThroughCodable() throws {
+        for scoreDisplay in [ScoreDisplay.notProvided, .notRated, .rated(64)] {
+            let venue = ScoreDisplayTests.venue(scoreDisplay: scoreDisplay)
+            let data = try JSONEncoder().encode(venue)
+            let decoded = try JSONDecoder().decode(Venue.self, from: data)
+            #expect(decoded == venue)
+            #expect(decoded.scoreDisplay == scoreDisplay)
+        }
+    }
+
+    @Test func notProvidedOmitsTheKeyOnEncodeRatherThanFabricatingNull() throws {
+        let venue = ScoreDisplayTests.venue(scoreDisplay: .notProvided)
+        let data = try JSONEncoder().encode(venue)
+        let json = try #require(String(data: data, encoding: .utf8))
+        #expect(!json.contains("scoreDisplay"))
+    }
+
+    @Test func notRatedEncodesARealJSONNull() throws {
+        let venue = ScoreDisplayTests.venue(scoreDisplay: .notRated)
+        let data = try JSONEncoder().encode(venue)
+        let json = try #require(String(data: data, encoding: .utf8))
+        #expect(json.contains("\"scoreDisplay\":null"))
+    }
+
+    @Test func ratedEncodesTheNumber() throws {
+        let venue = ScoreDisplayTests.venue(scoreDisplay: .rated(64))
+        let data = try JSONEncoder().encode(venue)
+        let json = try #require(String(data: data, encoding: .utf8))
+        #expect(json.contains("\"scoreDisplay\":64"))
+    }
+
+    private static func venue(scoreDisplay: ScoreDisplay) -> Venue {
+        let claim = Claim(value: "fast", source: "curated", confidence: 0.8, observedAt: observedAt)
+        return Venue(
+            id: "v1",
+            name: "Spot",
+            lat: 40.7,
+            lng: -74.0,
+            address: nil,
+            neighborhood: "SoHo",
+            borough: "Manhattan",
+            hoursRaw: nil,
+            vertical: "cafe",
+            attributes: VenueAttributes(wifi: claim, outlets: claim, laptopPolicy: claim, noise: claim),
+            vibeTags: [],
+            workScore: 64,
+            lastVerified: nil,
+            distanceM: nil,
+            scoreDisplay: scoreDisplay
+        )
+    }
+}
+
 @Suite struct SchemaV2WireTests {
     @Test func v2WireNamesAreCamelCase() {
         let query = VenueQuery(seatingMinimum: .some, venueType: .park)
