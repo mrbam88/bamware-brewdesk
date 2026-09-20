@@ -77,6 +77,37 @@ public enum BrewDeskPalette {
     /// `sand`'s tier-warning fill.
     static let muted = hex("#6B5A44")
 
+    /// Cluster "stack" marker fill (bd#204) — deliberately NEUTRAL, outside
+    /// every ScoreTier/brand hue: a cluster count is metadata about density,
+    /// never a score, and this must never be mistaken for one at a glance
+    /// (the West Village screenshot bug this fixes was exactly that
+    /// confusion). Light-mode value reads as elevated chrome on the map's
+    /// light base style; dark-mode value is a lifted neutral grey (not
+    /// green-tinted `surface`) so it reads as UI chrome rather than another
+    /// data pin. Static per-appearance like the tier fills, since it sits
+    /// behind its own adaptive text token rather than fixed white.
+    public static let clusterSurface = adaptive(
+        light: Color(red: 0.97, green: 0.97, blue: 0.96),
+        dark: Color(red: 0.26, green: 0.26, blue: 0.28)
+    )
+
+    /// Text/glyph color on `clusterSurface` — verified 4.5:1+ in both
+    /// appearances (near-black on the light fill, near-white on the dark
+    /// fill).
+    public static let clusterSurfaceText = adaptive(
+        light: espresso,
+        dark: foam
+    )
+
+    /// Hairline ring around a cluster marker — a touch stronger than the
+    /// fill so the "stack" silhouette reads as a distinct object against the
+    /// map, without a shadow (perf: no materials/shadows on map annotations,
+    /// see the file-level note above).
+    public static let clusterSurfaceStroke = adaptive(
+        light: Color(red: 0.82, green: 0.82, blue: 0.80),
+        dark: Color(red: 0.40, green: 0.40, blue: 0.42)
+    )
+
     public static let pageGradient = LinearGradient(
         colors: [oat, foam],
         startPoint: .topLeading,

@@ -4,14 +4,22 @@ import Testing
 import VenueKit
 @testable import BrewDeskKit
 
-/// Representation planning for the map (brewdesk#54): viewport culling,
-/// density thresholds, and stable grid clustering.
+/// Representation planning for the map (brewdesk#54, re-shaped bd#204):
+/// viewport culling, always-visible score pins, dot budget, and stable grid
+/// clustering with a density guard.
 struct MapAnnotationPlannerTests {
 
     // MARK: - Helpers
 
-    private func venue(id: String, lat: Double, lng: Double, score: Int = 50) -> Venue {
+    /// `observed: false` produces a venue with no scored claims at all
+    /// (`isObserved == false`) — bd#159's "not checked yet" case, and
+    /// bd#204's "never eligible for a top-pin slot" case.
+    private func venue(id: String, lat: Double, lng: Double, score: Int = 50, observed: Bool = true) -> Venue {
         let observedAt = "2026-08-01T00:00:00Z"
+        // `observed: false` gives every claim an `estimate` source at
+        // sub-threshold confidence — `Venue.isObserved`'s exact "no real
+        // evidence" definition (same pattern as `SavedVenuesStoreTests`).
+        let unobservedClaim = Claim(value: "unknown", source: "estimate", confidence: 0.3, observedAt: observedAt)
         return Venue(
             id: id,
             name: "Venue \(id)",
@@ -22,13 +30,21 @@ struct MapAnnotationPlannerTests {
             borough: "Manhattan",
             hoursRaw: nil,
             vertical: "cafe",
-            attributes: VenueAttributes(
-                wifi: Claim(value: "fast", mbpsRange: nil, source: "curated", confidence: 0.9, observedAt: observedAt),
-                outlets: Claim(value: "some", source: "curated", confidence: 0.9, observedAt: observedAt),
-                laptopPolicy: Claim(value: "unrestricted", source: "curated", confidence: 0.9, observedAt: observedAt),
-                noise: Claim(value: "moderate", source: "agent", confidence: 0.6, observedAt: observedAt),
-                seating: Claim(value: "some", source: "agent", confidence: 0.6, observedAt: observedAt)
-            ),
+            attributes: observed
+                ? VenueAttributes(
+                    wifi: Claim(value: "fast", mbpsRange: nil, source: "curated", confidence: 0.9, observedAt: observedAt),
+                    outlets: Claim(value: "some", source: "curated", confidence: 0.9, observedAt: observedAt),
+                    laptopPolicy: Claim(value: "unrestricted", source: "curated", confidence: 0.9, observedAt: observedAt),
+                    noise: Claim(value: "moderate", source: "agent", confidence: 0.6, observedAt: observedAt),
+                    seating: Claim(value: "some", source: "agent", confidence: 0.6, observedAt: observedAt)
+                )
+                : VenueAttributes(
+                    wifi: unobservedClaim,
+                    outlets: unobservedClaim,
+                    laptopPolicy: unobservedClaim,
+                    noise: unobservedClaim,
+                    seating: unobservedClaim
+                ),
             vibeTags: [],
             workScore: score,
             lastVerified: nil,
@@ -37,14 +53,21 @@ struct MapAnnotationPlannerTests {
     }
 
     /// `count` venues spread evenly inside the given box.
-    private func grid(count: Int, centerLat: Double = 40.7359, centerLng: Double = -73.9911, extent: Double = 0.02) -> [Venue] {
+    private func grid(
+        count: Int,
+        centerLat: Double = 40.7359,
+        centerLng: Double = -73.9911,
+        extent: Double = 0.02,
+        observed: Bool = true
+    ) -> [Venue] {
         let columns = Int(Double(count).squareRoot().rounded(.up))
         return (0..<count).map { index in
             venue(
                 id: "g\(index)",
                 lat: centerLat - extent / 2 + Double(index / columns) / Double(columns) * extent,
                 lng: centerLng - extent / 2 + Double(index % columns) / Double(columns) * extent,
-                score: (index * 37) % 101
+                score: (index * 37) % 101,
+                observed: observed
             )
         }
     }
@@ -79,49 +102,150 @@ struct MapAnnotationPlannerTests {
 
     @Test func fewVisibleVenuesGetFullPins() {
         let plan = MapAnnotationPlanner.plan(venues: grid(count: MapAnnotationPlanner.pinLimit), region: region())
-        guard case .pins(let venues) = plan else {
-            Issue.record("expected pins, got \(plan)")
-            return
-        }
-        #expect(venues.count == MapAnnotationPlanner.pinLimit)
+        #expect(plan.pins.count == MapAnnotationPlanner.pinLimit)
+        #expect(plan.dots.isEmpty)
+        #expect(plan.clusters.isEmpty)
     }
 
-    @Test func midDensityGetsDots() {
-        let plan = MapAnnotationPlanner.plan(venues: grid(count: 100), region: region())
-        guard case .dots(let venues) = plan else {
-            Issue.record("expected dots, got \(plan)")
-            return
-        }
-        #expect(venues.count == MapAnnotationPlanner.dotBudget)
-    }
-
-    @Test func dotBudgetKeepsTheBestRankedVisibleVenues() {
-        // The model orders venues by Work Fit; culling preserves that order,
-        // so the budget keeps exactly the top of the ranking.
-        let venues = grid(count: 100)
+    @Test func midDensityFillsPinsThenDots() {
+        let extraDots = MapAnnotationPlanner.dotBudget - 5
+        let venues = grid(count: MapAnnotationPlanner.pinLimit + extraDots)
         let plan = MapAnnotationPlanner.plan(venues: venues, region: region())
-        guard case .dots(let dots) = plan else {
-            Issue.record("expected dots, got \(plan)")
-            return
-        }
-        #expect(dots.map(\.id) == venues.prefix(MapAnnotationPlanner.dotBudget).map(\.id))
+        #expect(plan.pins.count == MapAnnotationPlanner.pinLimit)
+        #expect(plan.dots.count == extraDots)
+        #expect(plan.clusters.isEmpty)
     }
 
-    @Test func highDensityGetsClusters() {
-        let plan = MapAnnotationPlanner.plan(venues: grid(count: 600), region: region())
-        guard case .clusters(let clusters) = plan else {
-            Issue.record("expected clusters, got \(plan)")
-            return
-        }
-        #expect(clusters.count > 1)
-        #expect(clusters.count < 600 / 2, "clustering should collapse most venues")
+    @Test func dotBudgetIsRespectedAndOverflowClusters() {
+        let venues = grid(count: MapAnnotationPlanner.pinLimit + MapAnnotationPlanner.dotBudget + 200)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: region())
+        #expect(plan.pins.count == MapAnnotationPlanner.pinLimit)
+        #expect(plan.dots.count == MapAnnotationPlanner.dotBudget)
+        #expect(!plan.clusters.isEmpty, "overflow past the dot budget must cluster")
+        #expect(plan.clusters.reduce(0) { $0 + $1.count } == 200)
     }
 
-    @Test func fullDatasetScaleCollapsesToDozensOfAnnotations() {
-        // The #54 pathology: dataset-size venue counts must never become
-        // per-venue annotations.
-        let plan = MapAnnotationPlanner.plan(venues: grid(count: 2_180, extent: 0.12), region: region())
-        #expect(plan.annotationCount <= 80)
+    // MARK: - bd#204: always-visible score pins
+
+    @Test func top25ScorePinsAlwaysPresentWith300VenuesInView() {
+        let venues = grid(count: 300)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: region())
+        #expect(plan.pins.count == MapAnnotationPlanner.pinLimit)
+
+        let expectedTop = Set(
+            venues.sorted { $0.workScore != $1.workScore ? $0.workScore > $1.workScore : $0.id < $1.id }
+                .prefix(MapAnnotationPlanner.pinLimit)
+                .map(\.id)
+        )
+        #expect(Set(plan.pins.map(\.id)) == expectedTop, "pins must be the top-ranked venues, not an arbitrary prefix")
+
+        // No pinned venue is also counted in a dot or a cluster.
+        let pinIDs = Set(plan.pins.map(\.id))
+        #expect(plan.dots.allSatisfy { !pinIDs.contains($0.id) })
+    }
+
+    @Test func unobservedVenuesNeverTakeAPinSlot() {
+        // 300 unobserved venues plus 5 observed ones with real scores: the
+        // 5 observed venues must be the pins, never a fabricated-score
+        // unobserved venue (bd#159's rule extended to bd#204's pin promotion).
+        let unobserved = grid(count: 300, observed: false)
+        let observed = (0..<5).map { venue(id: "obs\($0)", lat: 40.7359, lng: -73.9911, score: 90, observed: true) }
+        let plan = MapAnnotationPlanner.plan(venues: unobserved + observed, region: region())
+        #expect(plan.pins.count == 5)
+        #expect(Set(plan.pins.map(\.id)) == Set(observed.map(\.id)))
+    }
+
+    // MARK: - bd#204: cluster density guard
+
+    @Test func noClusterExceedsMaxShareOfVisibleVenues() {
+        // A realistic dense viewport (the West Village screenshot shape:
+        // 500 venues spread over a few blocks) — the guard must hold end to
+        // end through `plan()`, not just in the unit-tested subdivide step.
+        let venues = grid(count: 500)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: region())
+        let visibleCount = venues.count
+        for cluster in plan.clusters {
+            #expect(
+                Double(cluster.count) <= Double(visibleCount) * MapAnnotationPlanner.maxClusterShare + 0.001,
+                "cluster \(cluster.id) holds \(cluster.count)/\(visibleCount) venues — exceeds the \(MapAnnotationPlanner.maxClusterShare) share guard"
+            )
+        }
+    }
+
+    @Test func subdivideOversizedSplitsACellThatExceedsTheShareGuard() {
+        // Two groups placed at opposite ends of ONE coarse cell (same
+        // longitude bucket, latitudes in the cell's first vs. second half)
+        // so halving the cell for subdivision lands them in different finer
+        // buckets — the guard should split them into (at least) two clusters
+        // once the combined cell is over the 40% line.
+        let spanLongitude = 0.035
+        let cell = MapAnnotationPlanner.clusterCellDegrees(spanLongitude: spanLongitude)
+        let lngFixed = 0.5 * cell
+        let groupA = (0..<60).map { venue(id: "a\($0)", lat: 0.1 * cell, lng: lngFixed, score: 50) }
+        let groupB = (0..<60).map { venue(id: "b\($0)", lat: 0.6 * cell, lng: lngFixed, score: 50) }
+
+        let built = MapAnnotationPlanner.clusters(for: groupA + groupB, spanLongitude: spanLongitude)
+        #expect(built.count == 1, "test setup: the coarse grid must collapse both groups into one cell")
+
+        let subdivided = MapAnnotationPlanner.subdivideOversized(
+            built,
+            sourceVenues: groupA + groupB,
+            cellDegrees: cell,
+            visibleCount: groupA.count + groupB.count
+        )
+        #expect(subdivided.count > 1, "an oversized cell must split")
+        #expect(subdivided.reduce(0) { $0 + $1.count } == groupA.count + groupB.count, "subdividing must not drop venues")
+    }
+
+    @Test func subdivideKeepsAnOversizedClusterWhenTheFinerGridCannotSplitIt() {
+        // Every venue at the exact same coordinate: halving the cell still
+        // buckets them together, so the guard must keep the single oversized
+        // cluster rather than looping or dropping venues.
+        let venues = (0..<50).map { venue(id: "same\($0)", lat: 40.7359, lng: -73.9911, score: 50) }
+        let cell = MapAnnotationPlanner.clusterCellDegrees(spanLongitude: 0.035)
+        let built = MapAnnotationPlanner.clusters(for: venues, spanLongitude: 0.035)
+        #expect(built.count == 1)
+
+        let subdivided = MapAnnotationPlanner.subdivideOversized(
+            built, sourceVenues: venues, cellDegrees: cell, visibleCount: venues.count
+        )
+        #expect(subdivided.count == 1, "an unsplittable cell must be kept, not dropped or looped on")
+        #expect(subdivided.first?.count == 50)
+    }
+
+    // MARK: - bd#204: declutter (pin vs. cluster overlap)
+
+    @Test func declutterMovesAClusterAwayFromAnOverlappingPin() {
+        let pin = venue(id: "pin", lat: 40.7359, lng: -73.9911, score: 95)
+        let cellDegrees = 0.01
+        let overlapping = VenueCluster(id: "c1", latitude: 40.7359, longitude: -73.9911, count: 10, bestScore: 70, hasObservedVenue: true)
+        let farAway = VenueCluster(id: "c2", latitude: 40.80, longitude: -74.05, count: 10, bestScore: 70, hasObservedVenue: true)
+
+        let result = MapAnnotationPlanner.declutter([overlapping, farAway], against: [pin], cellDegrees: cellDegrees)
+        let movedOverlap = result.first { $0.id == "c1" }!
+        let untouchedFar = result.first { $0.id == "c2" }!
+
+        #expect(movedOverlap.latitude != overlapping.latitude || movedOverlap.longitude != overlapping.longitude)
+        #expect(untouchedFar.latitude == farAway.latitude && untouchedFar.longitude == farAway.longitude)
+        // Never drops or renames the cluster, and never changes its count.
+        #expect(movedOverlap.count == overlapping.count)
+    }
+
+    @Test func fullDatasetScaleUsesAllThreeLayersRatherThanCollapsingToAHandful() {
+        // The #54 pathology was per-venue annotations at dataset scale; the
+        // bd#204 pathology was the opposite — near-everything collapsing
+        // into a handful of giant bubbles. The fix sits in between: evidence
+        // stays visible as pins/dots, only genuine overflow clusters, and no
+        // cluster dominates the viewport.
+        let venues = grid(count: 2_180, extent: 0.12)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: region())
+        let visible = MapAnnotationPlanner.candidates(venues: venues, region: region())
+
+        #expect(plan.pins.count == min(MapAnnotationPlanner.pinLimit, visible.filter(\.isObserved).count))
+        #expect(plan.dots.count <= MapAnnotationPlanner.dotBudget)
+        for cluster in plan.clusters {
+            #expect(Double(cluster.count) <= Double(visible.count) * MapAnnotationPlanner.maxClusterShare + 0.001)
+        }
     }
 
     @Test func offscreenVenuesNeverForceClustering() {
@@ -129,14 +253,22 @@ struct MapAnnotationPlannerTests {
         let far = grid(count: 600, centerLat: 40.9, centerLng: -73.7, extent: 0.02)
         let near = grid(count: 3)
         let plan = MapAnnotationPlanner.plan(venues: far + near, region: region())
-        guard case .pins(let venues) = plan else {
-            Issue.record("expected pins, got \(plan)")
-            return
-        }
-        #expect(venues.count == 3)
+        #expect(plan.pins.count == 3)
+        #expect(plan.dots.isEmpty)
+        #expect(plan.clusters.isEmpty)
     }
 
-    // MARK: - Clusters
+    // MARK: - bd#204: determinism
+
+    @Test func planIsDeterministicForTheSameInput() {
+        let venues = grid(count: 400)
+        let r = region()
+        let first = MapAnnotationPlanner.plan(venues: venues, region: r)
+        let second = MapAnnotationPlanner.plan(venues: venues, region: r)
+        #expect(first == second)
+    }
+
+    // MARK: - Clusters (grid mechanics, unaffected by the bd#204 guard)
 
     @Test func clusterCountsSumToVisibleVenues() {
         let venues = grid(count: 400)
@@ -160,23 +292,6 @@ struct MapAnnotationPlannerTests {
         let clusters = MapAnnotationPlanner.clusters(for: [low, high], spanLongitude: 0.5)
         #expect(clusters.count == 1)
         #expect(clusters.first?.bestScore == 93)
-    }
-
-    @Test func clusterPlansAreIdenticalAcrossPansAtSameZoom() {
-        // The zero-churn guarantee behind buttery pans at dataset scale: the
-        // cluster grid is absolute, so a pan (same zoom) re-plans to the very
-        // same annotations and SwiftUI diffs away the whole update.
-        let venues = grid(count: 2_180, extent: 0.12)
-        let before = MapAnnotationPlanner.plan(venues: venues, region: region())
-        let panned = MapAnnotationPlanner.plan(
-            venues: venues,
-            region: region(lat: 40.7359 + 0.02, lng: -73.9911 - 0.015)
-        )
-        #expect(before == panned)
-        guard case .clusters = before else {
-            Issue.record("expected clusters at dataset scale, got \(before)")
-            return
-        }
     }
 
     @Test func clusterIdsAreStableAcrossPansAtSameZoom() {
@@ -226,11 +341,7 @@ struct MapAnnotationPlannerTests {
         // venue, never an empty list.
         let venues = grid(count: 10)
         let plan = MapAnnotationPlanner.plan(venues: venues, region: nil)
-        guard case .pins(let pinned) = plan else {
-            Issue.record("expected pins, got \(plan)")
-            return
-        }
-        #expect(Set(pinned.map(\.id)) == Set(venues.map(\.id)))
+        #expect(Set(plan.pins.map(\.id)) == Set(venues.map(\.id)))
     }
 
     @Test func planFallsBackToUnculledVenuesWhenTheKnownRegionExcludesEveryVenue() {
@@ -243,11 +354,7 @@ struct MapAnnotationPlannerTests {
         #expect(MapAnnotationPlanner.culled(venues, region: staleRegion).isEmpty, "test setup: region must exclude every venue")
 
         let plan = MapAnnotationPlanner.plan(venues: venues, region: staleRegion)
-        guard case .pins(let pinned) = plan else {
-            Issue.record("expected pins, got \(plan)")
-            return
-        }
-        #expect(Set(pinned.map(\.id)) == Set(venues.map(\.id)))
+        #expect(Set(plan.pins.map(\.id)) == Set(venues.map(\.id)))
     }
 
     @Test func planNeverFallsBackWhenTheRegionGenuinelyHasNoVenues() {
@@ -255,11 +362,9 @@ struct MapAnnotationPlannerTests {
         // empty — the fallback only rescues a non-empty list a bad region
         // culled to nothing, never an honest zero.
         let plan = MapAnnotationPlanner.plan(venues: [], region: region())
-        guard case .pins(let pinned) = plan else {
-            Issue.record("expected pins, got \(plan)")
-            return
-        }
-        #expect(pinned.isEmpty)
+        #expect(plan.pins.isEmpty)
+        #expect(plan.dots.isEmpty)
+        #expect(plan.clusters.isEmpty)
     }
 
     // MARK: - Plan helpers
@@ -270,7 +375,8 @@ struct MapAnnotationPlannerTests {
         #expect(plan.containsVenue(id: venues[0].id))
         #expect(!plan.containsVenue(id: "absent"))
 
-        let clustered = MapAnnotationPlanner.plan(venues: grid(count: 600), region: region())
-        #expect(!clustered.containsVenue(id: "g0"), "clusters render no individual venue")
+        let dense = grid(count: MapAnnotationPlanner.pinLimit + MapAnnotationPlanner.dotBudget + 200)
+        let densePlan = MapAnnotationPlanner.plan(venues: dense, region: region())
+        #expect(!densePlan.containsVenue(id: "absent"), "clusters render no individual venue")
     }
 }
