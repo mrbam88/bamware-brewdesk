@@ -120,6 +120,49 @@ that environment was stale and behind the pin — say so rather than silently
 skip it. `xcodebuild -project BrewDesk.xcodeproj` (the remote pin) is
 unaffected either way.
 
+## Community writes and the user JWT (bamware-brewdesk#202)
+
+venue-engine PR #145 adds `communityAuth` on the four community write routes
+(`POST /v1/observations`, `POST /v1/venues/:id/observations`,
+`POST /v1/venues/:id/photos`, `POST /v1/reports`). It is a pass-through today
+(production runs `PRIVATE_STORAGE=json`); once the engine flips to
+`PRIVATE_STORAGE=postgres`, those routes require the BrewDesk user JWT and set
+`submittedBy` from it.
+
+- `VenueAPI` takes two constructor-injected closures — `tokenProvider` and
+  `tokenRefresher` (`@Sendable () async -> String?`), same shape
+  `ServerSavedVenuePersistence.tokenProvider` already uses for saved-spots
+  sync. Both default to `{ nil }`, so any call site that doesn't pass them
+  (most GET-only `VenueAPI()` instances) behaves exactly as before this
+  ticket. `ObservationServiceResolver.resolve()` wires the production pair:
+  `BrewDeskAccountTenant.freshAccessToken` / `.refreshAccessTokenAfterUnauthorized`.
+- `submitSpeedTest` (`POST /v1/observations`) and `submitObservation`
+  (`POST /v1/venues/:id/observations`) both route through one private seam,
+  `VenueAPI.postAuthenticated`: attach `Authorization: Bearer <token>` when
+  signed in; on a signed-in 401, force one refresh
+  (`SessionRefresher.refreshAfterUnauthorized()`, which bypasses the
+  proactive-expiry check `freshAccessToken`'s `validAccessToken()` already
+  did) and retry once; if that also 401s, or refresh itself fails, throw
+  `VenueAPIError.authenticationRequired` instead of the generic `.http(401)`.
+  A signed-out request (no token to begin with) is unchanged — its 401, if
+  any, still surfaces as plain `.http(statusCode: 401)`.
+- `ObservationFormModel` maps `.authenticationRequired` to a new
+  `Phase.signInRequired` (distinct from the generic `.failed(message:)`
+  banner) rather than losing the draft — every answer is a plain stored
+  property, independent of `phase`, so nothing is cleared. `submit()` can be
+  called again once the user signs in (`ObservationFormScreen` presents
+  `SignInScreen` on that phase, copy "Sign in to submit", and retries
+  automatically on `AccountModel.sessions.isSignedIn` flipping true).
+- `POST /v1/venues/:id/photos` (`VenueIntakeAPI.linkUploadedPhoto`, the
+  Debug-only community-capture rail, bd#71) already required sign-in and
+  already sent `Authorization: Bearer <token>` before this ticket — its 401
+  handling (no auto-refresh; "sign in again" is the documented recovery) is
+  unchanged, out of #202's tested scope since capture never ships in a store
+  build.
+- `POST /v1/reports` has no wire client yet — `ReportContract.swift`'s
+  `ReportSpool` still only spools reports locally, pending a future
+  venue-engine ticket. Nothing to add a bearer token to until that lands.
+
 ## Configuration
 
 `VenueAPI.defaultBaseURL` is selected at compile time:

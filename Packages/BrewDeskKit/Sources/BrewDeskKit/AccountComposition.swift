@@ -77,6 +77,23 @@ public enum BrewDeskAccountTenant {
         let refresher = SessionRefresher(refreshing: AuthAPI(config: config(environment: environment)), sessions: sessions)
         return try? await refresher.validAccessToken()
     }
+
+    /// Forces one refresh after a signed-in write comes back 401
+    /// (bamware-brewdesk#202 — `VenueAPI.postAuthenticated`'s single retry).
+    /// Deliberately calls `SessionRefresher.refreshAfterUnauthorized()`, not
+    /// `validAccessToken()`: the access token's own `exp` claim already said
+    /// it should still be valid (that's what `freshAccessToken` checked), so
+    /// re-running the same proactive-window check would just hand back the
+    /// same stale token. `refreshAfterUnauthorized()` bypasses that check and
+    /// forces the network call. Same "fresh throwaway `SessionRefresher` per
+    /// call, `nil` on no-session-or-refresh-failure" shape as
+    /// `freshAccessToken` above — see that function's doc comment for why.
+    public static func refreshAccessTokenAfterUnauthorized(environment: LaunchEnvironment = .current) async -> String? {
+        let sessions = AccountSessionStore(persistence: KeychainSessionStore(service: keychainService))
+        guard sessions.session != nil else { return nil }
+        let refresher = SessionRefresher(refreshing: AuthAPI(config: config(environment: environment)), sessions: sessions)
+        return try? await refresher.refreshAfterUnauthorized()
+    }
 }
 
 /// Same `-UITestScenario` launch-argument contract as

@@ -46,6 +46,14 @@ public final class ObservationFormModel {
         /// `message` is the friendly, user-facing sentence — never a raw error.
         case failed(message: String)
         case submitted
+        /// The engine rejected the write with 401 while signed in and a
+        /// forced refresh-and-retry (bd#202, `VenueAPIError
+        /// .authenticationRequired`) still didn't get through — or the
+        /// session had ended entirely. Every answer is untouched (they are
+        /// plain stored properties, independent of `phase`); the UI's job is
+        /// to present the sign-in sheet ("Sign in to submit") and call
+        /// `submit()` again once `AccountModel.sessions.isSignedIn` flips.
+        case signInRequired
     }
 
     public let venueId: String
@@ -135,20 +143,33 @@ public final class ObservationFormModel {
                 )
             )
             phase = .submitted
+        } catch VenueAPIError.authenticationRequired {
+            phase = .signInRequired
         } catch {
             phase = .failed(message: Self.friendlyMessage(for: error))
         }
     }
 
+    /// Dismissing the sign-in sheet without completing sign-in returns to
+    /// editing — the draft (every answer) was never touched; only `phase`
+    /// moves. A no-op from any other phase.
+    public func cancelSignInPrompt() {
+        guard phase == .signInRequired else { return }
+        phase = .editing
+    }
+
     private var canEdit: Bool {
         switch phase {
-        case .editing, .failed: true
+        case .editing, .failed, .signInRequired: true
         case .submitting, .submitted: false
         }
     }
 
     private func clearFailureAfterEdit() {
-        if case .failed = phase { phase = .editing }
+        switch phase {
+        case .failed, .signInRequired: phase = .editing
+        case .editing, .submitting, .submitted: break
+        }
     }
 
     /// Friendly copy only — raw errors and status codes never reach the UI.
@@ -191,6 +212,15 @@ public enum ObservationServiceResolver {
         if let scenario = environment.scenario {
             return ScenarioVenueService(scenario: scenario)
         }
-        return VenueAPI()
+        // bd#202: same tokenProvider shape `ServerSavedVenuePersistence`
+        // already uses for saved-spots sync, so a signed-in submit carries
+        // `Authorization: Bearer <token>` once venue-engine PR #145's
+        // `communityAuth` starts enforcing it, and a signed-out submit is
+        // byte-identical to before (both closures default to `{ nil }` when
+        // omitted — passing them explicitly here is what turns this on).
+        return VenueAPI(
+            tokenProvider: { await BrewDeskAccountTenant.freshAccessToken(environment: environment) },
+            tokenRefresher: { await BrewDeskAccountTenant.refreshAccessTokenAfterUnauthorized(environment: environment) }
+        )
     }
 }
