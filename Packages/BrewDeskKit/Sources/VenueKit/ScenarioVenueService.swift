@@ -171,6 +171,95 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         venueType: "cafe"
     )
 
+    /// bd#219 (supervisor 2nd revision): five more cafés clustered within a
+    /// few hundred metres of `farawayVenue`, in St. George — a search
+    /// selection's own surroundings reload (`model.updateViewport` around
+    /// the SELECTED café, not the original Union Square viewport) needs
+    /// something real to find nearby, or `map-rendered-marker-count`'s "≥5
+    /// other markers visible after the surroundings load" UI-test
+    /// assertion has nothing to prove against. Only ever returned by
+    /// `.cityWideSearch`'s viewport-only `fetchVenuesResult` when the
+    /// QUERIED coordinate is itself near St. George — see
+    /// `isNearFarawayVenue(_:)`.
+    /// bd#219 (supervisor 2nd revision): a dozen cafés spread over roughly
+    /// 200-400m around `farawayVenue` — comfortably inside a walking-scale
+    /// viewport, spread widely enough that `MapAnnotationPlanner`'s own
+    /// screen-space collision/demotion logic (bd#209/#212 — tightly
+    /// clustered points can collide and get skipped, not just demoted)
+    /// doesn't leave fewer than the "≥5 other markers visible after the
+    /// surroundings load" UI-test assertion needs. More than the test
+    /// strictly requires, deliberately, for margin.
+    private static let farawaySurroundingVenues: [Venue] = [
+        fixtureVenue(
+            id: "fixture-faraway-2", name: "Fixture Ferry Terminal Coffee",
+            lat: 40.6455, lng: -74.0790, neighborhood: "St. George",
+            hoursRaw: "Mo-Su 06:00-20:00", workScore: 68, laptopPolicy: "unrestricted", venueType: "cafe"
+        ),
+        fixtureVenue(
+            id: "fixture-faraway-3", name: "Fixture Richmond Terrace Roasters",
+            lat: 40.6420, lng: -74.0784, neighborhood: "St. George",
+            hoursRaw: "Mo-Su 07:00-19:00", workScore: 61, laptopPolicy: "unrestricted", venueType: "cafe"
+        ),
+        fixtureVenue(
+            id: "fixture-faraway-4", name: "Fixture Borough Hall Brew",
+            lat: 40.6437, lng: -74.0820, neighborhood: "St. George",
+            hoursRaw: "Mo-Su 07:00-19:00", workScore: 55, laptopPolicy: "unrestricted", venueType: "cafe"
+        ),
+        fixtureVenue(
+            id: "fixture-faraway-5", name: "Fixture Van Duzer Coffee",
+            lat: 40.6437, lng: -74.0754, neighborhood: "St. George",
+            hoursRaw: "Mo-Su 06:30-18:30", workScore: 49, laptopPolicy: "unrestricted", venueType: "cafe"
+        ),
+        fixtureVenue(
+            id: "fixture-faraway-6", name: "Fixture Bay Street Grind",
+            lat: 40.6460, lng: -74.0810, neighborhood: "St. George",
+            hoursRaw: "Mo-Su 07:00-20:00", workScore: 63, laptopPolicy: "unrestricted", venueType: "cafe"
+        ),
+        fixtureVenue(
+            id: "fixture-faraway-7", name: "Fixture Slosson Terrace Roasters",
+            lat: 40.6415, lng: -74.0810, neighborhood: "St. George",
+            hoursRaw: "Mo-Su 07:00-19:00", workScore: 58, laptopPolicy: "unrestricted", venueType: "cafe"
+        ),
+        fixtureVenue(
+            id: "fixture-faraway-8", name: "Fixture Hyatt Street Coffee",
+            lat: 40.6460, lng: -74.0760, neighborhood: "St. George",
+            hoursRaw: "Mo-Su 07:00-19:00", workScore: 52, laptopPolicy: "unrestricted", venueType: "cafe"
+        ),
+        fixtureVenue(
+            id: "fixture-faraway-9", name: "Fixture Wall Street St. George Brew",
+            lat: 40.6415, lng: -74.0760, neighborhood: "St. George",
+            hoursRaw: "Mo-Su 07:00-19:00", workScore: 47, laptopPolicy: "unrestricted", venueType: "cafe"
+        ),
+        fixtureVenue(
+            id: "fixture-faraway-10", name: "Fixture Stuyvesant Place Grind",
+            lat: 40.6470, lng: -74.0787, neighborhood: "St. George",
+            hoursRaw: "Mo-Su 07:00-19:00", workScore: 44, laptopPolicy: "unrestricted", venueType: "cafe"
+        ),
+        fixtureVenue(
+            id: "fixture-faraway-11", name: "Fixture Central Avenue Coffee",
+            lat: 40.6404, lng: -74.0787, neighborhood: "St. George",
+            hoursRaw: "Mo-Su 07:00-19:00", workScore: 41, laptopPolicy: "unrestricted", venueType: "cafe"
+        ),
+    ]
+
+    /// Within ~5km of `farawayVenue` — comfortably covers any walking-scale
+    /// viewport a search-selection fly-to's own surroundings reload would
+    /// query with, while staying well clear of the ~13.5km distance from
+    /// the default Union Square viewport (bd#200's own test already relies
+    /// on that separation).
+    private static func isNearFarawayVenue(lat: Double, lng: Double) -> Bool {
+        metersBetween(lat, lng, farawayVenue.lat, farawayVenue.lng) < 5_000
+    }
+
+    private static func metersBetween(_ lat1: Double, _ lng1: Double, _ lat2: Double, _ lng2: Double) -> Double {
+        let earthRadiusM = 6_371_000.0
+        let dLat = (lat2 - lat1) * .pi / 180
+        let dLng = (lng2 - lng1) * .pi / 180
+        let a = sin(dLat / 2) * sin(dLat / 2)
+            + cos(lat1 * .pi / 180) * cos(lat2 * .pi / 180) * sin(dLng / 2) * sin(dLng / 2)
+        return earthRadiusM * 2 * atan2(sqrt(a), sqrt(1 - a))
+    }
+
     /// Deterministic venue-count-scale fixture (brewdesk#54): 2,180 venues on
     /// a 47-column grid (~290 m spacing, ~0.12° square) centred on Union
     /// Square, mirroring the live engine's dataset size. Scores cycle 0–100 so
@@ -294,9 +383,20 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             // bd#200: mirrors the real engine's `q` contract over EVERY
             // venue this scenario knows about (fixtures + the far café),
             // not just the ones a viewport fetch would have returned. No
-            // `q` (or an empty one) is a plain viewport fetch, which never
-            // includes the far café.
+            // `q` (or an empty one) is a plain viewport fetch — bd#200's
+            // own default (Union Square) never includes the far café; bd#219
+            // (supervisor 2nd revision) adds the ONE exception: a viewport
+            // fetch queried NEAR St. George (a search-selection's own
+            // surroundings reload, after flying the camera there) returns
+            // the far café plus its five neighbours instead, so that reload
+            // has real surrounding markers to find — mirroring what a real
+            // geo-aware server would answer for that location.
             guard let search = query.search, !search.isEmpty else {
+                if let lat = query.lat, let lng = query.lng, Self.isNearFarawayVenue(lat: lat, lng: lng) {
+                    return VenueLoadResult(
+                        venues: [Self.farawayVenue] + Self.farawaySurroundingVenues, coverage: .researched
+                    )
+                }
                 return VenueLoadResult(venues: Self.fixtureVenues, coverage: .researched)
             }
             return VenueLoadResult(venues: Self.filteringSearch(query, in: Self.venuesIncludingFaraway), coverage: .researched)
@@ -366,7 +466,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         case .noCoverage:
             throw VenueAPIError.http(statusCode: 404)
         case .cityWideSearch:
-            guard let venue = Self.venuesIncludingFaraway.first(where: { $0.id == id }) else {
+            guard let venue = (Self.venuesIncludingFaraway + Self.farawaySurroundingVenues).first(where: { $0.id == id }) else {
                 throw VenueAPIError.http(statusCode: 404)
             }
             return venue

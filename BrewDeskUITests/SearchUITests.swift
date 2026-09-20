@@ -129,15 +129,60 @@ final class SearchUITests: XCTestCase {
         XCTAssertEqual(app.keyboards.count, 1, "keyboard did not appear after typing")
 
         // A point inside the map, clear of the header card (top) and the
-        // shelf card (bottom half at its default medium detent).
+        // shelf card. bd#219: while the search field has focus (as it is
+        // here — this taps BEFORE any dismiss), `DiscoveryShelfCard` is at
+        // `fullHeight` (~70% of the map) regardless of its resting detent,
+        // not the medium-detent ~50% a fixed normalized offset used to
+        // assume — the old 0.35 sat inside that fuller search-mode shelf,
+        // so this only ever dismissed the keyboard via the SHELF's own
+        // touch gesture (a bug in its own right, since fixed: see the
+        // `minimumDistance: 8` change on that gesture) rather than the MAP
+        // tap this test is actually about. The real gap between the header
+        // and the search-focused shelf is narrow (measured ~70pt on a
+        // 874pt-tall window) — computed here from the header's own real
+        // frame, with a fixed point margin, rather than a hand-picked
+        // normalized fraction that a different device height/Dynamic Type
+        // size would silently put back inside one of the two.
+        let headerFrame = app.descendants(matching: .any)["map-header-card"].frame
+        let windowFrame = app.windows.firstMatch.frame
+        let tapY = min(headerFrame.maxY + 55, windowFrame.height * 0.3)
         app.windows.firstMatch
-            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: tapY / windowFrame.height))
             .tap()
         XCTAssertEqual(app.keyboards.count, 0, "tapping the map did not dismiss the keyboard")
         XCTAssertEqual(field.value as? String, "Gre", "map-tap dismiss must keep the typed text")
 
+        // bd#182/bd#219: the tap point above is chosen to clear this
+        // screen's own SwiftUI chrome (header, shelf), but MapKit's base
+        // layer can still render a selectable Apple POI label anywhere on
+        // it (bd#182's `.mapFeatureSelectionContent`) — landing on one
+        // opens `AppleFeatureCard` a moment later as an unrelated side
+        // effect of proving this test's actual point (a plain map tap
+        // resigns focus). Polls rather than a single check-then-swipe: the
+        // sheet's own presentation can still be mounting the instant after
+        // the tap. Dismisses defensively so the assertions below aren't
+        // blocked by an incidental sheet this test isn't about.
+        let appleFeatureCard = app.otherElements["apple-feature-card"]
+        let dismissDeadline = Date().addingTimeInterval(2)
+        while Date() < dismissDeadline {
+            if appleFeatureCard.exists {
+                // Swiping on the CARD element itself (not the whole app) —
+                // the card only covers the bottom ~260-280pt of the screen,
+                // so a generic `app.swipeDown()` starting from the window's
+                // center misses its drag handle entirely.
+                appleFeatureCard.swipeDown()
+                _ = appleFeatureCard.waitForNonExistence(timeout: 2)
+            }
+            if field.isHittable { break }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+
+        XCTAssertTrue(field.waitUntilHittable(timeout: wait), "search field never became hittable again after the dismiss")
         field.tap()
-        XCTAssertEqual(app.keyboards.count, 1, "keyboard did not return on refocus")
+        XCTAssertTrue(
+            Self.waitFor(timeout: wait) { app.keyboards.count == 1 },
+            "keyboard did not return on refocus"
+        )
         // brewdesk#158: the app ships a "Cancel" trailing control while the
         // search field has focus (`search-cancel`, `CafeMapScreen.swift`'s
         // `searchHeader`) — there is no separate keyboard "Done" button, and
@@ -259,5 +304,238 @@ final class SearchUITests: XCTestCase {
                       "(got \(matchCount()) matches, want 2)")
         XCTAssertTrue(app.mapPin(named: "Fixture Ferry Roasters").waitUntilHittable(timeout: wait),
                       "citywide search result pin is not hittable")
+    }
+
+    /// bd#219 — "selecting a far-away café must fly the map to it
+    /// (Google-Maps-like)". Root cause: the shelf's row-tap callback only
+    /// ever set a plain, un-biased `.region(...)` with no walking-scale
+    /// fly-to, AND a late citywide server answer's own `scheduleSearchFit`
+    /// re-fit (bd#200/#158) could land AFTER the tap and override the
+    /// selection's camera position entirely. Reuses bd#200's
+    /// `cityWideSearch` fixture and `Fixture Ferry Roasters` (St. George,
+    /// ~13.5km from the default Union Square viewport — see
+    /// `testCityWideSearchFindsACafeOutsideTheViewport` above), extended
+    /// (bd#219 2nd revision) with five more St. George fixture cafés
+    /// (`ScenarioVenueService.farawaySurroundingVenues`) so the selection's
+    /// OWN surroundings reload has real neighbours to find. This must FAIL
+    /// on `origin/main` (no fly-to/selection guard/zoom lock exists there)
+    /// and PASS on the fix branch.
+    ///
+    /// Asserts OBJECTIVE, numeric proof of the camera's real zoom and the
+    /// selected marker's real screen position — not a distance tolerance
+    /// around a computed target, which passed even when the actual
+    /// rendered camera was several kilometres wide (bd#219 2nd revision:
+    /// the supervisor's own review of the first fix's contact sheet found
+    /// exactly this — a correct-looking `visibleRegion`-derived test
+    /// passing while the REAL MapKit camera, driven by a separate stale
+    /// write, was nowhere close).
+    @MainActor
+    func testSelectingAFarAwaySearchResultFliesTheMapToIt() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-UITestSkipGates", "-UITestScenario", "cityWideSearch"]
+        app.launch()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
+        app.spotsTab.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["map-header-card"].waitForExistence(timeout: wait))
+
+        let field = searchField(app)
+        field.tap()
+        field.typeText("Ferry Roasters")
+
+        // Scoped to the SHELF specifically (not `mapPin(named:)`, which
+        // deliberately matches either the shelf row or the real MapKit
+        // annotation — see its own doc comment): the ticket's flow is "type
+        // the name, tap the row", and tapping the real annotation instead
+        // would bypass `selectSearchResult` entirely (a plain pin tap just
+        // sets `selected` with no fly-to/guard behavior).
+        let shelf = app.descendants(matching: .any)["map-discovery-shelf"]
+        XCTAssertTrue(shelf.waitForExistence(timeout: wait), "discovery shelf missing")
+        let row = shelf.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Ferry Roasters,")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: wait), "search result row for the far café never appeared")
+
+        // The header count line BEFORE the tap — while search is active it
+        // reflects only the name matches (here, just the one far café), not
+        // the neighbourhood. Captured now so the post-selection assertion
+        // below has something concrete to differ from.
+        let countLine = app.descendants(matching: .any)["map-count-line"].firstMatch
+        XCTAssertTrue(countLine.waitForExistence(timeout: wait), "map count line missing")
+        let matchCountText = countLine.label
+
+        // bd#219: `waitUntilHittable` (not a bare `.tap()` the instant the
+        // row exists) — the row can appear an instant before the search
+        // list's own crossfade/layout settles, and a tap landing mid-settle
+        // risks missing the row's real hit-test area even though the
+        // accessibility tree already reports it as "existing".
+        XCTAssertTrue(row.waitUntilHittable(timeout: wait), "search result row never became hittable")
+        // `isHittable` can flip true a beat before the search list's own
+        // settle/crossfade animation actually finishes, AND before
+        // `scheduleSearchFit`'s own in-flight "fit all results" pass (still
+        // running from typing — this row only exists once its citywide
+        // server answer landed, which is the SAME event that can retrigger
+        // that fit) has applied and gotten out of the way. A tap that lands
+        // before both settle risks a `Button` tap gesture racing a list
+        // reflow (brewdesk#158's own comment on this exact hazard) and
+        // being lost. A fixed settle wait is cheap insurance against both.
+        Thread.sleep(forTimeInterval: 1.5)
+        row.tap()
+
+        // The selected teardrop — 30pt head, café name in its label — must
+        // exist and be hittable in the now-visible map area above the
+        // `.medium` sheet, whether or not the far café made it into this
+        // fetch's own (fixture-limited) loaded set: `map-selected-marker`
+        // is the dedicated identifier for the "always render the selection,
+        // never let it be culled/skipped" fallback (bd#212, extended here).
+        let selectedMarker = app.buttons.matching(
+            NSPredicate(format: "identifier == %@ AND label BEGINSWITH %@", "map-selected-marker", "Fixture Ferry Roasters,")
+        ).firstMatch
+        XCTAssertTrue(selectedMarker.waitForExistence(timeout: wait), "selected teardrop for the far café never appeared")
+        XCTAssertTrue(selectedMarker.waitUntilHittable(timeout: wait), "selected teardrop is not hittable")
+
+        // The detail sheet's heading shows the far café's own name.
+        let heading = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Fixture Ferry Roasters")).firstMatch
+        XCTAssertTrue(heading.waitForExistence(timeout: wait), "detail sheet never opened on the far café")
+
+        // The search field COMMITS: it now shows the café's name as static
+        // text (not an editable query), with the clear (x) affordance.
+        let committedLabel = app.descendants(matching: .any)["search-committed-label"]
+        XCTAssertTrue(committedLabel.waitForExistence(timeout: wait), "search field never committed to the selected café's name")
+        XCTAssertEqual(committedLabel.label, "Selected café: Fixture Ferry Roasters")
+        XCTAssertTrue(app.buttons["search-clear-selection"].exists, "clear (x) affordance missing after commit")
+
+        // Committing the search stops filtering `venues` by the typed
+        // text and loads the neighbourhood around the café instead — the
+        // header count line must settle to something other than the
+        // search's own match count.
+        XCTAssertTrue(
+            Self.waitFor(timeout: wait) {
+                let current = countLine.label
+                return current != matchCountText
+            },
+            "header count line still reads the search match count (\(matchCountText)) after committing the selection"
+        )
+
+        // bd#219 (supervisor 2nd revision): OBJECTIVE proof of the REAL
+        // rendered camera — a `visibleRegion`-derived distance-to-target
+        // check (the first revision's approach) can pass even while the
+        // actual MapKit camera is kilometres wide, because a stale write
+        // from elsewhere can win the render without ever touching
+        // `visibleRegion` again. `map-camera-mpp`/`map-rendered-marker-
+        // count` are test-flag-gated accessibility values reporting the
+        // real settled zoom and how many markers the planner is drawing;
+        // the selected marker's own on-screen frame (read directly, not
+        // reconstructed from a region) proves where it visually landed.
+        let mppElement = app.descendants(matching: .any)["map-camera-mpp"]
+        let markerCountElement = app.descendants(matching: .any)["map-rendered-marker-count"]
+        let headerElement = app.descendants(matching: .any)["map-header-card"]
+        let detailScreenElement = app.descendants(matching: .any)["venue-detail-screen"]
+
+        func currentMetersPerPoint() -> Double? { Double((mppElement.value as? String) ?? "") }
+        func currentMarkerCount() -> Int? { Int((markerCountElement.value as? String) ?? "") }
+        /// The selected marker's screen-space vertical fraction within the
+        /// band from the search header's bottom edge to the detail sheet's
+        /// top edge — the "visible area above the medium sheet" the ticket
+        /// specifies, read from REAL frames, not a computed estimate.
+        func markerBandFraction() -> Double? {
+            guard headerElement.exists, detailScreenElement.exists, selectedMarker.exists else { return nil }
+            let bandTop = headerElement.frame.maxY
+            let bandBottom = detailScreenElement.frame.minY
+            guard bandBottom > bandTop else { return nil }
+            return (selectedMarker.frame.midY - bandTop) / (bandBottom - bandTop)
+        }
+
+        XCTAssertTrue(
+            Self.waitFor(timeout: wait) { (currentMetersPerPoint() ?? .greatestFiniteMagnitude) <= 2.6 },
+            "camera never settled to walking scale — mpp=\(currentMetersPerPoint().map { "\($0)" } ?? "nil"), want ≤2.6"
+        )
+        // Note: `mpp` alone can already read ≤2.6 from the FIRST-pass
+        // estimate, before `correctFlyTargetForSettledSheet`'s corrective
+        // write (a separate, slightly later async step) lands — so this
+        // must poll for the band fraction to settle, not take a single
+        // immediate reading right after the mpp check above.
+        var firstBandFraction: Double?
+        XCTAssertTrue(
+            Self.waitFor(timeout: wait) {
+                firstBandFraction = markerBandFraction()
+                guard let firstBandFraction else { return false }
+                return firstBandFraction >= 0.35 && firstBandFraction <= 0.65
+            },
+            "selected marker never settled within the visible band — last reading: " +
+            "\(firstBandFraction.map { "\($0)" } ?? "nil"), want within 0.35–0.65 " +
+            "(header bottom=\(headerElement.frame.maxY), sheet top=\(detailScreenElement.frame.minY), " +
+            "marker frame=\(selectedMarker.frame))"
+        )
+        // The surroundings fetch (`loadSurroundings` → `model.updateViewport`
+        // → the app's own `.task(id: request)` load) is a separate async
+        // hop from the camera settling — poll rather than a single read.
+        XCTAssertTrue(
+            Self.waitFor(timeout: wait) { (currentMarkerCount() ?? 0) >= 5 },
+            "fewer than 5 markers rendered after the surroundings load (count=\(currentMarkerCount().map { "\($0)" } ?? "nil"))"
+        )
+
+        // All three still true 4s later — no late fit (a delayed citywide
+        // answer re-running `scheduleSearchFit`, or this selection's own
+        // surroundings reload changing `model.venues` again) pulls the
+        // camera back out.
+        Thread.sleep(forTimeInterval: 4)
+        XCTAssertLessThanOrEqual(
+            currentMetersPerPoint() ?? .greatestFiniteMagnitude, 2.6,
+            "camera zoomed back out 4s after settling — mpp=\(currentMetersPerPoint().map { "\($0)" } ?? "nil")"
+        )
+        if let laterBandFraction = markerBandFraction() {
+            XCTAssertTrue(
+                laterBandFraction >= 0.35 && laterBandFraction <= 0.65,
+                "selected marker drifted to \(laterBandFraction) of the visible band 4s later, want within 0.35–0.65"
+            )
+        } else {
+            XCTFail("could not compute the selected marker's band position 4s later")
+        }
+        XCTAssertGreaterThanOrEqual(
+            currentMarkerCount() ?? 0, 5,
+            "marker count dropped below 5 4s later (count=\(currentMarkerCount().map { "\($0)" } ?? "nil"))"
+        )
+
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = "search-select-flies-to-far-cafe"
+        attachment.lifetime = .keepAlways
+        add(attachment)
+
+        // ...and after dismissing the sheet: the camera and its
+        // surroundings must stay exactly where they landed (no band check
+        // here — the sheet, and so the band it defined, is gone).
+        let closeButton = app.buttons["detail-close"]
+        XCTAssertTrue(closeButton.waitForExistence(timeout: wait), "detail close button missing")
+        closeButton.tap()
+        Thread.sleep(forTimeInterval: 1.5)
+        XCTAssertLessThanOrEqual(
+            currentMetersPerPoint() ?? .greatestFiniteMagnitude, 2.6,
+            "camera zoom changed after dismissing the sheet — mpp=\(currentMetersPerPoint().map { "\($0)" } ?? "nil")"
+        )
+        XCTAssertGreaterThanOrEqual(
+            currentMarkerCount() ?? 0, 5,
+            "marker count dropped below 5 after dismissing the sheet (count=\(currentMarkerCount().map { "\($0)" } ?? "nil"))"
+        )
+        // `selected` becomes nil on dismiss, so the café's marker is no
+        // longer THE "selected" one (a plain `map-marker`, not
+        // `map-selected-marker` — bd#212's fallback only special-cases the
+        // ACTIVELY selected venue) — it must still be ON the map, though,
+        // now as a normal marker among the loaded surroundings.
+        let cafeMarkerAfterDismiss = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Fixture Ferry Roasters,")
+        ).firstMatch
+        XCTAssertTrue(cafeMarkerAfterDismiss.waitForExistence(timeout: wait), "café marker disappeared after dismissing the sheet")
+    }
+
+    // MARK: - Helpers
+
+    /// Polls `condition` until it's true or `timeout` elapses — for state
+    /// (like the keyboard's own appear animation) that settles a beat after
+    /// the triggering tap rather than synchronously with it.
+    private static func waitFor(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if condition() { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        } while Date() < deadline
+        return condition()
     }
 }
