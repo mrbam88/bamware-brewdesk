@@ -32,7 +32,43 @@ public final class VenuesModel {
     /// before unobserved ones, so a search's match rank still wins inside
     /// each group (brewdesk#159).
     public var venues: [Venue] {
-        VenueOrdering.observedFirst(VenueSearch.apply(activeSearchText, to: filter.apply(to: loadedVenues)))
+        guard !activeSearchText.isEmpty else {
+            return VenueOrdering.observedFirst(localMatches)
+        }
+        // bd#200: a settled, non-empty search widens beyond `localMatches`
+        // with whatever the citywide server search (`scheduleServerSearch`)
+        // found that the current viewport never loaded. When the server
+        // hasn't answered yet, or answered with nothing new (every scenario
+        // before bd#200, including every existing fixture), this is a no-op
+        // and `venues` behaves exactly as it always has.
+        let matches = localMatches
+        let serverOnly = filter.apply(to: matchingServerResults)
+            .filter { server in !matches.contains { $0.id == server.id } }
+        guard !serverOnly.isEmpty else {
+            return VenueOrdering.observedFirst(matches)
+        }
+        let merged = VenueSearch.mergeCityWide(
+            query: activeSearchText, local: matches, serverOnly: serverOnly,
+            centerLat: centerLat, centerLng: centerLng
+        )
+        return VenueOrdering.observedFirst(merged)
+    }
+
+    /// The loaded viewport list with filters + the instant local search
+    /// applied — everything `venues` used to be before bd#200 added the
+    /// citywide server widening above.
+    private var localMatches: [Venue] {
+        VenueSearch.apply(activeSearchText, to: filter.apply(to: loadedVenues))
+    }
+
+    /// `serverSearchResults`, but only while it actually answers the
+    /// CURRENT settled search — a citywide result for a superseded query
+    /// must never leak into `venues` for the query that replaced it. The
+    /// in-flight fetch itself already ignores stale answers by revision
+    /// (`scheduleServerSearch`); this is the second, independent guard at
+    /// the read site.
+    private var matchingServerResults: [Venue] {
+        serverSearchResultsText == activeSearchText ? serverSearchResults : []
     }
 
     private var filter: VenueFilter {
@@ -78,10 +114,115 @@ public final class VenuesModel {
     }
     /// The text `venues` is currently narrowed by; trails `searchQuery` by
     /// the debounce, except submit/clear which apply immediately.
-    private var activeSearchText = ""
+    private var activeSearchText = "" {
+        didSet { scheduleServerSearch() }
+    }
     @ObservationIgnored
     private var searchDebounceTask: Task<Void, Never>?
     private var requestRevision = 0
+
+    // MARK: - Citywide server search (bd#200)
+    //
+    // Root cause: `venues` used to be a purely LOCAL filter over whatever
+    // pins the current viewport happened to have loaded (≤500 within ≤3km)
+    // — a café outside that viewport could never be found by typing its
+    // name, however exact the match, because search never touched the
+    // wire. This runs a SEPARATE, debounced `q=<text>` request over a
+    // citywide radius alongside the existing instant local filter; results
+    // are unioned into `venues` above. `request`/`load` (the viewport
+    // fetch) are untouched — `searchNeverReachesTheQuery` still holds.
+
+    /// bd#200: NYC-wide radius the server search asks over, independent of
+    /// whatever viewport radius `request` is currently using — a citywide
+    /// search must find a match anywhere in the five boroughs, not just
+    /// near the map's current center. Server cap is 50,000m
+    /// (bamware-venue-engine `schema.ts`); this stays comfortably under it.
+    public static let serverSearchRadiusM = 40_000
+    /// bd#200: a citywide search only needs enough rows to fill the shelf
+    /// list, not the map's full 500-pin viewport budget.
+    public static let serverSearchLimit = 50
+    /// bd#200: below this length a server round trip isn't worth spending —
+    /// matches the ticket's "≥ 2 characters" trigger.
+    public static let serverSearchMinimumLength = 2
+
+    private var serverSearchResults: [Venue] = []
+    /// The exact settled text `serverSearchResults` answers — compared
+    /// against `activeSearchText` at the read site (`matchingServerResults`)
+    /// so a stale answer can never leak into a later query's results.
+    private var serverSearchResultsText = ""
+    /// True while the citywide request is in flight — drives the search
+    /// field's inline progress indicator and the shelf's "Searching all of
+    /// NYC…" state.
+    public private(set) var isSearchingServer = false
+    /// True when the last citywide request failed (network/HTTP) — drives
+    /// the quiet "Couldn't search beyond this area" line. Local results (if
+    /// any) are untouched; this is purely advisory, never an alert.
+    public private(set) var serverSearchFailed = false
+    @ObservationIgnored
+    private var serverSearchTask: Task<Void, Never>?
+    @ObservationIgnored
+    private var serverSearchRevision = 0
+
+    /// The text `venues` is currently searching city-wide for — exposed
+    /// read-only so views can show search-specific copy ("No cafés named
+    /// “<text>”…") without reaching into `activeSearchText` itself.
+    public var settledSearchText: String { activeSearchText }
+
+    /// bd#200: true only while there's genuinely nothing to show yet FOR
+    /// THIS SEARCH — the local list is empty and the citywide answer hasn't
+    /// landed. Drives the shelf's "Searching all of NYC…" state instead of
+    /// flashing the generic empty state for the ~200ms-plus a real request
+    /// takes.
+    public var isCityWideSearchPending: Bool {
+        !activeSearchText.isEmpty && isSearchingServer && localMatches.isEmpty
+    }
+
+    /// Cancels any in-flight citywide request and, for a settled query at
+    /// least `serverSearchMinimumLength` long, schedules a new one. Cleared
+    /// (no request, no stale results, no progress/failure flags) for
+    /// anything shorter, including the empty string a clear applies
+    /// immediately — matches "clearing restores the previous viewport's
+    /// venue set" with no lingering citywide state.
+    private func scheduleServerSearch() {
+        serverSearchTask?.cancel()
+        let text = activeSearchText
+        guard text.count >= Self.serverSearchMinimumLength else {
+            serverSearchResults = []
+            serverSearchResultsText = ""
+            isSearchingServer = false
+            serverSearchFailed = false
+            return
+        }
+        serverSearchRevision &+= 1
+        let revision = serverSearchRevision
+        isSearchingServer = true
+        serverSearchFailed = false
+        let query = VenueQuery(
+            lat: Self.coverageCenterLat,
+            lng: Self.coverageCenterLng,
+            radiusM: Self.serverSearchRadiusM,
+            search: text,
+            sort: .workScore,
+            limit: Self.serverSearchLimit
+        )
+        serverSearchTask = Task { [weak self, api] in
+            do {
+                let result = try await api.fetchVenuesResult(query)
+                try Task.checkCancellation()
+                guard let self, self.serverSearchRevision == revision else { return }
+                self.serverSearchResults = result.venues
+                self.serverSearchResultsText = text
+                self.isSearchingServer = false
+            } catch is CancellationError {
+                // Superseded by a newer query — its own task owns the
+                // outcome; nothing to update here.
+            } catch {
+                guard let self, self.serverSearchRevision == revision else { return }
+                self.isSearchingServer = false
+                self.serverSearchFailed = true
+            }
+        }
+    }
 
     /// bd#198 root cause: `VenuesModel` used to have no memory of WHY
     /// `centerLat/Lng` last changed, so a passive GPS tick

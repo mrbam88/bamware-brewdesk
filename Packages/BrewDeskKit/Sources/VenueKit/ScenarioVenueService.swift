@@ -46,6 +46,18 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         /// which decodes as `.researched` (the missing-field default) —
         /// `noCoverage` pins the coverage-driven path specifically.
         case noCoverage
+        /// bd#200 — the regression fixture for "search must be city-wide":
+        /// the normal three fixture venues near Union Square PLUS
+        /// `farawayVenue`, a café in St. George, Staten Island — ~13.5km
+        /// from Union Square, well outside any viewport radius
+        /// (`VenuesModel.maxRadiusM` caps at 3km) but inside the citywide
+        /// server-search radius (40km). A viewport query (`query.search ==
+        /// nil`) never returns it — only `fetchVenuesResult` filtering on
+        /// `query.search`, the same way the real engine's `q` param does,
+        /// ever surfaces it. `SearchUITests` proves the far café is
+        /// unreachable on `origin/main` (no server search existed) and
+        /// reachable once bd#200's citywide search ships.
+        case cityWideSearch
     }
 
     public let scenario: Scenario
@@ -140,6 +152,24 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             neighborhood: "Union Square"
         )
     ]
+
+    /// bd#200 — St. George, Staten Island: ~13.5km from `fixtureVenues`'
+    /// Union Square cluster, outside every viewport radius `VenuesModel`
+    /// ever queries with (max 3km) but inside the citywide server-search
+    /// radius (40km). Only `.cityWideSearch`'s `fetchVenuesResult` ever
+    /// returns it, and only when `query.search` matches its name/
+    /// neighborhood — a viewport-only fetch (`query.search == nil`) never
+    /// does, the exact shape of the bd#200 bug.
+    public static let farawayVenue: Venue = fixtureVenue(
+        id: "fixture-faraway",
+        name: "Fixture Ferry Roasters",
+        lat: 40.6437, lng: -74.0787,
+        neighborhood: "St. George",
+        hoursRaw: "Mo-Su 06:00-20:00",
+        workScore: 77,
+        laptopPolicy: "unrestricted",
+        venueType: "cafe"
+    )
 
     /// Deterministic venue-count-scale fixture (brewdesk#54): 2,180 venues on
     /// a 47-column grid (~290 m spacing, ~0.12° square) centred on Union
@@ -236,20 +266,58 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             return Self.baselineVenues
         case .noCoverage:
             return []
+        case .cityWideSearch:
+            // A viewport-only fetch (no `q`) never sees the far café —
+            // `fetchVenuesResult` below is the only path that can.
+            return Self.fixtureVenues
         }
     }
 
     /// `fetchVenues` above stays the venues-only source of truth for every
-    /// existing scenario; only `baselineCity`/`noCoverage` need a coverage
-    /// other than the default extension's `.researched` (bd#108).
+    /// existing scenario; only `baselineCity`/`noCoverage`/`cityWideSearch`
+    /// need a DIFFERENT venue list. Every scenario's `fetchVenuesResult`
+    /// (including these three) now also honors `query.search` the way the
+    /// real engine's `q` param does (bd#200) — VenuesModel's new citywide
+    /// search calls `fetchVenuesResult` with `search` set on every
+    /// scenario, not just `cityWideSearch`; without this, e.g. `fixtureOK`
+    /// would hand back all its venues unfiltered for ANY search text,
+    /// which VenuesModel would then (correctly) treat as new city-wide
+    /// matches and re-union into `venues` — silently undoing the existing
+    /// local-search fixtures' "narrows to just this venue" assertions.
     public func fetchVenuesResult(_ query: VenueQuery) async throws -> VenueLoadResult {
         switch scenario {
         case .baselineCity:
-            return VenueLoadResult(venues: Self.baselineVenues, coverage: .baseline)
+            return VenueLoadResult(venues: Self.filteringSearch(query, in: Self.baselineVenues), coverage: .baseline)
         case .noCoverage:
             return VenueLoadResult(venues: [], coverage: .none)
+        case .cityWideSearch:
+            // bd#200: mirrors the real engine's `q` contract over EVERY
+            // venue this scenario knows about (fixtures + the far café),
+            // not just the ones a viewport fetch would have returned. No
+            // `q` (or an empty one) is a plain viewport fetch, which never
+            // includes the far café.
+            guard let search = query.search, !search.isEmpty else {
+                return VenueLoadResult(venues: Self.fixtureVenues, coverage: .researched)
+            }
+            return VenueLoadResult(venues: Self.filteringSearch(query, in: Self.venuesIncludingFaraway), coverage: .researched)
         default:
-            return VenueLoadResult(venues: try await fetchVenues(query), coverage: .researched)
+            let venues = try await fetchVenues(query)
+            return VenueLoadResult(venues: Self.filteringSearch(query, in: venues), coverage: .researched)
+        }
+    }
+
+    /// bd#200: case/diacritic-insensitive contains over name or
+    /// neighborhood, matching `VenueSearch.apply`'s own normalization — the
+    /// deterministic stand-in for the real engine's `q` filtering. A `nil`
+    /// or empty `query.search` (every existing viewport-load call site)
+    /// returns `venues` unchanged.
+    private static func filteringSearch(_ query: VenueQuery, in venues: [Venue]) -> [Venue] {
+        guard let search = query.search, !search.isEmpty else { return venues }
+        let needle = search.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+        return venues.filter { venue in
+            let name = venue.name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            let neighborhood = venue.neighborhood.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+            return name.contains(needle) || neighborhood.contains(needle)
         }
     }
 
@@ -277,6 +345,8 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         }
     }
 
+    private static let venuesIncludingFaraway = fixtureVenues + [farawayVenue]
+
     // MARK: - VenueDetailServing
 
     public func fetchVenue(id: String) async throws -> Venue {
@@ -295,6 +365,11 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             return venue
         case .noCoverage:
             throw VenueAPIError.http(statusCode: 404)
+        case .cityWideSearch:
+            guard let venue = Self.venuesIncludingFaraway.first(where: { $0.id == id }) else {
+                throw VenueAPIError.http(statusCode: 404)
+            }
+            return venue
         default:
             guard let venue = Self.fixtureVenues.first(where: { $0.id == id }) else {
                 throw VenueAPIError.http(statusCode: 404)
@@ -309,7 +384,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         switch scenario {
         case .engineDown, .photosFail: throw Self.serverError
         case .offline: throw Self.offlineError
-        case .emptyVenues, .photosEmpty, .manyVenues, .baselineCity, .noCoverage: return []
+        case .emptyVenues, .photosEmpty, .manyVenues, .baselineCity, .noCoverage, .cityWideSearch: return []
         case .fixtureOK, .slow, .offlineThenRecovers:
             return blockStore.filteringBlocked(Self.fixturePhotos)
         case .communityPhotos:
@@ -338,7 +413,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             if observationAttempts.next() == 1 { throw Self.offlineError }
             return Self.observedVenue(id: venueId)
         case .fixtureOK, .emptyVenues, .photosEmpty, .photosFail, .manyVenues, .communityPhotos,
-             .baselineCity, .noCoverage:
+             .baselineCity, .noCoverage, .cityWideSearch:
             return Self.observedVenue(id: venueId)
         }
     }

@@ -90,6 +90,10 @@ struct DiscoveryShelfCard: View {
         VStack(alignment: .leading, spacing: 12) {
             grabber
             if isSearchFocused || detent != .peek {
+                if showCityWideSearchFailureNote {
+                    cityWideSearchFailureNote
+                        .padding(.horizontal, 16)
+                }
                 venueContent
                     .transition(.opacity)
             }
@@ -261,21 +265,52 @@ struct DiscoveryShelfCard: View {
     private var emptyContent: some View {
         switch model.phase {
         case .loaded:
-            // bd#192: "No cafés here yet" — distinct from the old generic
-            // "No spots in this view" now that a zero-result viewport can
-            // come from a real "Search this area" fetch, not just a filter.
-            ContentUnavailableView {
-                Label("No cafés here yet", systemImage: "cup.and.saucer")
-            } description: {
-                Text("Clear a filter, search a different spot, or try another area.")
-            } actions: {
-                Button("Browse NYC") { model.browseCoverageCenter() }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityIdentifier("map-browse-nyc")
+            if model.isCityWideSearchPending {
+                // bd#200: the local list has nothing yet and the citywide
+                // server search is still in flight — a real request takes
+                // longer than the instant local filter, so this replaces
+                // the generic empty state for that window instead of
+                // flashing "no cafés" and then correcting itself a moment
+                // later.
+                ProgressView("Searching all of NYC…")
+                    .frame(height: 170)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("shelf-state-citywide-searching")
+            } else if !model.settledSearchText.isEmpty {
+                // bd#200: the citywide search settled and found nothing
+                // anywhere, not just in this viewport — distinct copy from
+                // the generic "No cafés here yet" below, naming the actual
+                // search so it reads as "we looked everywhere", not "try
+                // panning".
+                ContentUnavailableView {
+                    Label("No cafés named “\(model.searchQuery)” in NYC yet", systemImage: "cup.and.saucer")
+                } description: {
+                    Text("Check the spelling, or clear the search to browse the area.")
+                } actions: {
+                    Button("Browse NYC") { model.browseCoverageCenter() }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("map-browse-nyc")
+                }
+                .frame(height: 170)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("map-state-empty")
+            } else {
+                // bd#192: "No cafés here yet" — distinct from the old generic
+                // "No spots in this view" now that a zero-result viewport can
+                // come from a real "Search this area" fetch, not just a filter.
+                ContentUnavailableView {
+                    Label("No cafés here yet", systemImage: "cup.and.saucer")
+                } description: {
+                    Text("Clear a filter, search a different spot, or try another area.")
+                } actions: {
+                    Button("Browse NYC") { model.browseCoverageCenter() }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("map-browse-nyc")
+                }
+                .frame(height: 170)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("map-state-empty")
             }
-            .frame(height: 170)
-            .accessibilityElement(children: .contain)
-            .accessibilityIdentifier("map-state-empty")
         case .idle, .loading:
             ProgressView("Finding work spots…")
                 .frame(height: 170)
@@ -291,6 +326,20 @@ struct DiscoveryShelfCard: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("shelf-state-error")
         }
+    }
+
+    /// bd#200: the citywide server search failed (network/HTTP) but local
+    /// results — if any — are still showing; a quiet inline note, never an
+    /// alert, per the ticket ("keep local results ... no alert").
+    private var showCityWideSearchFailureNote: Bool {
+        model.serverSearchFailed && !model.settledSearchText.isEmpty
+    }
+
+    private var cityWideSearchFailureNote: some View {
+        Text("Couldn't search beyond this area")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .accessibilityIdentifier("shelf-citywide-search-failed")
     }
 
     private var horizontalRail: some View {
