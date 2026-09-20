@@ -157,6 +157,12 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
     /// when absent or empty (pre-ve#103 payloads, and most venues, carry no
     /// press hits — that is not a claim about the café).
     public let news: [NewsLink]?
+    /// The server's own honest-score signal (brewdesk#213, venue-engine
+    /// `76e343a`) — see `ScoreDisplay`'s own doc comment for the three-way
+    /// contract. `.notProvided` (key absent) is the default so every
+    /// existing call site (fixtures, tests, older-server payloads) keeps
+    /// today's `isObserved`-driven behavior without passing this explicitly.
+    public let scoreDisplay: ScoreDisplay
 
     public init(
         id: String,
@@ -178,7 +184,8 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         phone: String? = nil,
         email: String? = nil,
         tier: String? = nil,
-        news: [NewsLink]? = nil
+        news: [NewsLink]? = nil,
+        scoreDisplay: ScoreDisplay = .notProvided
     ) {
         self.id = id
         self.name = name
@@ -200,13 +207,96 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         self.email = email
         self.tier = tier
         self.news = news
+        self.scoreDisplay = scoreDisplay
     }
 
     enum CodingKeys: String, CodingKey {
         case id, name, lat, lng, address, neighborhood, borough, hoursRaw,
              vertical, attributes, vibeTags, workScore, lastVerified, venueType,
-             website, phone, email, tier, news
+             website, phone, email, tier, news, scoreDisplay
         case distanceM = "distance_m"
+    }
+
+    /// Manual `Decodable` (brewdesk#213): the ONLY reason this struct can't
+    /// use synthesized `Codable` any more is `scoreDisplay` — telling "key
+    /// absent" from "key present with a JSON `null`" requires
+    /// `container.contains(_:)` at THIS level, before ever calling
+    /// `decode`/`decodeIfPresent` on it (`decodeIfPresent`'s own default
+    /// implementation collapses both cases to `nil`, which is exactly the
+    /// ambiguity that let the placeholder `workScore` render as if it were a
+    /// real rating). Every other field decodes exactly as the previous
+    /// synthesized implementation did.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        lat = try container.decode(Double.self, forKey: .lat)
+        lng = try container.decode(Double.self, forKey: .lng)
+        address = try container.decodeIfPresent(String.self, forKey: .address)
+        neighborhood = try container.decode(String.self, forKey: .neighborhood)
+        borough = try container.decode(String.self, forKey: .borough)
+        hoursRaw = try container.decodeIfPresent(String.self, forKey: .hoursRaw)
+        vertical = try container.decode(String.self, forKey: .vertical)
+        attributes = try container.decode(VenueAttributes.self, forKey: .attributes)
+        vibeTags = try container.decode([String].self, forKey: .vibeTags)
+        workScore = try container.decode(Int.self, forKey: .workScore)
+        lastVerified = try container.decodeIfPresent(String.self, forKey: .lastVerified)
+        distanceM = try container.decodeIfPresent(Int.self, forKey: .distanceM)
+        venueType = try container.decodeIfPresent(String.self, forKey: .venueType)
+        website = try container.decodeIfPresent(String.self, forKey: .website)
+        phone = try container.decodeIfPresent(String.self, forKey: .phone)
+        email = try container.decodeIfPresent(String.self, forKey: .email)
+        tier = try container.decodeIfPresent(String.self, forKey: .tier)
+        news = try container.decodeIfPresent([NewsLink].self, forKey: .news)
+
+        if container.contains(.scoreDisplay) {
+            if try container.decodeNil(forKey: .scoreDisplay) {
+                scoreDisplay = .notRated
+            } else {
+                scoreDisplay = .rated(try container.decode(Int.self, forKey: .scoreDisplay))
+            }
+        } else {
+            scoreDisplay = .notProvided
+        }
+    }
+
+    /// Manual `Encodable` counterpart to the manual decoder above — kept in
+    /// lockstep so a re-encode (cache writes, snapshot seeding, UI-test
+    /// fixture serialization) round-trips all three `scoreDisplay` states:
+    /// `.notProvided` omits the key entirely (never fabricates a `null` the
+    /// original payload never had), `.notRated` writes a real JSON `null`,
+    /// `.rated` writes the number.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(lat, forKey: .lat)
+        try container.encode(lng, forKey: .lng)
+        try container.encodeIfPresent(address, forKey: .address)
+        try container.encode(neighborhood, forKey: .neighborhood)
+        try container.encode(borough, forKey: .borough)
+        try container.encodeIfPresent(hoursRaw, forKey: .hoursRaw)
+        try container.encode(vertical, forKey: .vertical)
+        try container.encode(attributes, forKey: .attributes)
+        try container.encode(vibeTags, forKey: .vibeTags)
+        try container.encode(workScore, forKey: .workScore)
+        try container.encodeIfPresent(lastVerified, forKey: .lastVerified)
+        try container.encodeIfPresent(distanceM, forKey: .distanceM)
+        try container.encodeIfPresent(venueType, forKey: .venueType)
+        try container.encodeIfPresent(website, forKey: .website)
+        try container.encodeIfPresent(phone, forKey: .phone)
+        try container.encodeIfPresent(email, forKey: .email)
+        try container.encodeIfPresent(tier, forKey: .tier)
+        try container.encodeIfPresent(news, forKey: .news)
+
+        switch scoreDisplay {
+        case .notProvided:
+            break
+        case .notRated:
+            try container.encodeNil(forKey: .scoreDisplay)
+        case .rated(let score):
+            try container.encode(score, forKey: .scoreDisplay)
+        }
     }
 
     public var scoreTier: ScoreTier { ScoreTier(score: workScore) }
@@ -226,11 +316,12 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
     /// not the 52 once documented here (bd#180); OSM-baseline metros with
     /// tag-derived claims still run 50–55. `false` here means `workScore`
     /// is that neutral fallback, not a measurement — the UI must show
-    /// "Not checked yet" instead of the number (bd#159).
+    /// "Not rated yet" instead of the number (bd#159).
     ///
-    /// This is a client-side approximation of the engine's own rule; if the
-    /// engine ships an explicit field for this, prefer it and keep this
-    /// computation as the fallback for older payloads.
+    /// This is a client-side approximation of the engine's own rule. The
+    /// engine now ships an explicit field for this (`scoreDisplay`,
+    /// brewdesk#213) — prefer `displayScore`/`isRated` below in UI code;
+    /// this stays the fallback for `.notProvided` (older payloads).
     public var isObserved: Bool {
         let scoredClaims: [Claim?] = [
             attributes.laptopPolicy,
@@ -246,6 +337,55 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
             return !claim.isEstimate && claim.confidence >= 0.4 && claim.value != "unknown"
         }
     }
+
+    /// The score to actually show the user (brewdesk#213), honoring the
+    /// server's explicit `scoreDisplay` over the client-side `isObserved`
+    /// heuristic whenever the server has an opinion at all:
+    /// - `.rated(score)`: the server evidenced this café — show `score`
+    ///   (equal to `workScore` on the wire, but this is the field that
+    ///   means it, not a client guess).
+    /// - `.notRated`: the server explicitly says "not rated yet" — `nil`,
+    ///   ALWAYS, even if `isObserved`'s own heuristic would have said
+    ///   otherwise. Never falls back to `workScore`— that's the exact
+    ///   placeholder-number bug this ticket fixes.
+    /// - `.notProvided`: older server / metro outside the rollout — no
+    ///   opinion at all, so this preserves the pre-#213 behavior verbatim.
+    public var displayScore: Int? {
+        switch scoreDisplay {
+        case .rated(let score): score
+        case .notRated: nil
+        case .notProvided: isObserved ? workScore : nil
+        }
+    }
+
+    /// True when this venue has an evidenced score worth showing — the
+    /// single source of truth `displayScore` and every score-driven surface
+    /// (map marker split, ordering, badges) share, so all of them agree
+    /// with each other even where `scoreDisplay` overrides `isObserved`.
+    public var isRated: Bool {
+        switch scoreDisplay {
+        case .rated: true
+        case .notRated: false
+        case .notProvided: isObserved
+        }
+    }
+}
+
+/// The server's honest-score signal (brewdesk#213, venue-engine `76e343a`):
+/// additive on every venue in both the full and `compact=1` shapes.
+/// - A JSON number: the café is rated, equal to `workScore`.
+/// - A JSON `null`: the café is genuinely unrated — "Not rated yet", never
+///   `workScore`'s flat neutral placeholder.
+/// - The key absent entirely: an older server, or a metro outside the
+///   rollout — no opinion; the client falls back to its own `isObserved`
+///   heuristic, exactly like before this field existed.
+///
+/// `Venue`'s manual `Codable` conformance is what makes "absent" and "null"
+/// distinguishable at all — `decodeIfPresent` alone cannot tell them apart.
+public enum ScoreDisplay: Hashable, Sendable {
+    case notProvided
+    case notRated
+    case rated(Int)
 }
 
 /// A response's coverage for the queried viewport (ve#46, bd#108):

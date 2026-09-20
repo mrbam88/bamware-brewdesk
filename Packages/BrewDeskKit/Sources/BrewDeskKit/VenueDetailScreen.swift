@@ -263,7 +263,7 @@ public struct VenueDetailScreen: View {
                 }
             }
 
-            if !venue.isObserved {
+            if venue.displayScore == nil {
                 unobservedExplanation
             }
 
@@ -783,10 +783,13 @@ public struct VenueDetailScreen: View {
     }
 
     private var shareText: String {
-        // Never share the neutral fallback number as if it were a rating (#159).
-        venue.isObserved
-            ? "\(venue.name) · Work Fit \(venue.workScore) · \(venue.neighborhood)"
-            : "\(venue.name) · \(venue.neighborhood)"
+        // Never share the neutral fallback number as if it were a rating
+        // (#159), and honor the server's explicit `scoreDisplay` (#213)
+        // over the `isObserved` heuristic.
+        if let score = venue.displayScore {
+            return "\(venue.name) · Work Fit \(score) · \(venue.neighborhood)"
+        }
+        return "\(venue.name) · not rated yet · \(venue.neighborhood)"
     }
 
     private func openDirections() {

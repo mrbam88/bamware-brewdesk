@@ -227,7 +227,7 @@ public struct CafeMapScreen: View {
                             markerButton(for: MarkerPlacement(
                                 venue: selected,
                                 kind: .teardrop(diameter: MapAnnotationPlanner.selectedDiameter),
-                                showsNumber: selected.isObserved,
+                                showsNumber: selected.isRated,
                                 isSelected: true
                             ))
                         }
@@ -646,9 +646,11 @@ public struct CafeMapScreen: View {
 
     /// Pin label contract: "<name>, <score phrase>, <neighborhood>". UI tests
     /// match on the "<name>," prefix; VoiceOver must never read the engine's
-    /// neutral fallback number for a venue nobody has checked.
+    /// neutral fallback number for a venue nobody has rated (brewdesk#213:
+    /// driven by `displayScore`, which honors the server's own
+    /// `scoreDisplay` over the `isObserved` heuristic).
     static func pinLabel(for venue: Venue) -> String {
-        let score = venue.isObserved ? "Work Fit \(venue.workScore)" : "not checked yet"
+        let score = venue.displayScore.map { "Work Fit \($0)" } ?? "not rated yet"
         return "\(venue.name), \(score), \(venue.neighborhood)"
     }
 
@@ -1473,10 +1475,11 @@ public struct CafeMapScreen: View {
     /// café draws its own marker instead of collapsing into a count
     /// cluster; "rated" is the number a viewer actually cares about, so it
     /// leads). `rated` is the live, filtered `model.venues` with real Work
-    /// Fit evidence (bd#159's `isObserved`); `total` is the plain loaded
-    /// count — both dynamic, never hardcoded.
+    /// Fit evidence (`Venue.isRated`, brewdesk#213 — honors the server's own
+    /// `scoreDisplay` over the older `isObserved` heuristic); `total` is the
+    /// plain loaded count — both dynamic, never hardcoded.
     private var ratedCafeCountLine: String {
-        let rated = model.venues.filter(\.isObserved).count
+        let rated = model.venues.filter(\.isRated).count
         let total = model.venues.count
         return String(
             format: String(localized: "%1$lld rated · %2$lld cafés"),

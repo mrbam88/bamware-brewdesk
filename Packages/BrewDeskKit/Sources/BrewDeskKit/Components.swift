@@ -32,12 +32,14 @@ extension ScoreTier {
     }
 }
 
-/// Score-or-"not checked yet" badge (bd#159). Takes the venue rather than a
-/// bare score so it can render the honest neutral state on its own —
-/// `!venue.isObserved` means `venue.workScore` is the engine's flat neutral
-/// fallback (ve#64), not a measurement, and must never be printed as if it
-/// were one. The neutral state uses a grey fill, never red/green (founder
-/// is red-green colorblind), and VoiceOver never reads the number.
+/// Score-or-"Not rated yet" badge (bd#159, brewdesk#213). Takes the venue
+/// rather than a bare score so it can render the honest neutral state on its
+/// own — `venue.displayScore == nil` means either the server explicitly said
+/// "not rated yet" or (absent that opinion) `venue.workScore` is the
+/// engine's flat neutral fallback (ve#64), not a measurement — either way it
+/// must never be printed as if it were one. The neutral state uses a grey
+/// fill, never red/green (founder is red-green colorblind), and VoiceOver
+/// never reads the number.
 ///
 /// bd#209: previously solid tier-color fill behind fixed white text — passed
 /// for `great`/`mixed`/`weak` (roast/sand/berry all clear 7:1+ against
@@ -54,12 +56,12 @@ struct ScoreBadge: View {
 
     var body: some View {
         Group {
-            if venue.isObserved {
-                Text("\(venue.workScore)")
-                    .accessibilityLabel("Work Fit \(venue.workScore) out of 100")
+            if let score = venue.displayScore {
+                Text("\(score)")
+                    .accessibilityLabel("Work Fit \(score) out of 100")
             } else {
-                Text("Not checked yet")
-                    .accessibilityLabel("Not checked yet")
+                Text("Not rated yet")
+                    .accessibilityLabel("Not rated yet")
             }
         }
         .font(BrewDeskFont.label(.subheadline))
@@ -69,10 +71,13 @@ struct ScoreBadge: View {
         .background(BrewDeskPalette.surfaceSecondary, in: Capsule())
         .overlay(
             Capsule().stroke(
-                venue.isObserved ? ScoreTier(score: venue.workScore).color : BrewDeskPalette.unobserved,
+                venue.displayScore.map { ScoreTier(score: $0).color } ?? BrewDeskPalette.unobserved,
                 lineWidth: 2
             )
         )
+        // brewdesk#213: lets a UI test scope its "no digit shown" assertion
+        // to just the badge, rather than the whole detail card.
+        .accessibilityIdentifier("score-badge")
     }
 }
 

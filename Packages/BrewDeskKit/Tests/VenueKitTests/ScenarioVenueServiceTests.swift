@@ -59,13 +59,25 @@ import Testing
 
     /// bd#159: `fixture-unchecked` is the one venue whose claims are all
     /// `estimate` — `isObserved` must be false, and it must still round-trip
-    /// through Codable like every other fixture.
+    /// through Codable like every other fixture. brewdesk#213: it also
+    /// carries an explicit `scoreDisplay: .notRated` now — the modern
+    /// server-null contract, not just the older heuristic — so `isRated`/
+    /// `displayScore` must agree with `isObserved` here even though they're
+    /// driven by a different field.
     @Test func unobservedFixtureIsNotObservedAndRoundTrips() throws {
         let venue = try #require(ScenarioVenueService.fixtureVenues.first { $0.id == "fixture-unchecked" })
         #expect(venue.isObserved == false)
         #expect(venue.attributes.wifi.isEstimate)
+        #expect(venue.scoreDisplay == .notRated)
+        #expect(venue.isRated == false)
+        #expect(venue.displayScore == nil)
         let data = try JSONEncoder().encode(venue)
         #expect(try JSONDecoder().decode(Venue.self, from: data) == venue)
+        // The re-encoded payload carries a real JSON `null`, not an absent
+        // key — proves the round trip preserves the explicit state rather
+        // than silently downgrading to `.notProvided`.
+        let json = try #require(String(data: data, encoding: .utf8))
+        #expect(json.contains("\"scoreDisplay\":null"))
     }
 
     @Test func engineDownThrowsHTTP500Everywhere() async {
