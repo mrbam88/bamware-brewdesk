@@ -373,14 +373,49 @@ struct MapAnnotationPlannerTests {
         assertNoOverlaps(teardropFootprints(for: plan, region: testRegion, mapSize: mapSize))
     }
 
-    @Test func teardropUnderAnExclusionRectDemotesToADot() {
+    /// bd#217 (TestFlight build 26 regression): a `.dot` renders at the
+    /// SAME coordinate its would-be teardrop attempt used, and `.dot`s are
+    /// never themselves exclusion-checked (they're a native `MapCircle`,
+    /// drawn independently) — so falling back to a dot here, as the bd#210/
+    /// #212 behavior this replaces used to, still put a marker right under
+    /// the chrome, just a smaller one. That was the exact bug: a small
+    /// green dot peeking out from under the "Search this area" pill.
+    /// A candidate that only collides with CHROME must now be skipped
+    /// outright; see `denselyPackedCandidatesDemoteToDotsInsteadOfOverlapping`
+    /// above for a SIBLING-teardrop collision, which still demotes to a dot.
+    @Test func teardropUnderAnExclusionRectIsSkippedNotDemotedToAVisibleDot() {
         let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width)
         let projector = ScreenProjector(region: testRegion, size: mapSize)
         let target = venue(id: "under-chrome", lat: 40.7335, lng: -74.0027, score: 90)
         let point = projector.point(for: CLLocationCoordinate2D(latitude: target.lat, longitude: target.lng))
         let exclusion = CGRect(x: point.x - 20, y: point.y - 20, width: 40, height: 40)
         let plan = MapAnnotationPlanner.plan(venues: [target], region: testRegion, mapSize: mapSize, exclusionRects: [exclusion])
-        #expect(plan.dots.map(\.id) == ["under-chrome"], "a teardrop under chrome demotes to a dot rather than vanishing")
+        #expect(plan.markers.isEmpty, "a venue that only collides with CHROME must be skipped entirely, never fall back to a dot under the same chrome")
+    }
+
+    /// Companion to the skip test above: every DOT actually placed in a
+    /// dense, chrome-covered plan must have a coordinate that's genuinely
+    /// clear of every exclusion rect — not just every TEARDROP (already
+    /// covered by `noPlacedTeardropIntersectsAnExclusionRect`).
+    @Test func noPlacedDotSitsUnderAnExclusionRectEither() {
+        let testRegion = region(forMetersPerPoint: 3.6, mapWidth: mapSize.width)
+        let exclusions = [
+            CGRect(x: 0, y: 0, width: mapSize.width, height: 140),
+            CGRect(x: mapSize.width - 80, y: mapSize.height - 140, width: 68, height: 68),
+        ]
+        let venues = grid(count: 400, extent: 0.03)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize, exclusionRects: exclusions)
+        let exclusionBoxes = exclusions.map { AABB(minX: $0.minX, maxX: $0.maxX, minY: $0.minY, maxY: $0.maxY) }
+        let projector = ScreenProjector(region: testRegion, size: mapSize)
+        let mpp = MapAnnotationPlanner.metersPerPoint(region: testRegion, mapWidth: mapSize.width)
+        let dotDiameter = MapAnnotationPlanner.headDiameter(forMetersPerPoint: mpp)
+        for dot in plan.dots {
+            let point = projector.point(for: coordinate(of: dot.venue))
+            let box = MapAnnotationPlanner.teardropFootprint(diameter: dotDiameter, at: point)
+            for exclusion in exclusionBoxes {
+                #expect(!box.intersects(exclusion), "demoted dot \(dot.id)'s own coordinate sits under an exclusion rect")
+            }
+        }
     }
 
     @Test func planWithExclusionRectsStaysDeterministic() {

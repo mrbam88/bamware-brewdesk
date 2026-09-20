@@ -76,9 +76,29 @@ struct MarkerPaletteTests {
     }
 
     @Test func lightMapMarkerFillIsDarkestForTheBestScore() {
+        // bd#217: white numbers on every light-map tier needed the fill
+        // ramp to hold >=4.5:1 everywhere, which collapsed it to the
+        // spec's "at most three lightness steps" — the two lowest tiers
+        // (`<60`, `60-69`) now share the lightest step, so lightness is
+        // monotonic NON-increasing with score rather than strictly
+        // decreasing at every step. It must still never go the wrong way
+        // (a worse score getting a DARKER fill than a better one).
         let luminances = tierScores.map { relativeLuminance(UIColor(BrewDeskPalette.markerFill(score: $0)).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))) }
         for i in 1..<luminances.count {
-            #expect(luminances[i] < luminances[i - 1], "light map: lightness must strictly DECREASE with score (best = darkest/most saturated), got \(luminances)")
+            #expect(luminances[i] <= luminances[i - 1], "light map: lightness must never INCREASE with score (best = darkest/most saturated), got \(luminances)")
+        }
+        #expect(Set(luminances).count <= 3, "light map fill must use at most three lightness steps (bd#217 spec)")
+        #expect(luminances.last! < luminances.first!, "the best and worst tiers must still be visibly different")
+    }
+
+    /// bd#217 (TestFlight build 26 feedback — "change the color of the
+    /// text to white on the pins"): every light-map tier's number is now
+    /// pure white, replacing the old split (dark number on the two
+    /// lighter tiers) that read as low-contrast dark-green-on-sage.
+    @Test func lightMapMarkerNumberIsAlwaysWhite() {
+        for score in tierScores {
+            let resolved = rgb(BrewDeskPalette.markerNumberColor(score: score), style: .light)
+            #expect(resolved.r > 0.98 && resolved.g > 0.98 && resolved.b > 0.98, "score \(score) light-map number must be white, got \(resolved)")
         }
     }
 
@@ -95,11 +115,15 @@ struct MarkerPaletteTests {
         }
     }
 
-    @Test func markerHairlineIsNeverWhiteAndStaysDarkInBothAppearances() {
+    /// bd#217 (Bilal, same PR as the white-number fix): "the border...
+    /// should be white instead of dark — on the pins" for the LIGHT map;
+    /// DARK keeps the bd#212 dark-hairline-plus-shadow pairing exactly as
+    /// shipped (his own earlier choice on the dark mock).
+    @Test func markerHairlineIsWhiteInLightMapAndStaysDarkInDarkMap() {
         let resolvedLight = UIColor(BrewDeskPalette.markerHairline).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
         let resolvedDark = UIColor(BrewDeskPalette.markerHairline).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
-        #expect(relativeLuminance(resolvedLight) < 0.05, "marker hairline must stay a dark edge, never a white ring")
-        #expect(relativeLuminance(resolvedDark) < 0.05, "marker hairline must stay a dark edge, never a white ring")
+        #expect(relativeLuminance(resolvedLight) > 0.85, "light map hairline must read as a near-white edge (bd#217)")
+        #expect(relativeLuminance(resolvedDark) < 0.05, "dark map hairline must stay a dark edge, unchanged from bd#212")
     }
 
     @Test func speckFillIsNeutralNeverTierColored() {

@@ -65,11 +65,25 @@ struct TeardropShape: Shape {
 struct TeardropMarkerView: View, Equatable {
     let placement: MarkerPlacement
 
+    /// bd#217: the hairline's WIDTH (not just its color) differs by
+    /// appearance now — light map's new white edge is 1pt, dark map keeps
+    /// the bd#212 0.75pt value unchanged — so this view needs to read the
+    /// appearance itself, not just resolve an adaptive `Color`. Reading
+    /// `colorScheme` here does not defeat the `Equatable` fast-path above:
+    /// SwiftUI still tracks this as a real dependency of `body` and
+    /// invalidates on an appearance change regardless of the custom `==`.
+    @Environment(\.colorScheme) private var colorScheme
+
     static func == (lhs: TeardropMarkerView, rhs: TeardropMarkerView) -> Bool {
         lhs.placement == rhs.placement
     }
 
     private var diameter: CGFloat { placement.kind.teardropDiameter ?? MapAnnotationPlanner.selectedDiameter }
+    /// bd#217: white-on-light needed a touch more edge to read at all,
+    /// dark stays exactly the bd#212 hairline. "1pt (not thicker)" per
+    /// Bilal's own note — wider would start reading as a bigger pin, not
+    /// just a different-colored edge.
+    private var hairlineWidth: CGFloat { colorScheme == .light ? 1.0 : 0.75 }
     /// Total frame height (head + tail) — see `MapAnnotationPlanner
     /// .tailHeightFactor`'s doc comment for the `TeardropShape` geometry
     /// this matches exactly.
@@ -86,7 +100,7 @@ struct TeardropMarkerView: View, Equatable {
         ZStack {
             TeardropShape()
                 .fill(fill)
-                .overlay(TeardropShape().stroke(BrewDeskPalette.markerHairline, lineWidth: 0.75))
+                .overlay(TeardropShape().stroke(BrewDeskPalette.markerHairline, lineWidth: hairlineWidth))
                 .shadow(color: .black.opacity(0.55), radius: 2, x: 0, y: 1)
             if placement.showsNumber {
                 // brewdesk#213: `showsNumber` is only ever true for a rated
@@ -94,7 +108,7 @@ struct TeardropMarkerView: View, Equatable {
                 // the `workScore` fallback only guards the type, it never
                 // actually fires.
                 Text(verbatim: "\(placement.venue.displayScore ?? placement.venue.workScore)")
-                    .font(BrewDeskFont.markerNumber(size: diameter * 0.58))
+                    .font(BrewDeskFont.markerNumber(size: diameter * 0.58, headDiameter: diameter))
                     .foregroundStyle(BrewDeskPalette.markerNumberColor(score: placement.venue.workScore))
                     .offset(y: numberVerticalOffset)
             }
