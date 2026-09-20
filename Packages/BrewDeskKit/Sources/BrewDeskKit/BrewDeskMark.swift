@@ -202,47 +202,78 @@ struct BrewDeskMarkArc: Shape {
 /// `Stage` changes over time for the launch reveal lives in
 /// `LaunchRevealTimeline` (app target, unit tested there as pure logic
 /// with no view involved).
+///
+/// bamware-brewdesk#205 replaced the old "draw on" model (body/arcs start
+/// hidden and fade/trim in) with an additive one: every element is always
+/// fully drawn and fully opaque — `settled` is now the only resting value,
+/// and every field above it is a *scale pulse* around 1, never an
+/// opacity/trim ramp from 0. That's a deliberate fix for a launch-time
+/// flicker: iOS already shows the complete static mark before this view's
+/// first frame runs, so starting from anything less than "complete" reads
+/// as the mark breaking and redrawing itself, not revealing itself. See
+/// `LaunchRevealTimeline`'s header comment for the full timeline.
 nonisolated public struct BrewDeskMarkStage: Equatable, Sendable {
-    /// Shared by saucer + cup body + handle.
-    public var bodyOpacity: Double
+    /// Shared by saucer + cup body + handle. Always 1 in the launch reveal
+    /// (bamware-brewdesk#205: cup/handle/saucer never move pre-hand-off);
+    /// kept as a field for API stability and for any future caller that
+    /// does want to scale the body (e.g. a subtle "breath").
     public var bodyScale: Double
+    /// The dot's own pulse, scaled about its own center — 1 at rest.
     public var dotScale: Double
-    /// 0...1 trim fraction per arc, innermost (0) to outermost (2).
-    public var arc1Trim: Double
-    public var arc2Trim: Double
-    public var arc3Trim: Double
-    /// 0...1 — drives one shared soft shadow pulse across all three arcs
-    /// (the launch reveal's single glow moment; the idle "signal" mode
-    /// does its own independent per-arc glow, not this field).
-    public var glowOpacity: Double
+    /// Each arc's own pulse, scaled about the arcs' shared center —
+    /// innermost (arc1) to outermost (arc3), matching `BrewDeskMarkArc
+    /// .index` 0...2. 1 at rest; arcs are always stroked fully drawn (no
+    /// trim) with their final `.butt` cap — see `MarkFace.arc(index:
+    /// scale:)`.
+    public var arc1Scale: Double
+    public var arc2Scale: Double
+    public var arc3Scale: Double
+    /// The one-shot "ripple": a 4th ghost arc at the same center, starting
+    /// at the outermost arc's own radius (`rippleScale == 1`) and
+    /// expanding outward as `rippleOpacity` fades from its start value to
+    /// 0. `rippleOpacity == 0` means "don't draw it at all" —
+    /// `MarkFace` skips the extra shape entirely rather than drawing an
+    /// invisible one.
+    public var rippleScale: Double
+    public var rippleOpacity: Double
+    /// A second, dimmer echo of the ripple, 160ms behind the first
+    /// (bamware-brewdesk#207 — the first ripple alone read as too subtle
+    /// at the mark's real ~60pt on-screen size). Same shape/center, its
+    /// own independent scale/opacity so the two ripples can be mid-flight
+    /// at different radii at once.
+    public var ripple2Scale: Double
+    public var ripple2Opacity: Double
 
     public init(
-        bodyOpacity: Double,
         bodyScale: Double,
         dotScale: Double,
-        arc1Trim: Double,
-        arc2Trim: Double,
-        arc3Trim: Double,
-        glowOpacity: Double
+        arc1Scale: Double,
+        arc2Scale: Double,
+        arc3Scale: Double,
+        rippleScale: Double,
+        rippleOpacity: Double,
+        ripple2Scale: Double,
+        ripple2Opacity: Double
     ) {
-        self.bodyOpacity = bodyOpacity
         self.bodyScale = bodyScale
         self.dotScale = dotScale
-        self.arc1Trim = arc1Trim
-        self.arc2Trim = arc2Trim
-        self.arc3Trim = arc3Trim
-        self.glowOpacity = glowOpacity
+        self.arc1Scale = arc1Scale
+        self.arc2Scale = arc2Scale
+        self.arc3Scale = arc3Scale
+        self.rippleScale = rippleScale
+        self.rippleOpacity = rippleOpacity
+        self.ripple2Scale = ripple2Scale
+        self.ripple2Opacity = ripple2Opacity
     }
 
-    /// Nothing drawn yet — the reveal's frame 0.
-    public static let hidden = BrewDeskMarkStage(
-        bodyOpacity: 0, bodyScale: 0.96, dotScale: 0,
-        arc1Trim: 0, arc2Trim: 0, arc3Trim: 0, glowOpacity: 0
-    )
-    /// Fully drawn, resting — matches the static `LaunchMark` asset.
+    /// Fully drawn, resting — matches the static `LaunchMark` asset. The
+    /// reveal's frame 0 *is* this value (bamware-brewdesk#205): nothing
+    /// animates from a hidden state anymore.
     public static let settled = BrewDeskMarkStage(
-        bodyOpacity: 1, bodyScale: 1, dotScale: 1,
-        arc1Trim: 1, arc2Trim: 1, arc3Trim: 1, glowOpacity: 0
+        bodyScale: 1, dotScale: 1,
+        arc1Scale: 1, arc2Scale: 1, arc3Scale: 1,
+        rippleScale: 1, rippleOpacity: 0,
+        ripple2Scale: 1, ripple2Opacity: 0
     )
 }
 
@@ -308,52 +339,78 @@ public struct BrewDeskMark: View {
 /// Renders one fixed `BrewDeskMarkStage` — no animation of its own. The
 /// caller (`LaunchRevealView`, or a plain `.settled`/reduced-motion render)
 /// owns whatever transition gets it from one stage to the next.
+///
+/// bamware-brewdesk#205: every shape here is always fully drawn at full
+/// opacity — nothing is trimmed, faded in, or hidden. The only motion is a
+/// `.scaleEffect` pulse per element, anchored at that element's own true
+/// center (`fanAnchor` for the three arcs and the ripple, which share one
+/// center; `dotAnchor` for the dot) rather than the mark's overall bounding
+/// box, so a pulsing arc grows/shrinks in place instead of drifting.
 private struct MarkFace: View {
     let tint: Color
     let stage: BrewDeskMarkStage
 
+    private static let fanAnchor = UnitPoint(x: BrewDeskMarkGeometry.fanCX, y: BrewDeskMarkGeometry.fanCY)
+    private static let dotAnchor = UnitPoint(x: BrewDeskMarkGeometry.cx, y: BrewDeskMarkGeometry.dotCY)
+
     var body: some View {
         ZStack {
-            arc(index: 0, trim: stage.arc1Trim, glow: stage.glowOpacity)
-            arc(index: 1, trim: stage.arc2Trim, glow: stage.glowOpacity)
-            arc(index: 2, trim: stage.arc3Trim, glow: stage.glowOpacity)
+            // The ripple is a 4th, non-structural arc (bamware-brewdesk#205)
+            // — only ever drawn while it has opacity, so a settled/resting
+            // stage (`rippleOpacity == 0`) never pays for an invisible
+            // extra shape.
+            if stage.rippleOpacity > 0 {
+                ripple(scale: stage.rippleScale, opacity: stage.rippleOpacity)
+            }
+            if stage.ripple2Opacity > 0 {
+                ripple(scale: stage.ripple2Scale, opacity: stage.ripple2Opacity)
+            }
+
+            arc(index: 0, scale: stage.arc1Scale)
+            arc(index: 1, scale: stage.arc2Scale)
+            arc(index: 2, scale: stage.arc3Scale)
 
             ZStack {
                 BrewDeskMarkSaucer()
                 BrewDeskMarkCupBody()
-                // `.butt`, not `.round`: the handle never trims (it settles as
-                // part of the body group, fully drawn from the first frame it's
-                // visible), and the real asset's ring ends flush, not rounded
-                // (#193 alpha trace — see `BrewDeskMarkGeometry`'s doc comment).
+                // `.butt`: the real asset's ring ends flush, not rounded
+                // (#193 alpha trace — see `BrewDeskMarkGeometry`'s doc
+                // comment). The handle never moves in the launch reveal.
                 BrewDeskMarkHandle()
                     .stroke(tint, style: StrokeStyle(lineWidth: BrewDeskMarkGeometry.resolved(BrewDeskMarkGeometry.handleLineWidth), lineCap: .butt))
             }
             .foregroundStyle(tint)
-            .opacity(stage.bodyOpacity)
             .scaleEffect(stage.bodyScale)
 
             BrewDeskMarkDot()
                 .foregroundStyle(tint)
-                .scaleEffect(stage.dotScale)
+                .scaleEffect(stage.dotScale, anchor: Self.dotAnchor)
         }
     }
 
+    /// One of the three signal arcs, always fully drawn with the asset's
+    /// real `.butt` cap (bamware-brewdesk#205: no trim, no cap switching —
+    /// the previous "draw on" reveal's round→butt snap read as a pop on a
+    /// device). `scale` is the arc's own additive pulse, 1 at rest.
     @ViewBuilder
-    private func arc(index: Int, trim: Double, glow: Double) -> some View {
-        // `.round` while the trim is still growing (a soft leading tip while
-        // it draws on — bamware-brewdesk#193's "crisper, more polished"
-        // ask), `.butt` the instant it reaches full trim: the real asset's
-        // arc ends are flush, not rounded, so the settled frame (trim == 1)
-        // must render with the geometrically exact cap to stay
-        // pixel-identical to the static `LaunchMark`. The swap is a single
-        // discrete frame right as drawing completes, not a cross-fade — by
-        // then the tip is already at the arc's true endpoint, so there's no
-        // visible pop, just the round overshoot disappearing into the exact
-        // edge.
+    private func arc(index: Int, scale: Double) -> some View {
         BrewDeskMarkArc(index: index)
-            .trim(from: 0, to: trim)
-            .stroke(tint, style: StrokeStyle(lineWidth: BrewDeskMarkGeometry.resolved(BrewDeskMarkGeometry.arcLineWidth), lineCap: trim < 1 ? .round : .butt))
-            .shadow(color: tint.opacity(glow), radius: 10 * glow)
+            .stroke(tint, style: StrokeStyle(lineWidth: BrewDeskMarkGeometry.resolved(BrewDeskMarkGeometry.arcLineWidth), lineCap: .butt))
+            .scaleEffect(scale, anchor: Self.fanAnchor)
+    }
+
+    /// A ripple instance: the outermost arc's own shape (`index: 2`, the
+    /// widest radius), scaled up and faded from the given `scale`/
+    /// `opacity`. Shared by both ripples (bamware-brewdesk#207 added a
+    /// second, dimmer echo) since they're the same shape at different
+    /// points in the same expand-and-fade motion. Shares the arcs'
+    /// geometry and center on purpose — "one more arc, briefly, further
+    /// out" is the whole visual idea — but is never counted as one of the
+    /// three real arcs and never touches the cup.
+    private func ripple(scale: Double, opacity: Double) -> some View {
+        BrewDeskMarkArc(index: 2)
+            .stroke(tint.opacity(opacity), style: StrokeStyle(lineWidth: BrewDeskMarkGeometry.resolved(BrewDeskMarkGeometry.arcLineWidth), lineCap: .butt))
+            .scaleEffect(scale, anchor: Self.fanAnchor)
     }
 }
 

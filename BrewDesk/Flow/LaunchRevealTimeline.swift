@@ -8,92 +8,141 @@ import Foundation
 /// the scheduling, only "what should it look like at time t," which is
 /// what makes it unit-testable without booting a view.
 ///
-/// Timeline (bamware-brewdesk#193 polish pass over #186's original):
-/// - 0–320ms: body (saucer/cup/handle) settles in, opacity 0→1, scale
-///   0.97→1.0, both eased through `.timingCurve(0.2, 0.9, 0.3, 1.0)` — a
-///   tight curve with no overshoot (#186's spring `easeOutBack` bounce is
-///   gone).
-/// - 250ms, 140ms long: the dot pops, scale 0→1.08→1 (was 0→1.15→1 over
-///   180ms — smaller, quicker).
-/// - 300/370/440ms, 220ms each (70ms stagger): arcs 1/2/3 draw on via trim,
-///   ease-out. Mark fully drawn by 660ms.
-/// - 680ms, 380ms long: one specular light sweep crosses the settled mark,
-///   ease-in-out — replaces #186's shared arc glow pulse with a single more
-///   deliberate "shine" moment (`LaunchRevealView.LaunchSweep`; masked to
-///   the mark's own shape there, not represented in `BrewDeskMarkStage`).
-/// - 900ms, 220ms long: the whole overlay fades out while the mark scales
-///   1.0→1.04 (hand-off — was a plain 950/200ms crossfade with no scale).
-/// - Hard cap at 1200ms regardless of the above.
+/// ## bamware-brewdesk#205/#207: additive signal pulse (replaces #193's "draw on")
+///
+/// Bilal on TestFlight build 23 (which shipped #195/#193's timeline): "the
+/// animation is worse now. It looks like it's broken." Frame-by-frame
+/// extraction confirmed why: iOS shows the *complete* static `LaunchMark`
+/// for ~0.9s before this view's first frame runs (the system launch screen
+/// hand-off). #193's timeline started from `BrewDeskMarkStage.hidden` —
+/// body invisible, arcs untrimmed — so the mark the user was already
+/// looking at visibly dimmed/vanished and redrew itself within ~4 frames.
+/// On a device that reads as a flicker or a rendering bug, not a reveal.
+/// You cannot "draw on" a logo the user is already looking at.
+///
+/// #205 fixed *what* the reveal draws (additive, never hidden). It did not
+/// fix *when* the clock starts: `LaunchRevealView` began timing from the
+/// view's own `onAppear`/init, which on a cold launch is well before the
+/// first frame is actually composited to the screen (the main thread is
+/// still busy with map/data setup). A real-speed recording showed the
+/// pulse window elapsing silently during that busy stretch, so by the time
+/// anything actually reached the display only the hand-off fade was left —
+/// user sees a static logo, then a fade, and the "signal pulse" never
+/// renders at all. #207 fixes the clock (see `LaunchRevealView`, which now
+/// starts timing from the first *presented* frame, not from `onAppear`)
+/// and makes the motion itself bigger, since the mark is only ~60pt wide
+/// on a real device and the original amplitudes were barely visible even
+/// once they did render:
+///
+/// - 0ms: frame 0, `== .settled`, byte-for-byte what iOS was already
+///   showing.
+/// - 120ms, 220ms long: the dot pulses, scale 1→1.35→1, ease-in-out.
+/// - 200/290/380ms, 300ms each (90ms stagger): arc1/2/3 each pulse in turn,
+///   scale 1→1.12→1 about the arcs' shared center, ease-out into the peak
+///   then ease-in back to rest. Arcs are always fully drawn with their
+///   final `.butt` cap throughout — no trim, no cap switching (#193's
+///   round→butt snap at trim==1 was a second, smaller source of visible
+///   pop this ticket also removes).
+/// - 430ms, 520ms long: the first ripple — a 4th ghost arc at the same
+///   center, starting exactly at the outermost arc's own radius and
+///   expanding to 1.7× while fading from 0.6 opacity to 0, ease-out.
+/// - 590ms (430 + 160), 520ms long: a second, dimmer echo of the same
+///   ripple, starting at 0.35 opacity. The two overlap in flight — this is
+///   the only place two elements are ever mid-motion at once — but both
+///   only ever fade *out* from a partial opacity; neither ever touches the
+///   cup or brightens.
+/// - Cup/handle/saucer (`bodyScale`) do not move at all before hand-off —
+///   see the "no breath" spec-gap note below.
+/// - 860ms, 240ms long: hand-off — the whole overlay fades 1→0
+///   (`overlayOpacity`) while the mark scales 1→1.06 (`handoffScale`). The
+///   dark diagonal "sweep" #193 added is gone entirely (it was a grey band
+///   crossing a white cup — the second thing that read as a rendering
+///   bug); nothing replaces it, the pulses above are the entire "shine."
+/// - Hard cap at 1200ms, counted from the same *presented* start as
+///   everything above (unchanged value from #193, but now measured from
+///   the right zero point) — `LaunchRevealView` never lets this block
+///   navigation or data loading. A separate, coarser absolute cap in
+///   `LaunchRevealView` (2.5s from `onAppear`) guards the case where a
+///   presented start never arrives at all.
+///
+/// Total reveal ≈ 1.1s from the presented start (hand-off ends at
+/// 860+240 = 1100ms), inside the 1200ms hard cap.
+///
+/// **Spec-gap decision — no "breath":** the ticket allows an optional,
+/// very subtle 1→1.015→1 body "breath" over 600ms, "only if it is
+/// imperceptible as flicker; if in doubt leave them still." Given this
+/// entire ticket exists because a previous, much smaller-looking change
+/// (a cap style snap) read as a visible glitch on a real device, any risk
+/// of the breath reading as flicker is not worth it for a barely-visible
+/// 1.5% wobble. `bodyScale` stays exactly 1 throughout — cup/handle/saucer
+/// genuinely never move pre-hand-off.
+///
+/// Reduce Motion is unchanged from #193: no pulses at all, the settled
+/// mark just fades out over `reducedMotionFadeDuration`.
 nonisolated public enum LaunchRevealTimeline {
-    public static let bodySettleStart: Double = 0
-    public static let bodySettleDuration: Double = 320
-    private static let bodyStartScale: Double = 0.97
-    private static let bodyEase = CubicBezierEase(x1: 0.2, y1: 0.9, x2: 0.3, y2: 1.0)
-
-    public static let dotPopStart: Double = 250
-    public static let dotPopDuration: Double = 140
-    private static let dotPeakScale: Double = 1.08
+    /// The dot's own pulse window.
+    public static let dotPulseStart: Double = 120
+    public static let dotPulseDuration: Double = 220
+    private static let dotPeakScale: Double = 1.35
 
     /// Innermost arc first (index 0), matching `BrewDeskMarkArc.index`.
-    public static let arcStarts: [Double] = [300, 370, 440]
-    public static let arcDuration: Double = 220
+    /// Each arc pulses in turn, 90ms apart.
+    public static let arcPulseStarts: [Double] = [200, 290, 380]
+    public static let arcPulseDuration: Double = 300
+    private static let arcPeakScale: Double = 1.12
 
-    /// The light sweep's window — see `LaunchRevealView.LaunchSweep`, which
-    /// owns the actual visual (a masked, translating gradient band). This
-    /// type only owns the timing: when it's active and how far through its
-    /// own ease-in-out it is.
-    public static let sweepStart: Double = 680
-    public static let sweepDuration: Double = 380
+    /// The two-ripple "echo": a 4th ghost arc expanding out from the
+    /// outermost arc's own radius while fading out, followed 160ms later
+    /// by a second, dimmer one. Timing only — the actual shape/color live
+    /// in `BrewDeskMark`'s `MarkFace.ripple(scale:opacity:)`.
+    public static let rippleStart: Double = 430
+    public static let rippleDuration: Double = 520
+    public static let ripple2Start: Double = rippleStart + 160
+    public static let ripple2Duration: Double = 520
+    private static let rippleStartOpacity: Double = 0.6
+    private static let ripple2StartOpacity: Double = 0.35
+    private static let ripplePeakScale: Double = 1.7
 
     /// Hand-off: the overlay's final fade, paired with a small scale-up on
-    /// the mark itself (still vector, so it stays crisp through the scale).
-    public static let crossfadeStart: Double = 900
-    public static let crossfadeDuration: Double = 220
-    private static let handoffPeakScale: Double = 1.04
+    /// the mark itself (still vector, so it stays crisp through the
+    /// scale). Replaces #193's dark diagonal sweep entirely.
+    public static let crossfadeStart: Double = 860
+    public static let crossfadeDuration: Double = 240
+    private static let handoffPeakScale: Double = 1.06
 
     /// The overlay removes itself here regardless of where the timeline
     /// above has reached — it must never block navigation or data loading.
+    /// Counted from the *presented* start (see `LaunchRevealView`), not
+    /// from `onAppear`.
     public static let hardCapMS: Double = 1200
 
     /// Reduce Motion: no motion at all, the settled mark just fades out.
     public static let reducedMotionFadeDuration: Double = 250
 
-    /// The mark's appearance at `elapsedMS` since the reveal started.
-    /// Time beyond `hardCapMS` clamps to the hard cap's own frame (fully
-    /// faded out), so a caller that forgets to stop sampling still gets a
-    /// stable, harmless answer instead of a runaway value.
+    /// The mark's appearance at `elapsedMS` since the *presented* start
+    /// (bamware-brewdesk#207 — see `LaunchRevealView` for what establishes
+    /// that zero point). Time beyond `hardCapMS` clamps to the hard cap's
+    /// own frame (fully faded out via `overlayOpacity`, though this
+    /// function's own output stays at rest), so a caller that forgets to
+    /// stop sampling still gets a stable, harmless answer instead of a
+    /// runaway value.
     ///
-    /// `glowOpacity` is always 0 here — #186's shared arc glow pulse was
-    /// replaced by the light sweep (`sweepOpacityProgress`, below), which
-    /// isn't part of `BrewDeskMarkStage` since it's a full-mark overlay
-    /// effect, not a per-arc one. The field stays on `BrewDeskMarkStage`
-    /// itself for API stability (other modes may still want it).
+    /// `frame(atElapsedMS: 0) == .settled` is the load-bearing guarantee
+    /// this whole ticket exists to make true — see the type's header.
     public static func frame(atElapsedMS elapsedMS: Double) -> BrewDeskMarkStage {
         let t = min(max(elapsedMS, 0), hardCapMS)
 
-        let bodyProgress = bodyEase.solve(progress(t, start: bodySettleStart, duration: bodySettleDuration))
-        let dotProgress = progress(t, start: dotPopStart, duration: dotPopDuration)
-        let arcProgress = arcStarts.map { easeOutCubic(progress(t, start: $0, duration: arcDuration)) }
-
-        var stage = BrewDeskMarkStage(
-            bodyOpacity: bodyProgress,
-            bodyScale: bodyStartScale + (1 - bodyStartScale) * bodyProgress,
-            dotScale: dotScale(dotProgress),
-            arc1Trim: arcProgress[0],
-            arc2Trim: arcProgress[1],
-            arc3Trim: arcProgress[2],
-            glowOpacity: 0
+        return BrewDeskMarkStage(
+            bodyScale: 1,
+            dotScale: pulseScale(t, start: dotPulseStart, duration: dotPulseDuration, peak: dotPeakScale),
+            arc1Scale: pulseScale(t, start: arcPulseStarts[0], duration: arcPulseDuration, peak: arcPeakScale),
+            arc2Scale: pulseScale(t, start: arcPulseStarts[1], duration: arcPulseDuration, peak: arcPeakScale),
+            arc3Scale: pulseScale(t, start: arcPulseStarts[2], duration: arcPulseDuration, peak: arcPeakScale),
+            rippleScale: rippleScale(atElapsedMS: t, start: rippleStart, duration: rippleDuration),
+            rippleOpacity: rippleOpacity(atElapsedMS: t, start: rippleStart, duration: rippleDuration, startOpacity: rippleStartOpacity),
+            ripple2Scale: rippleScale(atElapsedMS: t, start: ripple2Start, duration: ripple2Duration),
+            ripple2Opacity: rippleOpacity(atElapsedMS: t, start: ripple2Start, duration: ripple2Duration, startOpacity: ripple2StartOpacity)
         )
-
-        // The hand-off fade is a whole-mark fade, layered on top of whatever
-        // the stage above already computed — represented here as an extra
-        // multiply on the opacity channel rather than a separate `Stage`
-        // field, since `LaunchRevealView` also needs to fade the background
-        // color, which isn't part of `BrewDeskMarkStage` at all (see
-        // `overlayOpacity(atElapsedMS:)`).
-        let fade = 1 - progress(t, start: crossfadeStart, duration: crossfadeDuration)
-        stage.bodyOpacity *= fade
-        return stage
     }
 
     /// The overlay's own opacity (background + mark together) at
@@ -107,7 +156,7 @@ nonisolated public enum LaunchRevealTimeline {
     }
 
     /// The mark's own extra scale during hand-off — 1.0 before it starts,
-    /// climbing to 1.04 as the overlay fades out. Applied by
+    /// climbing to 1.06 as the overlay fades out. Applied by
     /// `LaunchRevealView` as a wrapping `.scaleEffect` around the whole
     /// (already vector) `BrewDeskMark`, so the settle-then-slightly-grow
     /// motion stays crisp at every frame.
@@ -115,22 +164,29 @@ nonisolated public enum LaunchRevealTimeline {
         1 + (handoffPeakScale - 1) * progress(elapsedMS, start: crossfadeStart, duration: crossfadeDuration)
     }
 
-    /// The light sweep's own ease-in-out progress (0...1) across its
-    /// `sweepStart`/`sweepDuration` window — 0 before it starts, 1 once
-    /// it's swept fully past. `LaunchRevealView` only shows the sweep
-    /// view while this is strictly between its start and end.
-    public static func sweepOpacityProgress(atElapsedMS elapsedMS: Double) -> Double {
-        smoothstep(progress(elapsedMS, start: sweepStart, duration: sweepDuration))
-    }
-
-    public static func isSweepActive(atElapsedMS elapsedMS: Double) -> Bool {
-        elapsedMS >= sweepStart && elapsedMS <= sweepStart + sweepDuration
-    }
-
     /// Reduce Motion variant: the finished mark, fading straight out with
     /// no other motion.
     public static func reducedMotionOverlayOpacity(atElapsedMS elapsedMS: Double) -> Double {
         1 - progress(elapsedMS, start: 0, duration: reducedMotionFadeDuration)
+    }
+
+    // MARK: - Ripple
+
+    /// 0 before/after `[start, start + duration]`; fades `startOpacity` →
+    /// 0, ease-out, across it. Shared by both ripples.
+    private static func rippleOpacity(atElapsedMS elapsedMS: Double, start: Double, duration: Double, startOpacity: Double) -> Double {
+        guard elapsedMS >= start, elapsedMS <= start + duration else { return 0 }
+        let p = easeOutCubic(progress(elapsedMS, start: start, duration: duration))
+        return startOpacity * (1 - p)
+    }
+
+    /// 1 (the outermost arc's own radius, no jump) before/after `[start,
+    /// start + duration]`; expands to `ripplePeakScale`, ease-out, across
+    /// it. Shared by both ripples.
+    private static func rippleScale(atElapsedMS elapsedMS: Double, start: Double, duration: Double) -> Double {
+        guard elapsedMS >= start, elapsedMS <= start + duration else { return 1 }
+        let p = easeOutCubic(progress(elapsedMS, start: start, duration: duration))
+        return 1 + (ripplePeakScale - 1) * p
     }
 
     // MARK: - Per-property easing
@@ -144,61 +200,28 @@ nonisolated public enum LaunchRevealTimeline {
         1 - pow(1 - x, 3)
     }
 
-    private static func smoothstep(_ x: Double) -> Double {
-        let c = min(max(x, 0), 1)
-        return c * c * (3 - 2 * c)
+    private static func easeInCubic(_ x: Double) -> Double {
+        x * x * x
     }
 
-    /// 0 → 1.08 over the first 60% of the pop, then settles 1.08 → 1.0.
-    private static func dotScale(_ progress: Double) -> Double {
-        if progress <= 0 { return 0 }
-        if progress < 0.6 {
-            return (progress / 0.6) * dotPeakScale
+    /// A symmetric additive pulse: `restValue` (1) outside `[start, start +
+    /// duration]`, easing up to `peak` over the first half of the window
+    /// (ease-out — fast rise, slowing into the peak) and back down to
+    /// `restValue` over the second half (ease-in — slow leaving the peak,
+    /// accelerating back to rest). Used for the dot and each arc
+    /// (bamware-brewdesk#205) — every element this drives is fully drawn
+    /// and at rest both before its own window starts and after it ends, so
+    /// there's no "hidden" state to interpolate from, unlike #193's trim/
+    /// opacity ramps.
+    private static func pulseScale(_ t: Double, start: Double, duration: Double, peak: Double, restValue: Double = 1) -> Double {
+        guard duration > 0 else { return restValue }
+        let elapsed = t - start
+        guard elapsed > 0, elapsed < duration else { return restValue }
+        let half = duration / 2
+        if elapsed < half {
+            return restValue + (peak - restValue) * easeOutCubic(elapsed / half)
         }
-        let settle = (progress - 0.6) / 0.4
-        return dotPeakScale - (dotPeakScale - 1) * settle
-    }
-}
-
-/// A CSS/SwiftUI-style cubic Bezier easing curve — the same shape
-/// `.timingCurve(x1, y1, x2, y2)` draws, expressed as a pure `x -> y`
-/// function so `LaunchRevealTimeline` can sample it at any instant without
-/// an actual SwiftUI animation running. `x` is elapsed-fraction (0...1) and
-/// doubles as the curve's own parametric `x`; `y` is the eased output
-/// (0...1 as long as both control points' `y`s are, which they are for the
-/// curve this file uses — control points are a convex combination bound, so
-/// the curve never overshoots past its own control `y`s).
-nonisolated struct CubicBezierEase {
-    let x1: Double
-    let y1: Double
-    let x2: Double
-    let y2: Double
-
-    /// Newton-Raphson on the parametric `x(t) = fraction`, then evaluates
-    /// `y(t)`. 8 iterations is comfortably more than enough for a curve
-    /// this well-conditioned (monotonic x1/x2 in (0, 1)) to converge to
-    /// sub-pixel precision.
-    func solve(_ fraction: Double) -> Double {
-        guard fraction > 0 else { return 0 }
-        guard fraction < 1 else { return 1 }
-        var t = fraction
-        for _ in 0..<8 {
-            let currentX = bezier(t, x1, x2) - fraction
-            let d = derivative(t, x1, x2)
-            guard abs(d) > 1e-6 else { break }
-            t -= currentX / d
-            t = min(max(t, 0), 1)
-        }
-        return bezier(t, y1, y2)
-    }
-
-    private func bezier(_ t: Double, _ p1: Double, _ p2: Double) -> Double {
-        let mt = 1 - t
-        return 3 * mt * mt * t * p1 + 3 * mt * t * t * p2 + t * t * t
-    }
-
-    private func derivative(_ t: Double, _ p1: Double, _ p2: Double) -> Double {
-        let mt = 1 - t
-        return 3 * mt * mt * p1 + 6 * mt * t * (p2 - p1) + 3 * t * t * (1 - p2)
+        let fallProgress = (elapsed - half) / half
+        return peak - (peak - restValue) * easeInCubic(fallProgress)
     }
 }

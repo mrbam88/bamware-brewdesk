@@ -1,0 +1,52 @@
+reference frame: /Users/bilalmalik/.claude/jobs/e55ae780/tmp/v4relfixed/f_176.png
+analyzing frames 176..215 (40 frames)
+
+frame         file  upper(dot/arc/ripple)  lower(cup)   total
+  176    f_176.png                      0           0       0
+  177    f_177.png                    174           0     174
+  178    f_178.png                    230           0     230
+  179    f_179.png                    230           0     230
+  180    f_180.png                    456           0     456
+  181    f_181.png                    905           0     905
+  182    f_182.png                   1341           0    1341
+  183    f_183.png                   1530           0    1530
+  184    f_184.png                   2427           0    2427
+  185    f_185.png                   3860           0    3860
+  186    f_186.png                   4279           0    4279
+  187    f_187.png                   6098           0    6098
+  188    f_188.png                   7483           0    7483
+  189    f_189.png                   8641           0    8641
+  190    f_190.png                   7931           0    7931
+  191    f_191.png                   7370           0    7370
+  192    f_192.png                   8050           0    8050
+  193    f_193.png                   4107           0    4107
+  194    f_194.png                   4435           0    4435
+  195    f_195.png                   4315           0    4315
+  196    f_196.png                     36           0      36
+  197    f_197.png                      0           0       0
+  198    f_198.png                      0           0       0
+  199    f_199.png                   4752        1750    6502
+  200    f_200.png                  31486       29681   61167
+  201    f_201.png                  32458       30347   62805
+  202    f_202.png                  32503       30388   62891
+  203    f_203.png                  32566       30413   62979
+  204    f_204.png                  32557       30400   62957
+  205    f_205.png                  31219       28866   60085
+  206    f_206.png                  30867       28376   59243
+  207    f_207.png                  30865       28376   59241
+  208    f_208.png                  30864       28376   59240
+  209    f_209.png                  30864       28376   59240
+  210    f_210.png                  30863       28377   59240
+  211    f_211.png                  30857       28367   59224
+  212    f_212.png                  30858       28368   59226
+  213    f_213.png                  30859       28366   59225
+  214    f_214.png                  30865       28379   59244
+  215    f_215.png                  30866       28378   59244
+
+Longest consecutive run of upper-half frames with >300 changed pixels (pulse window, lower<40): 16 frames
+  frames 180..195
+Max lower-half (cup) changed pixels before hand-off: 0
+Hand-off (cup/lower half starts changing) first detected at frame: 199
+Full-frame (>30%) change seen at/after hand-off start: True
+
+PASS: True
