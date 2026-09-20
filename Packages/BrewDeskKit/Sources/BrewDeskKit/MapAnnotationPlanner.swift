@@ -148,7 +148,13 @@ public enum MapAnnotationPlanner {
     /// natural fit for "zoom level" style progressions), clamped past
     /// either end.
     private static let sizeStopsByMetersPerPoint: [(mpp: Double, diameter: CGFloat)] = [
-        (7.2, 4), (3.6, 12), (1.8, 17), (0.9, 20),
+        // Supervisor review 2026-09-20: the first cut (7.2→4, 3.6→12) fell
+        // under `numberThreshold` as soon as a real phone's neighborhood
+        // view was slightly wider than 3.6 m/pt (MapKit fits the region to
+        // the screen's aspect), so every café became a dot. Numbered
+        // teardrops now hold through a normal neighborhood view (~5.4 m/pt,
+        // ≈ 2.1 km across) and only then shrink to pin-pricks.
+        (9.0, 4), (5.4, 11.5), (3.6, 12.5), (1.8, 17), (0.9, 20),
     ]
     /// Beyond this many metres/point an unrated speck draws nothing at all
     /// (too zoomed out to mean anything).

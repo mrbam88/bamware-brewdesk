@@ -162,14 +162,15 @@ struct MapAnnotationPlannerTests {
 
     @Test func headDiameterClampsAtBothEndsAndInterpolatesBetweenStops() {
         #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 20) == 4, "zoomed out clamps at the 4pt floor")
-        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 7.2) == 4)
-        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 3.6) == 12)
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 9.0) == 4)
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 5.4) == 11.5, "numbers (>= 11 pt) hold through a normal neighborhood view")
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 3.6) == 12.5)
         #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 1.8) == 17)
         #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 0.9) == 20)
         #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 0.1) == 20, "closer than the closest stop clamps at the 20pt ceiling")
         // Midpoint (on the LOG scale) between two stops lands strictly
         // between their diameters.
-        let midMPP = (7.2 * 3.6).squareRoot()
+        let midMPP = (9.0 * 5.4).squareRoot()
         let mid = MapAnnotationPlanner.headDiameter(forMetersPerPoint: midMPP)
         #expect(mid > 4 && mid < 12)
     }
