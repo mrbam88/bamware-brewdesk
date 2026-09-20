@@ -5,9 +5,14 @@ import Testing
 /// Pure-logic coverage for the cold-launch reveal's stage timing
 /// (bamware-brewdesk#186, polished in #193, redesigned as an additive
 /// signal pulse in #205 after the #193 "draw on" timeline read as broken
-/// on a device) — no view, no simulator, no `Timer`/`Task` involved.
+/// on a device, amplitudes/timing increased in #207 after a real-speed
+/// recording showed the #205 pulses were computed but never actually
+/// presented) — no view, no simulator, no `Timer`/`Task` involved.
 /// `LaunchRevealTimeline.frame(atElapsedMS:)` and friends are plain
-/// functions of a `Double`, so every assertion below is exact and instant.
+/// functions of a `Double` measured from the *presented* start (see
+/// `LaunchRevealView`'s header for what establishes that zero point — not
+/// this type's concern, which only owns "what should it look like at time
+/// t since presentation"), so every assertion below is exact and instant.
 @Suite struct LaunchRevealTimelineTests {
     // MARK: - Frame 0: the whole point of #205
 
@@ -44,7 +49,7 @@ import Testing
         }
     }
 
-    // MARK: - Dot pulse (120ms start, 220ms long, 1→1.18→1, ease-in-out)
+    // MARK: - Dot pulse (120ms start, 220ms long, 1→1.35→1, ease-in-out)
 
     @Test func dotAtRestBeforeItsPulseStarts() {
         let stage = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.dotPulseStart - 1)
@@ -54,7 +59,7 @@ import Testing
     @Test func dotReachesPeakAtPulseMidpoint() {
         let mid = LaunchRevealTimeline.dotPulseStart + LaunchRevealTimeline.dotPulseDuration / 2
         let stage = LaunchRevealTimeline.frame(atElapsedMS: mid)
-        #expect(abs(stage.dotScale - 1.18) < 0.001)
+        #expect(abs(stage.dotScale - 1.35) < 0.001)
     }
 
     @Test func dotSettlesBackToOneAtPulseEnd() {
@@ -74,10 +79,10 @@ import Testing
         for ms in stride(from: LaunchRevealTimeline.dotPulseStart, through: LaunchRevealTimeline.dotPulseStart + LaunchRevealTimeline.dotPulseDuration, by: 2) {
             maxScale = max(maxScale, LaunchRevealTimeline.frame(atElapsedMS: ms).dotScale)
         }
-        #expect(maxScale <= 1.18 + 0.001)
+        #expect(maxScale <= 1.35 + 0.001)
     }
 
-    // MARK: - Arc pulses (200/290/380ms, 260ms each, 1→1.05→1)
+    // MARK: - Arc pulses (200/290/380ms, 300ms each, 1→1.12→1)
 
     @Test func arcsStartInAscendingOrderNinetyMsApart() {
         #expect(LaunchRevealTimeline.arcPulseStarts == LaunchRevealTimeline.arcPulseStarts.sorted())
@@ -98,7 +103,7 @@ import Testing
             let mid = start + LaunchRevealTimeline.arcPulseDuration / 2
             let stage = LaunchRevealTimeline.frame(atElapsedMS: mid)
             let scale = [stage.arc1Scale, stage.arc2Scale, stage.arc3Scale][index]
-            #expect(abs(scale - 1.05) < 0.001, "arc \(index) should peak at \(mid)ms")
+            #expect(abs(scale - 1.12) < 0.001, "arc \(index) should peak at \(mid)ms")
         }
     }
 
@@ -116,7 +121,7 @@ import Testing
         #expect(lastArcEnd <= LaunchRevealTimeline.crossfadeStart)
     }
 
-    // MARK: - Ripple (430ms start, 420ms long, scale 1→1.45, opacity 0.45→0)
+    // MARK: - Ripple 1 (430ms start, 520ms long, scale 1→1.7, opacity 0.6→0)
 
     @Test func rippleInvisibleBeforeItsWindow() {
         let stage = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.rippleStart - 1)
@@ -129,13 +134,13 @@ import Testing
         // arc 3's radius" per the ticket, i.e. no pop-in jump.
         let stage = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.rippleStart)
         #expect(stage.rippleScale == 1)
-        #expect(abs(stage.rippleOpacity - 0.45) < 0.001)
+        #expect(abs(stage.rippleOpacity - 0.6) < 0.001)
     }
 
     @Test func rippleExpandsAndFadesOutOnlyAcrossItsWindow() {
         let end = LaunchRevealTimeline.rippleStart + LaunchRevealTimeline.rippleDuration
         let stage = LaunchRevealTimeline.frame(atElapsedMS: end)
-        #expect(abs(stage.rippleScale - 1.45) < 0.001)
+        #expect(abs(stage.rippleScale - 1.7) < 0.001)
         #expect(stage.rippleOpacity == 0)
     }
 
@@ -155,24 +160,66 @@ import Testing
         #expect(stage.rippleScale == 1)
     }
 
-    /// Unlike the arcs, the ripple's own window (430–850ms) genuinely runs
-    /// past the hand-off's start (760ms) — the ticket's own numbers do
-    /// this. That's fine: the ripple only ever fades further toward 0
-    /// opacity as it goes (never brightens/reappears), so overlapping with
-    /// the overlay's own fade just means it finishes invisible slightly
-    /// earlier than its nominal end, never that something "un-fades."
-    @Test func rippleOverlapsHandoffButOnlyKeepsFadingOut() {
+    // MARK: - Ripple 2 (160ms behind ripple 1, dimmer echo)
+
+    @Test func ripple2StartsOneHundredSixtyMsAfterRipple1() {
+        #expect(LaunchRevealTimeline.ripple2Start == LaunchRevealTimeline.rippleStart + 160)
+    }
+
+    @Test func ripple2StartsDimmerThanRipple1() {
+        let r1 = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.rippleStart)
+        let r2 = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.ripple2Start)
+        #expect(abs(r2.ripple2Opacity - 0.35) < 0.001)
+        #expect(r2.ripple2Opacity < r1.rippleOpacity)
+    }
+
+    @Test func ripple2InvisibleBeforeItsWindow() {
+        let stage = LaunchRevealTimeline.frame(atElapsedMS: LaunchRevealTimeline.ripple2Start - 1)
+        #expect(stage.ripple2Opacity == 0)
+        #expect(stage.ripple2Scale == 1)
+    }
+
+    @Test func ripple2InvisibleAfterItsWindow() {
+        let end = LaunchRevealTimeline.ripple2Start + LaunchRevealTimeline.ripple2Duration
+        let stage = LaunchRevealTimeline.frame(atElapsedMS: end + 50)
+        #expect(stage.ripple2Opacity == 0)
+        #expect(stage.ripple2Scale == 1)
+    }
+
+    /// The two ripples are legitimately mid-flight at the same time — this
+    /// is the only place two elements ever overlap — but each is still
+    /// only ever fading out from its own partial opacity, never brightening.
+    @Test func bothRipplesCanBeMidFlightSimultaneously() {
+        let overlapPoint = LaunchRevealTimeline.ripple2Start + 20
+        #expect(overlapPoint < LaunchRevealTimeline.rippleStart + LaunchRevealTimeline.rippleDuration, "this test documents the overlap — update it if the numbers change")
+        let stage = LaunchRevealTimeline.frame(atElapsedMS: overlapPoint)
+        #expect(stage.rippleOpacity > 0)
+        #expect(stage.ripple2Opacity > 0)
+    }
+
+    /// Unlike the arcs, both ripples' own windows genuinely run past the
+    /// hand-off's start — the ticket's own numbers do this. That's fine:
+    /// each ripple only ever fades further toward 0 opacity as it goes
+    /// (never brightens/reappears), so overlapping with the overlay's own
+    /// fade just means it finishes invisible slightly earlier than its
+    /// nominal end, never that something "un-fades."
+    @Test func ripplesOverlapHandoffButOnlyKeepFadingOut() {
         let rippleEnd = LaunchRevealTimeline.rippleStart + LaunchRevealTimeline.rippleDuration
+        let ripple2End = LaunchRevealTimeline.ripple2Start + LaunchRevealTimeline.ripple2Duration
         #expect(rippleEnd > LaunchRevealTimeline.crossfadeStart, "this test documents the overlap — update it if the numbers change")
-        var previous = Double.infinity
-        for ms in stride(from: LaunchRevealTimeline.crossfadeStart, through: rippleEnd, by: 10) {
-            let opacity = LaunchRevealTimeline.frame(atElapsedMS: ms).rippleOpacity
-            #expect(opacity <= previous + 0.0001)
-            previous = opacity
+        #expect(ripple2End > LaunchRevealTimeline.crossfadeStart, "this test documents the overlap — update it if the numbers change")
+        var previousR1 = Double.infinity
+        var previousR2 = Double.infinity
+        for ms in stride(from: LaunchRevealTimeline.crossfadeStart, through: max(rippleEnd, ripple2End), by: 10) {
+            let stage = LaunchRevealTimeline.frame(atElapsedMS: ms)
+            #expect(stage.rippleOpacity <= previousR1 + 0.0001)
+            #expect(stage.ripple2Opacity <= previousR2 + 0.0001)
+            previousR1 = stage.rippleOpacity
+            previousR2 = stage.ripple2Opacity
         }
     }
 
-    // MARK: - Hand-off (760ms start, 240ms long, fade + scale to 1.06)
+    // MARK: - Hand-off (860ms start, 240ms long, fade + scale to 1.06)
 
     @Test func overlayIsGoneAfterHandoffEnds() {
         let end = LaunchRevealTimeline.crossfadeStart + LaunchRevealTimeline.crossfadeDuration
@@ -199,12 +246,12 @@ import Testing
         }
     }
 
-    @Test func totalRevealIsAboutOneSecond() {
+    @Test func totalRevealIsAboutOnePointOneSeconds() {
         let handoffEnd = LaunchRevealTimeline.crossfadeStart + LaunchRevealTimeline.crossfadeDuration
-        #expect(abs(handoffEnd - 1000) <= 50)
+        #expect(abs(handoffEnd - 1100) <= 50)
     }
 
-    // MARK: - Hard cap (1200ms regardless)
+    // MARK: - Hard cap (1200ms regardless, measured from the presented start)
 
     @Test func overlayIsGoneAtAndBeyondTheHardCap() {
         #expect(LaunchRevealTimeline.overlayOpacity(atElapsedMS: LaunchRevealTimeline.hardCapMS) == 0)
@@ -216,6 +263,8 @@ import Testing
         #expect(LaunchRevealTimeline.hardCapMS >= handoffEnd)
         let rippleEnd = LaunchRevealTimeline.rippleStart + LaunchRevealTimeline.rippleDuration
         #expect(LaunchRevealTimeline.hardCapMS >= rippleEnd)
+        let ripple2End = LaunchRevealTimeline.ripple2Start + LaunchRevealTimeline.ripple2Duration
+        #expect(LaunchRevealTimeline.hardCapMS >= ripple2End)
         for start in LaunchRevealTimeline.arcPulseStarts {
             #expect(LaunchRevealTimeline.hardCapMS >= start + LaunchRevealTimeline.arcPulseDuration)
         }

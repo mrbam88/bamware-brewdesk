@@ -236,6 +236,13 @@ nonisolated public struct BrewDeskMarkStage: Equatable, Sendable {
     /// invisible one.
     public var rippleScale: Double
     public var rippleOpacity: Double
+    /// A second, dimmer echo of the ripple, 160ms behind the first
+    /// (bamware-brewdesk#207 — the first ripple alone read as too subtle
+    /// at the mark's real ~60pt on-screen size). Same shape/center, its
+    /// own independent scale/opacity so the two ripples can be mid-flight
+    /// at different radii at once.
+    public var ripple2Scale: Double
+    public var ripple2Opacity: Double
 
     public init(
         bodyScale: Double,
@@ -244,7 +251,9 @@ nonisolated public struct BrewDeskMarkStage: Equatable, Sendable {
         arc2Scale: Double,
         arc3Scale: Double,
         rippleScale: Double,
-        rippleOpacity: Double
+        rippleOpacity: Double,
+        ripple2Scale: Double,
+        ripple2Opacity: Double
     ) {
         self.bodyScale = bodyScale
         self.dotScale = dotScale
@@ -253,6 +262,8 @@ nonisolated public struct BrewDeskMarkStage: Equatable, Sendable {
         self.arc3Scale = arc3Scale
         self.rippleScale = rippleScale
         self.rippleOpacity = rippleOpacity
+        self.ripple2Scale = ripple2Scale
+        self.ripple2Opacity = ripple2Opacity
     }
 
     /// Fully drawn, resting — matches the static `LaunchMark` asset. The
@@ -261,7 +272,8 @@ nonisolated public struct BrewDeskMarkStage: Equatable, Sendable {
     public static let settled = BrewDeskMarkStage(
         bodyScale: 1, dotScale: 1,
         arc1Scale: 1, arc2Scale: 1, arc3Scale: 1,
-        rippleScale: 1, rippleOpacity: 0
+        rippleScale: 1, rippleOpacity: 0,
+        ripple2Scale: 1, ripple2Opacity: 0
     )
 }
 
@@ -348,7 +360,10 @@ private struct MarkFace: View {
             // stage (`rippleOpacity == 0`) never pays for an invisible
             // extra shape.
             if stage.rippleOpacity > 0 {
-                ripple
+                ripple(scale: stage.rippleScale, opacity: stage.rippleOpacity)
+            }
+            if stage.ripple2Opacity > 0 {
+                ripple(scale: stage.ripple2Scale, opacity: stage.ripple2Opacity)
             }
 
             arc(index: 0, scale: stage.arc1Scale)
@@ -384,15 +399,18 @@ private struct MarkFace: View {
             .scaleEffect(scale, anchor: Self.fanAnchor)
     }
 
-    /// The ripple: the outermost arc's own shape (`index: 2`, the widest
-    /// radius), scaled up and faded from `stage.rippleOpacity`. It shares
-    /// the arcs' geometry and center on purpose — "one more arc, briefly,
-    /// further out" is the whole visual idea — but is never counted as one
-    /// of the three real arcs and never touches the cup.
-    private var ripple: some View {
+    /// A ripple instance: the outermost arc's own shape (`index: 2`, the
+    /// widest radius), scaled up and faded from the given `scale`/
+    /// `opacity`. Shared by both ripples (bamware-brewdesk#207 added a
+    /// second, dimmer echo) since they're the same shape at different
+    /// points in the same expand-and-fade motion. Shares the arcs'
+    /// geometry and center on purpose — "one more arc, briefly, further
+    /// out" is the whole visual idea — but is never counted as one of the
+    /// three real arcs and never touches the cup.
+    private func ripple(scale: Double, opacity: Double) -> some View {
         BrewDeskMarkArc(index: 2)
-            .stroke(tint.opacity(stage.rippleOpacity), style: StrokeStyle(lineWidth: BrewDeskMarkGeometry.resolved(BrewDeskMarkGeometry.arcLineWidth), lineCap: .butt))
-            .scaleEffect(stage.rippleScale, anchor: Self.fanAnchor)
+            .stroke(tint.opacity(opacity), style: StrokeStyle(lineWidth: BrewDeskMarkGeometry.resolved(BrewDeskMarkGeometry.arcLineWidth), lineCap: .butt))
+            .scaleEffect(scale, anchor: Self.fanAnchor)
     }
 }
 
