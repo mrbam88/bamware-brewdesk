@@ -66,8 +66,20 @@ struct ScoreBadge: View {
         }
         .font(BrewDeskFont.label(.subheadline))
         .foregroundStyle(BrewDeskPalette.clusterSurfaceText)
+        // brewdesk#170: the audit flagged this Text as at risk of clipping.
+        // JetBrainsMono-Regular's own line-height metrics run taller than
+        // the 6pt vertical padding this badge used, and a Capsule sized
+        // purely from the Text's ambient (not ideal) layout size can end up
+        // fractionally short of the glyphs' real bounding box — the same
+        // "no room to breathe" shape the shelf card's score tile already
+        // hit once before (bd#209's neutral-tile rewrite, doc'd on
+        // `DiscoveryShelfCard.venueCard`). `.fixedSize()` forces the Text to
+        // report and lay out at its true ideal size rather than a
+        // compressed ambient proposal, and the extra 2pt of vertical
+        // padding gives the custom face's taller metrics headroom.
+        .fixedSize()
         .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
         .background(BrewDeskPalette.surfaceSecondary, in: Capsule())
         .overlay(
             Capsule().stroke(

@@ -40,12 +40,36 @@ final class BusinessInfoUITests: XCTestCase {
 
     // brewdesk#117: detail now opens from the Spots tab's map/shelf (a
     // sheet), not a Nearby-list push — Nearby no longer exists.
+    //
+    // brewdesk#170: for a venue that isn't first/nearest (here, "Fixture
+    // Corner Cafe" and "Fixture Reading Room" — second/third of the three
+    // fixtures), plain `mapPin(named:)` had nothing on-screen to return:
+    // this scenario's map annotations carry no `map-marker`/
+    // `map-selected-marker` AX element at the default camera position
+    // (verified from a failing run's UI-hierarchy dump — no such identifier
+    // exists anywhere in the tree, not a stale-frame race), so the helper's
+    // documented fallback (`matches.firstMatch`) correctly, honestly
+    // returns the only real match: the discovery shelf's horizontally-
+    // scrolled-off-screen rail card. Tapping that fails with "Activation
+    // point invalid", and a raw `shelf.swipeLeft()` proved unreliable in
+    // practice (one swipe overshot Reading Room clean off the OTHER edge,
+    // x=-357 — the rail appears to snap/decelerate past a single gesture
+    // rather than settling predictably). Typing the venue's name into
+    // Search is the reliable alternative already proven by `SearchUITests`
+    // (debounce-narrows-while-typing, no `Return`/server round trip, so
+    // this doesn't touch the citywide-search codepath under repair
+    // elsewhere): it narrows to exactly one match, which is always the
+    // first/only — and therefore on-screen — card.
     @MainActor
     private func openDetail(_ app: XCUIApplication, venueName: String) {
         XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
         app.spotsTab.tap()
+        let search = app.textFields["Search spots"]
+        XCTAssertTrue(search.waitForExistence(timeout: wait))
+        search.tap()
+        search.typeText(venueName)
         let pin = app.mapPin(named: venueName)
-        XCTAssertTrue(pin.waitForExistence(timeout: wait))
+        XCTAssertTrue(pin.waitForExistence(timeout: wait), "\(venueName) did not narrow into view")
         pin.tap()
         XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
     }

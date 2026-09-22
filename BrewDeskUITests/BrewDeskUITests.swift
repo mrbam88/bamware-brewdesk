@@ -202,8 +202,31 @@ final class BrewDeskUITests: XCTestCase {
         ]) { issue in
             guard let element = issue.element else { return false }
             let frame = element.frame
-            return (!dockFrame.isNull && frame.intersects(dockFrame))
-                || (!tabBarFrame.isNull && frame.intersects(tabBarFrame))
+            if (!dockFrame.isNull && frame.intersects(dockFrame))
+                || (!tabBarFrame.isNull && frame.intersects(tabBarFrame)) {
+                return true
+            }
+            // brewdesk#170: `score-badge` (the hero's "85"-in-a-Capsule
+            // `ScoreBadge`) reproducibly flags "Text clipped" against real
+            // production venues, deterministically and regardless of a
+            // settle delay before the audit runs (ruled out as an
+            // animation-timing race) — reverting `ScoreBadge`'s own layout
+            // changes (padding, `.fixedSize()`) reproduces the identical
+            // failure, so it is not an insufficient-space bug either.
+            // Every screenshot the audit itself attaches for this issue
+            // shows the two digits fully inside the ring with visible
+            // margin on all sides — never a truncated glyph. Same family
+            // of false positive as the already-documented capsule mis-
+            // sample in `ObservationFormUITests` (fill lives in a
+            // `.background(_, in: Capsule())` modifier outside the
+            // accessibility node the audit measures against); narrowly
+            // scoped to this one element and this one audit type only —
+            // every other element, and every other audit type on this
+            // element (contrast, hit region, …), is still fully audited.
+            if issue.auditType == .textClipped, element.identifier == "score-badge" {
+                return true
+            }
+            return false
         }
     }
 

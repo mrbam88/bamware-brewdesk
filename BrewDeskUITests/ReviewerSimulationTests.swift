@@ -56,16 +56,19 @@ final class ReviewerSimulationTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Start where you are."].waitForExistence(timeout: 2))
         capture("03-location-intro")
         app.buttons["Use Union Square instead"].tap()
-        // UI3 (#118) folded DatasetStatStrip's "100 work spots" text into
-        // the single map-count-line ("N of M spots"); "100" was only the
-        // fixed fallback-dataset size, and brewdesk#37 says never assert an
-        // exact live count, so match the identifier's shape instead of any
-        // string. The identifier is on the row, not a combined accessibility
-        // element, so it attaches to both texts in the row ("N of M spots"
-        // and the sibling "Scores show Work Fit") — narrow to the one whose
-        // label actually names a spot count.
+        // brewdesk#212/#213 replaced DatasetStatStrip's "100 work spots" text
+        // with "N rated · M cafés" (folded into map-count-line by #118); "100"
+        // was only the fixed fallback-dataset size, and brewdesk#37 says never
+        // assert an exact live count, so match the identifier's shape instead
+        // of any literal string — issue #170 (the old "CONTAINS 'spot'"
+        // predicate never matched the current wording, which contains no
+        // "spot" substring at all). The identifier is on the row, not a
+        // combined accessibility element, so it attaches to both texts in the
+        // row ("N rated · M cafés" and the sibling "Numbers are Work Fit") —
+        // narrow to the one whose label actually names a count.
         let unionSquareCountLine = app.staticTexts.matching(NSPredicate(
-            format: "identifier == %@ AND label CONTAINS %@", "map-count-line", "spot"
+            format: "identifier == %@ AND label MATCHES %@",
+            "map-count-line", "^[0-9,]+ rated · [0-9,]+ cafés$"
         )).firstMatch
         XCTAssertTrue(unionSquareCountLine.waitForExistence(timeout: 15),
                       "Map did not load the Union Square dataset without location")
@@ -92,13 +95,14 @@ final class ReviewerSimulationTests: XCTestCase {
         search.tap()
         search.typeText("Housing Works")
         app.keyboards.buttons["Search"].tap()
-        // Same UI3 drift as the Union Square step: DatasetStatStrip's plural-
-        // aware "1 work spot" text is gone, folded into map-count-line's
-        // "N of M spots" line. Assert the identifier's shape plus the
+        // Same UI3 drift as the Union Square step (#170): DatasetStatStrip's
+        // plural-aware "1 work spot" text is gone, folded into map-count-line's
+        // "N rated · M cafés" line. Assert the identifier's shape plus the
         // narrowed-to-one outcome (a search result, not a live dataset size,
         // so asserting "1" here doesn't break the brewdesk#37 rule).
         let searchCountLine = app.staticTexts.matching(NSPredicate(
-            format: "identifier == %@ AND label CONTAINS %@", "map-count-line", "spot"
+            format: "identifier == %@ AND label MATCHES %@",
+            "map-count-line", "^[0-9,]+ rated · [0-9,]+ cafés$"
         )).firstMatch
         XCTAssertTrue(searchCountLine.waitForExistence(timeout: 15),
                       "Search for Housing Works did not narrow the map (map-count-line missing)")
@@ -180,13 +184,13 @@ final class ReviewerSimulationTests: XCTestCase {
                       "Relaunch replayed onboarding instead of restoring discovery")
         XCTAssertFalse(app.buttons["Continue"].exists)
         // Count is viewport-dependent since bd#108 (relaunch restores the
-        // last real viewport, e.g. Cupertino's 30, not NYC's 100). Same UI3
-        // drift as above: once `model.health` has loaded (it has, well
-        // before this point in the run), the line reads "N of M spots", not
-        // "N work spots" — matching "work spot" alone no longer finds it, so
-        // key off the map-count-line identifier instead.
+        // last real viewport, e.g. Cupertino's 30, not NYC's 100). Same #170
+        // drift as above: the line reads "N rated · M cafés" (bd#212/#213),
+        // not "N work spots" — matching "work spot"/"spot" no longer finds
+        // it, so key off the map-count-line identifier's current shape.
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(
-            format: "identifier == %@ AND label CONTAINS %@", "map-count-line", "spot"
+            format: "identifier == %@ AND label MATCHES %@",
+            "map-count-line", "^[0-9,]+ rated · [0-9,]+ cafés$"
         )).firstMatch.waitForExistence(timeout: 15),
                       "Relaunch did not restore the venue-count header")
         capture("10-relaunch-restored")
