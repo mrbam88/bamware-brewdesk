@@ -380,6 +380,12 @@ public struct VenueDetailScreen: View {
                 )
             }
         }
+        // brewdesk#216: lets a UI test scope a contrast audit (or anything
+        // else) to just this card's frame, rather than the whole detail
+        // screen — the screen carries other, unrelated pre-existing
+        // low-contrast elements (e.g. the header's neighborhood line) that
+        // have nothing to do with the Workability card this ticket touches.
+        .accessibilityIdentifier("workability-card")
     }
 
     /// The Workability card's single provenance stamp (brewdesk#119): the
@@ -542,6 +548,11 @@ public struct VenueDetailScreen: View {
         }
     }
 
+    /// brewdesk#216 audit: "Closed now" used to fill `berry` (red) against
+    /// "Open now"'s `moss` (green) — a literal red/green pair, even though
+    /// the word itself already disambiguates. Swapped to `espresso` (neutral
+    /// ink, same static-fill-behind-fixed-white-text shape as every other
+    /// brand fill here) so the state never reads through color alone.
     private func openNowBadge(_ hours: OpeningHours) -> some View {
         let isOpen = hours.isOpen(at: referenceNow)
         return Text(isOpen ? "Open now" : "Closed now")
@@ -550,7 +561,7 @@ public struct VenueDetailScreen: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
             .background(
-                Capsule().fill(isOpen ? BrewDeskPalette.moss : BrewDeskPalette.berry)
+                Capsule().fill(isOpen ? BrewDeskPalette.moss : BrewDeskPalette.espresso)
             )
             .accessibilityIdentifier("hours-open-badge")
     }
@@ -705,9 +716,16 @@ public struct VenueDetailScreen: View {
                     .font(.headline)
                     .foregroundStyle(theme.primaryColor)
                 if let subtitle {
+                    // brewdesk#216: system `.secondary` measured "nearly
+                    // passed" on the audit for an all-estimate fixture's
+                    // stamp text ("Unverified estimate · 30% confidence · …")
+                    // — swapped to the contrast-verified `secondaryText`
+                    // token (6.62:1 light / 9.29:1 dark on `surface`, well
+                    // past the ≥3:1 caption bar) rather than trusting the
+                    // system semantic color at this small a caption size.
                     Text(subtitle)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(BrewDeskPalette.secondaryText)
                         .accessibilityIdentifier("workability-provenance-stamp")
                 }
             }
