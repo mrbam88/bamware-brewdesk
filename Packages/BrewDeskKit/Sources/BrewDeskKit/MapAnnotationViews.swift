@@ -151,15 +151,27 @@ struct TeardropMarkerView: View, Equatable {
 
     /// bd#221 "names on": the café name beside this pin's head — a real
     /// `HStack` sibling (see `body`'s doc comment for why), fixed at
-    /// `labelMaxWidth` × the pin's own `frameHeight` so `annotationAnchor
-    /// (for:)` can compute a stable fraction and the pin's own bottom edge
-    /// (its tip) stays exactly where `HStack(alignment: .bottom)` puts it
-    /// regardless of the label's actual text height. The text itself hugs
-    /// the near edge (against the gap) and grows away from the head,
-    /// vertically re-centered onto the HEAD (not the frame) with the same
-    /// `numberVerticalOffset` geometry the score number uses. Not hit-
-    /// testable and hidden from accessibility — `markerButton`'s own
-    /// `.accessibilityLabel` already carries the café name for VoiceOver.
+    /// `labelSlotWidth` (the 4pt gap PLUS `labelMaxWidth`, matching what
+    /// `MapAnnotationPlanner.placeNameLabels` reserves) × the pin's own
+    /// `frameHeight`, so `annotationAnchor(for:)` can compute a stable
+    /// fraction and the pin's own bottom edge (its tip) stays exactly
+    /// where `HStack(alignment: .bottom)` puts it regardless of the
+    /// label's actual text height.
+    ///
+    /// Supervisor review (bd#221 round 2 — "the name touches the pin
+    /// head"): the first cut gave the label the SAME `labelMaxWidth`-wide
+    /// slot the pin itself is adjacent to, with `spacing: 0` on the
+    /// enclosing `HStack` — nothing in that layout ever reserved the
+    /// planner's own 4pt gap, so the text rendered flush against the
+    /// pin's edge. The gap is now real layout space (`.padding`), not a
+    /// value that only existed in the planner's collision math.
+    ///
+    /// The text itself hugs the FAR edge of the gap and grows away from
+    /// the head, vertically re-centered onto the HEAD (not the frame)
+    /// with the same `numberVerticalOffset` geometry the score number
+    /// uses. Not hit-testable and hidden from accessibility —
+    /// `markerButton`'s own `.accessibilityLabel` already carries the
+    /// café name for VoiceOver.
     private func labelSlot(side: NameLabelSide) -> some View {
         HaloText(
             text: placement.venue.name,
@@ -168,14 +180,22 @@ struct TeardropMarkerView: View, Equatable {
         )
         .lineLimit(1)
         .truncationMode(.tail)
+        .padding(side == .trailing ? .leading : .trailing, MapAnnotationPlanner.labelGap)
         .frame(
-            width: MapAnnotationPlanner.labelMaxWidth, height: frameHeight,
+            width: Self.labelSlotWidth, height: frameHeight,
             alignment: side == .trailing ? .leading : .trailing
         )
         .offset(y: numberVerticalOffset)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
+
+    /// Total reserved width for a label slot — the 4pt gap plus the max
+    /// text width — kept in one place so the view (here) and the
+    /// planner's own collision/anchor math (`MapAnnotationPlanner
+    /// .placeNameLabels`) can never drift apart the way the missing-gap
+    /// bug above did.
+    static let labelSlotWidth = MapAnnotationPlanner.labelGap + MapAnnotationPlanner.labelMaxWidth
 
     /// The `Annotation` anchor this placement needs — see `body`'s doc
     /// comment. `.bottom` (the pin's own tip, centered) when there's no
@@ -186,7 +206,7 @@ struct TeardropMarkerView: View, Equatable {
     static func annotationAnchor(for placement: MarkerPlacement) -> UnitPoint {
         guard let side = placement.nameLabelSide else { return .bottom }
         let diameter = placement.kind.teardropDiameter ?? MapAnnotationPlanner.selectedDiameter
-        let labelWidth = MapAnnotationPlanner.labelMaxWidth
+        let labelWidth = labelSlotWidth
         let totalWidth = diameter + labelWidth
         let pinCenterX = side == .trailing ? diameter / 2 : labelWidth + diameter / 2
         return UnitPoint(x: pinCenterX / totalWidth, y: 1)
@@ -317,31 +337,34 @@ enum MarkerBodyImageCache {
 }
 
 /// bd#221 "names on": a haloed text label — the design-review mock's own
-/// multi-direction `text-shadow` halo (no solid background pill, so a
-/// label reads over any basemap detail without ever looking like its own
-/// chrome element). Eight halo copies offset a hair in every direction
-/// behind one solid-color copy on top — cheap (all `Text`, no `Canvas`/
-/// blur filter) and correct in both appearances since both colors are
-/// already adaptive `BrewDeskPalette` tokens.
+/// `text-shadow` halo (no solid background pill, so a label reads over any
+/// basemap detail without ever looking like its own chrome element).
+///
+/// Supervisor review (bd#221 round 2 — "the dark map's hood screenshot
+/// shows label halos as a visible dark box around text; use a soft 2-3pt
+/// blurred shadow, not a filled rect"): the first cut stacked EIGHT
+/// ±1pt-offset opaque copies of the text behind the real one — at this
+/// tiny 11pt size those copies overlapped densely enough to read as one
+/// solid rounded rectangle, not a halo. A real SwiftUI `.shadow(radius:)`
+/// (a true Gaussian blur, applied twice to push it closer to the mock's
+/// own multi-layer CSS `text-shadow`) reads as the intended soft glow —
+/// cheaper too: two shadow passes on one `Text`, not nine laid-out copies.
 private struct HaloText: View {
     let text: String
     let color: Color
     let halo: Color
 
-    private static let haloOffsets: [(CGFloat, CGFloat)] = [
-        (-1, -1), (0, -1), (1, -1),
-        (-1, 0), (1, 0),
-        (-1, 1), (0, 1), (1, 1),
-    ]
+    /// Only crosses out of the fixed 11pt at a genuine ACCESSIBILITY text
+    /// size (not every step of Dynamic Type) — see `BrewDeskFont
+    /// .markerLabel(accessibilityBump:)`'s doc comment.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        ZStack {
-            ForEach(Array(Self.haloOffsets.enumerated()), id: \.offset) { _, o in
-                Text(verbatim: text).foregroundStyle(halo).offset(x: o.0, y: o.1)
-            }
-            Text(verbatim: text).foregroundStyle(color)
-        }
-        .font(BrewDeskFont.markerLabel())
+        Text(verbatim: text)
+            .font(BrewDeskFont.markerLabel(accessibilityBump: dynamicTypeSize.isAccessibilitySize))
+            .foregroundStyle(color)
+            .shadow(color: halo, radius: 2)
+            .shadow(color: halo, radius: 2)
     }
 }
 

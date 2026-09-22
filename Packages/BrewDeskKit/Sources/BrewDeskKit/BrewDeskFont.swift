@@ -55,14 +55,33 @@ public enum BrewDeskFont {
     }
 
     /// bd#221 "names on": the café-name label drawn beside a top pin's
-    /// head — fixed 11pt Semibold Hanken Grotesk (Apple POI label style),
-    /// deliberately NOT Dynamic-Type-scaled for the same reason
-    /// `markerNumber` isn't: it has to fit the collision-checked screen-
-    /// space box the planner already reserved for it.
-    public static func markerLabel() -> Font {
-        hankenGroteskLoaded
-            ? .custom("HankenGrotesk-Regular", fixedSize: 11).weight(.semibold)
-            : .system(size: 11, weight: .semibold, design: .default)
+    /// head — fixed 11pt Semibold (Apple POI label style), deliberately
+    /// NOT Dynamic-Type-scaled for the same reason `markerNumber` isn't:
+    /// it has to fit the collision-checked screen-space box the planner
+    /// already reserved for it.
+    ///
+    /// Supervisor review (bd#221 round 2 — "renders far larger than the
+    /// reference, ≈15-16pt vs the specified 11pt"): the first cut chained
+    /// `.custom("HankenGrotesk-Regular", fixedSize: 11).weight(.semibold)`
+    /// — `markerNumber` above uses the identical pattern at a genuinely
+    /// fixed size, so the bug wasn't Dynamic Type scaling the FONT; it was
+    /// this call asking a custom face registered under the PostScript name
+    /// "…-Regular" to synthesize a heavier weight it doesn't have. Unlike
+    /// `markerNumber` (always `.weight(.regular)`, the face's own real
+    /// weight, no synthesis needed), that produced an oversized/malformed
+    /// glyph run instead of a clean bold. `.system(size:weight:)` is a
+    /// real multi-weight family — semibold synthesis just works there —
+    /// so the label now uses the system face outright at a true fixed
+    /// 11pt, per the supervisor's own fix.
+    ///
+    /// `accessibilityBump`: this still isn't FULLY Dynamic-Type-deaf —
+    /// once the reader's text size crosses into an actual accessibility
+    /// category (`DynamicTypeSize.isAccessibilitySize`), the label bumps
+    /// to a capped 13pt rather than staying frozen at 11pt forever; below
+    /// that threshold (every normal, non-accessibility setting) it's
+    /// exactly 11pt, matching the spec and the reference.
+    public static func markerLabel(accessibilityBump: Bool = false) -> Font {
+        .system(size: accessibilityBump ? 13 : 11, weight: .semibold, design: .default)
     }
 
     /// Whether each bundled family actually registered — read by

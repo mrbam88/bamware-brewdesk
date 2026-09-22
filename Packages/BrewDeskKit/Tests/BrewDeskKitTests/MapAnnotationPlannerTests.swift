@@ -348,6 +348,40 @@ struct MapAnnotationPlannerTests {
         #expect(streetPlan.markers.first { $0.id == best.id }?.nameLabelSide != nil, "the best-scored venue must win a label when there's room for one")
     }
 
+    @Test func nameLabelsNeverOverlapAPinsTrueVisualHeadNotJustItsTipCenteredFootprint() {
+        // Regression (bd#221 round 2 supervisor review, screenshot
+        // evidence): `teardropFootprint`'s own collision box is centered
+        // on a pin's TIP, which sits `diameter · headCenterFromTip` BELOW
+        // its true circular head — a label that clears that footprint
+        // alone can still visually run through the upper part of a
+        // neighbour's actual head (a "52" pin drew straight through the
+        // middle of "Joe Coffee Company"'s label in the live screenshot).
+        // Dense enough that tight spacing between a labeled pin and its
+        // neighbours is reliably exercised.
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width)
+        let venues = grid(count: 80, extent: 0.012, observed: true)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize)
+        let mpp = MapAnnotationPlanner.metersPerPoint(region: testRegion, mapWidth: mapSize.width)
+        let diameter = MapAnnotationPlanner.headDiameter(forMetersPerPoint: mpp)
+        let projector = ScreenProjector(region: testRegion, size: mapSize)
+
+        func trueHeadRect(for placement: MarkerPlacement) -> CGRect {
+            let point = projector.point(for: coordinate(of: placement.venue))
+            let center = CGPoint(x: point.x, y: point.y - diameter * MapAnnotationPlanner.headCenterFromTip)
+            let radius = diameter / 2
+            return CGRect(x: center.x - radius, y: center.y - radius, width: diameter, height: diameter)
+        }
+
+        let labelBoxes = plan.markers.compactMap { labelBox(for: $0, region: testRegion, mapSize: mapSize, diameter: diameter) }
+        let headRects = plan.teardrops.map(trueHeadRect(for:))
+
+        for label in labelBoxes {
+            for head in headRects {
+                #expect(!label.intersects(head), "a name label overlaps a pin's true visual head circle, not just its tip-centered footprint")
+            }
+        }
+    }
+
     @Test func nameLabelsNeverOverlapAnyPinFootprintOrAnotherLabel() {
         let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width)
         let venues = grid(count: 60, extent: 0.01, observed: true)
