@@ -1,6 +1,9 @@
-• Every café card now shows when its data was last updated, and from what source
-• "How Work Fit is scored" — the full methodology, inside the app
-• Laptop-policy warnings shown openly (time limits, weekend rules, discouraged)
-• New seating filter
-• Import your saved places from Google Maps (on-device, nothing uploaded)
-• Outside NYC? The full dataset now shows instead of an empty map
+• Sign in with Apple or Google — your saved spots now sync across devices
+• Thousands more cafés across Manhattan and Brooklyn, with closed places removed
+• Search anywhere in NYC: pick a result and the map flies straight to it
+• Recent searches, right under the search field
+• A cleaner map: small score pins that scale as you zoom, names beside the best spots
+• "Search this area" when you pan somewhere new
+• Filters now show confirmed matches first and say when details are unknown
+• Unrated cafés say "Not rated yet" instead of showing a made-up score
+• Faster sign-in, a new launch animation, and dozens of smaller fixes
