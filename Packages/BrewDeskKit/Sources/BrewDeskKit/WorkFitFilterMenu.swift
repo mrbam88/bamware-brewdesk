@@ -197,16 +197,26 @@ struct WorkFitFilterMenu: View {
         .accessibilityIdentifier("filter-score-legend")
     }
 
+    /// Number + word lead (bd#211/#216: `clay`, the current "weak" fill,
+    /// still reads as warm/red-adjacent to ordinary vision even though a
+    /// colorblind simulation cleared it of green-confusion risk) — the dot
+    /// moved from leading to trailing and shrank so it reads as a
+    /// redundant, secondary accent rather than the row's primary
+    /// differentiator. `.accessibilityHidden` since the range + word
+    /// already say everything the dot does; VoiceOver would otherwise
+    /// announce the color twice.
     private func legendRow(tier: ScoreTier, range: String, label: LocalizedStringKey) -> some View {
         HStack(spacing: 8) {
-            Circle()
-                .fill(tier.color)
-                .frame(width: 10, height: 10)
             Text(range)
                 .font(BrewDeskFont.label(.caption2))
                 .foregroundStyle(.secondary)
             Text(label)
                 .font(.caption)
+            Spacer(minLength: 0)
+            Circle()
+                .fill(tier.color)
+                .frame(width: 8, height: 8)
+                .accessibilityHidden(true)
         }
     }
 

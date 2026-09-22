@@ -56,24 +56,32 @@ let captions: [String: [CaptureLocale: Captions]] = [
             evidence: "FUENTE  /  CONFIANZA  /  OBSERVADO"
         ),
     ],
+    // Supervisor revision (PR #237): replaces the filter-popover shot with
+    // the actual filtered RESULT — confirmed matches vs. an honestly
+    // unresolved "might match" bucket — real production data, not a
+    // scenario fixture.
     "02": [
         .en: Captions(
-            headline: "Filter for the way you actually work.",
-            evidence: "LAPTOPS  /  WI-FI  /  OUTLETS"
+            headline: "Filters that admit what they don't know.",
+            evidence: "CONFIRMED  /  MIGHT MATCH · UNKNOWN"
         ),
         .es: Captions(
-            headline: "Filtra según tu forma real de trabajar.",
-            evidence: "PORTÁTILES  /  WI-FI  /  ENCHUFES"
+            headline: "Filtros que admiten lo que no saben.",
+            evidence: "CONFIRMADO  /  PODRÍA COINCIDIR · DESCONOCIDO"
         ),
     ],
+    // Caption intentionally carries no specific venue count (fix #5): this
+    // shot is a granted-location neighborhood view, not the full NYC
+    // dataset, so a citywide number on screen would be unbacked by what's
+    // actually rendered.
     "03": [
         .en: Captions(
             headline: "A Work Fit map for where you work.",
-            evidence: "2,700+ WORK SPOTS  /  TRANSPARENT SCORES"
+            evidence: "REAL SPOTS NEARBY  /  TRANSPARENT SCORES"
         ),
         .es: Captions(
             headline: "Un mapa Work Fit para donde trabajas.",
-            evidence: "2.700+ LUGARES PARA TRABAJAR  /  PUNTUACIONES TRANSPARENTES"
+            evidence: "LUGARES REALES CERCA  /  PUNTUACIONES TRANSPARENTES"
         ),
     ],
     "04": [
@@ -88,15 +96,35 @@ let captions: [String: [CaptureLocale: Captions]] = [
     ],
     "05": [
         .en: Captions(
-            headline: "Location is useful. Never required.",
-            evidence: "YOUR CHOICE  /  NO LOCATION HISTORY"
+            headline: "Search finds real spots, fast.",
+            evidence: "TYPE TO SEARCH  /  ALL OF NYC"
         ),
         .es: Captions(
-            headline: "La ubicación es útil. Nunca obligatoria.",
-            evidence: "TÚ DECIDES  /  SIN HISTORIAL DE UBICACIÓN"
+            headline: "La búsqueda encuentra lugares reales, rápido.",
+            evidence: "ESCRIBE PARA BUSCAR  /  TODO NYC"
         ),
     ],
     "06": [
+        .en: Captions(
+            headline: "Pick up where you left off.",
+            evidence: "RECENT SEARCHES  /  ONE TAP BACK"
+        ),
+        .es: Captions(
+            headline: "Retoma donde lo dejaste.",
+            evidence: "BÚSQUEDAS RECIENTES  /  UN TOQUE PARA VOLVER"
+        ),
+    ],
+    "07": [
+        .en: Captions(
+            headline: "Haven't checked one yet? We say so.",
+            evidence: "NOT RATED YET  /  BEEN HERE? RATE IT."
+        ),
+        .es: Captions(
+            headline: "¿Aún no lo revisamos? Te lo decimos.",
+            evidence: "SIN CALIFICAR AÚN  /  ¿ESTUVISTE AQUÍ? CALIFÍCALO."
+        ),
+    ],
+    "08": [
         .en: Captions(
             headline: "Sign in if you want to. Never to browse.",
             evidence: "APPLE  /  GOOGLE  /  EMAIL"
@@ -106,7 +134,7 @@ let captions: [String: [CaptureLocale: Captions]] = [
             evidence: "APPLE  /  GOOGLE  /  CORREO"
         ),
     ],
-    "07": [
+    "09": [
         .en: Captions(
             headline: "Save the spots you'll actually return to.",
             evidence: "LOCAL ONLY OR SYNCED  /  YOUR CHOICE"
@@ -149,8 +177,8 @@ let slides = [
         accent: clay
     ),
     Slide(
-        input: "02-work-filters.png",
-        output: "02_filters_for_work.png",
+        input: "02-honest-filters.png",
+        output: "02_honest_filters.png",
         index: "02",
         headline: caption("02").headline,
         evidence: caption("02").evidence,
@@ -179,8 +207,8 @@ let slides = [
         accent: clay
     ),
     Slide(
-        input: "05-location-is-optional.png",
-        output: "05_location_is_optional.png",
+        input: "05-search-results.png",
+        output: "05_search_the_city.png",
         index: "05",
         headline: caption("05").headline,
         evidence: caption("05").evidence,
@@ -189,21 +217,41 @@ let slides = [
         accent: moss
     ),
     Slide(
-        input: "06-sign-in.png",
-        output: "06_sign_in_optional.png",
+        input: "06-recent-searches.png",
+        output: "06_recent_searches.png",
         index: "06",
         headline: caption("06").headline,
         evidence: caption("06").evidence,
+        background: oat,
+        foreground: espresso,
+        accent: clay
+    ),
+    Slide(
+        input: "07-not-rated-yet.png",
+        output: "07_not_rated_yet.png",
+        index: "07",
+        headline: caption("07").headline,
+        evidence: caption("07").evidence,
+        background: espresso,
+        foreground: foam,
+        accent: clay
+    ),
+    Slide(
+        input: "08-sign-in.png",
+        output: "08_sign_in_optional.png",
+        index: "08",
+        headline: caption("08").headline,
+        evidence: caption("08").evidence,
         background: espresso,
         foreground: foam,
         accent: moss
     ),
     Slide(
-        input: "07-saved-spot.png",
-        output: "07_save_your_spots.png",
-        index: "07",
-        headline: caption("07").headline,
-        evidence: caption("07").evidence,
+        input: "09-saved-spot.png",
+        output: "09_save_your_spots.png",
+        index: "09",
+        headline: caption("09").headline,
+        evidence: caption("09").evidence,
         background: oat,
         foreground: espresso,
         accent: clay
