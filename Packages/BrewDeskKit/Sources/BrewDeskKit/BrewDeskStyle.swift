@@ -220,8 +220,25 @@ public enum BrewDeskPalette {
     /// ramp. Still a single hue, still strictly monotonic lightness
     /// (`MarkerPaletteTests.darkMapMarkerFillIsBrightestForTheBestScore`)
     /// — a bad score just never gets as dim as it used to.
+    ///
+    /// bd#227 (TestFlight build 29 feedback — "in dark mode we have to
+    /// change the color, it's not bright enough, hard to see"): Bilal still
+    /// found the mock's own values (`#74C9A3/#86D9B3/#9BE8C4/#B4F5D6`, this
+    /// ramp's PREVIOUS values, byte-identical to the approved reference)
+    /// hard to see on-device, so this shifts one step BRIGHTER than the
+    /// mock rather than matching it — his own explicit ask, not a defect
+    /// in the reference. The actual on-device dimness (a muted, muddy sage
+    /// rather than either ramp) was a SEPARATE bug: `MarkerBodyImageCache
+    /// .image(...)` never set `ImageRenderer.traitCollection`, so this
+    /// package's `adaptive(light:dark:)` colors — built from a raw dynamic
+    /// `UIColor` closure keyed on `traits.userInterfaceStyle`, not on
+    /// SwiftUI's `\.colorScheme` environment (see `adaptive`'s own doc
+    /// comment for why a raw UIColor provider was required) — resolved
+    /// against whatever trait collection the OFFSCREEN renderer happened to
+    /// have (unset, effectively undefined/light), not the `isDark` the
+    /// cache was asked to render. Fixed alongside this ramp change.
     private static let markerFillDarkMap: [Color] = [
-        hex("#74C9A3"), hex("#86D9B3"), hex("#9BE8C4"), hex("#B4F5D6"),
+        hex("#86D6B0"), hex("#98E4C0"), hex("#ADF0D0"), hex("#C7F8E0"),
     ]
     private static let markerFillLightMap: [Color] = [
         hex("#3D8069"), hex("#3D8069"), hex("#2C6B58"), hex("#1C5243"),
@@ -315,6 +332,55 @@ public enum BrewDeskPalette {
     public static func markerGradientBottom(score: Int) -> Color {
         let index = markerTierIndex(score: score)
         return adaptive(light: markerGradientBottomLightMap[index], dark: markerGradientBottomDarkMap[index])
+    }
+
+    // MARK: - bd#227: non-adaptive accessors for the OFFSCREEN raster cache
+    //
+    // `ImageRenderer` (`MarkerBodyImageCache`) has no public API to force a
+    // specific trait collection on the content it rasterizes. Every color
+    // above is built by `adaptive(light:dark:)` from a RAW dynamic
+    // `UIColor { traits in … }` provider (see that function's own doc
+    // comment for why a plain SwiftUI `Color(light:dark:)` isn't used
+    // instead) — resolving one of these depends on the TRAIT COLLECTION the
+    // rendering host carries, not on the `\.colorScheme` environment value
+    // `MarkerBodyImageCache` sets on its content, which only steers
+    // SwiftUI's own native color resolution. Rendering offscreen with no
+    // attached window left that trait collection undefined, so a dark-map
+    // pin could silently paint with light-map (or a stale/mixed) colors —
+    // the real "dark mode too dim" bug (bd#227). These accessors sidestep
+    // the whole ambiguity: `MarkerBodyShape` is told explicitly which
+    // appearance to draw and reads the raw per-appearance value directly,
+    // no trait resolution involved at all. Internal (module-visible, not
+    // `public`) — only the raster cache needs to bypass `adaptive(...)`
+    // this way; every LIVE SwiftUI color (the score number, the café-name
+    // label) still uses the adaptive accessors above, which resolve
+    // correctly through the map's real, attached view hierarchy.
+    static func markerFill(score: Int, isDark: Bool) -> Color {
+        let index = markerTierIndex(score: score)
+        return isDark ? markerFillDarkMap[index] : markerFillLightMap[index]
+    }
+
+    static func markerGradientTop(score: Int, isDark: Bool) -> Color {
+        let index = markerTierIndex(score: score)
+        return isDark ? markerGradientTopDarkMap[index] : markerGradientTopLightMap[index]
+    }
+
+    static func markerGradientBottom(score: Int, isDark: Bool) -> Color {
+        let index = markerTierIndex(score: score)
+        return isDark ? markerGradientBottomDarkMap[index] : markerGradientBottomLightMap[index]
+    }
+
+    static func markerRim(score: Int, isDark: Bool) -> Color {
+        let index = markerTierIndex(score: score)
+        return isDark ? markerRimDarkMap[index] : markerRimLightMap[index]
+    }
+
+    static func markerHighlight(isDark: Bool) -> Color {
+        isDark ? Color.white.opacity(0.45) : Color.white.opacity(0.35)
+    }
+
+    static func markerShadow(isDark: Bool) -> Color {
+        isDark ? Color.black.opacity(0.55) : Color.black.opacity(0.35)
     }
 
     /// bd#221 finish `"depth"`: the 0.5pt inner top highlight — white at

@@ -444,6 +444,150 @@ struct MapAnnotationPlannerTests {
         }
     }
 
+    // MARK: - bd#227 (TestFlight build 29 screenshot regressions)
+
+    /// Regression for "'Joe Coffee Company' and 'Starbucks' are drawn on
+    /// top of each other": two independently-placed teardrops (neither
+    /// demotes — their PIN footprints don't collide) spaced JUST above the
+    /// smallest numbered size's footprint threshold (diameter 12.5pt ⇒
+    /// footprint side 13.5pt) but under `labelBoxHeight` (14pt) plus the
+    /// new `labelCollisionMargin` (3pt) — a gap real enough that the OLD,
+    /// unpadded `grid` check (bare AABB, no margin) would have called it
+    /// "clear" while the two label boxes sat under a point apart, close
+    /// enough to visually read as touching once real font ascenders and
+    /// `HaloText`'s own 2pt-radius blur (applied twice) are drawn on top.
+    @Test func closelySpacedIndependentPinsGetVisiblyClearNonOverlappingLabels() {
+        let testRegion = region(forMetersPerPoint: 5.4, mapWidth: mapSize.width, lat: 40.7335, lng: -74.0027)
+        let mpp = MapAnnotationPlanner.metersPerPoint(region: testRegion, mapWidth: mapSize.width)
+        let diameter = MapAnnotationPlanner.headDiameter(forMetersPerPoint: mpp)
+        #expect(diameter == 12.5, "test setup: must land on the smallest numbered stop, where footprint (13.5) < labelBoxHeight (14)")
+        // 14.2pt of screen separation: clears the 13.5pt pin-footprint
+        // threshold (so BOTH venues win a real teardrop, matching the
+        // screenshot showing two distinct numbered pins) but leaves only
+        // 0.2pt of raw AABB clearance between two 14pt-tall label boxes.
+        let screenGap: CGFloat = 14.2
+        let latPerPoint = testRegion.span.latitudeDelta / mapSize.height
+        let latDelta = Double(screenGap) * latPerPoint
+        let joeCoffeeCompany = venue(id: "joe-coffee-company", lat: 40.7335 + latDelta / 2, lng: -74.0027, score: 52)
+        let starbucks = venue(id: "starbucks", lat: 40.7335 - latDelta / 2, lng: -74.0027, score: 52)
+        let plan = MapAnnotationPlanner.plan(venues: [joeCoffeeCompany, starbucks], region: testRegion, mapSize: mapSize)
+        #expect(plan.teardrops.count == 2, "test setup: both venues must win a teardrop slot, matching the screenshot")
+
+        let labelBoxes = plan.markers.compactMap { labelBox(for: $0, region: testRegion, mapSize: mapSize, diameter: diameter) }
+        #expect(labelBoxes.count == 2, "test setup: both venues must win a label, matching the screenshot")
+        #expect(!labelBoxes[0].intersects(labelBoxes[1]), "two closely-spaced independent pins' name labels overlap")
+        // Real, visible clearance — a HARDCODED minimum (independent of
+        // whatever `labelCollisionMargin` happens to be set to), so this
+        // test actually fails against the pre-fix 0.2pt near-miss gap
+        // instead of trivially passing by referencing the same constant
+        // being verified. If the two boxes ended up on the same side (same
+        // x range), the gap between them must clear a real 2pt; if the fix
+        // pushed one to the OTHER side of its own pin instead, their x
+        // ranges won't overlap at all and this is trivially satisfied.
+        let sameSide = labelBoxes[0].minX < labelBoxes[1].maxX && labelBoxes[1].minX < labelBoxes[0].maxX
+        if sameSide {
+            let gap = labelBoxes[0].minY < labelBoxes[1].minY
+                ? labelBoxes[1].minY - labelBoxes[0].maxY
+                : labelBoxes[0].minY - labelBoxes[1].maxY
+            #expect(gap >= 2, "same-side labels only \(gap)pt apart — not visibly clear")
+        }
+    }
+
+    /// Regression for "'Stumptown 76' is clipped at the right screen
+    /// edge": a venue positioned so its trailing label's own right edge
+    /// would have landed inside the OLD 6pt screen margin but outside the
+    /// widened one — must now be OMITTED (or safely placed on the other
+    /// side / within bounds), never rendered with any part of its box
+    /// outside `[0, mapSize.width]`.
+    @Test func nameLabelNearTheRightEdgeIsOmittedRatherThanClipped() {
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width)
+        let projector = ScreenProjector(region: testRegion, size: mapSize)
+        let mpp = MapAnnotationPlanner.metersPerPoint(region: testRegion, mapWidth: mapSize.width)
+        let diameter = MapAnnotationPlanner.headDiameter(forMetersPerPoint: mpp)
+        // `venue(id:...)`'s own name format is `"Venue \(id)"` — match it
+        // exactly so the label-width estimate here is the same one
+        // `placeNameLabels`/`labelBox` actually use, not a hand-picked
+        // shorter stand-in that would silently change which side wins.
+        let venueID = "stumptown"
+        let venueName = "Venue \(venueID)"
+        let labelWidth = min(MapAnnotationPlanner.labelMaxWidth, CGFloat(venueName.count) * MapAnnotationPlanner.labelCharWidth + MapAnnotationPlanner.labelPadding)
+        // Place the venue so a TRAILING label's right edge would land
+        // ~14pt inside the true device edge — outside the OLD 6pt margin
+        // (would have been ACCEPTED, clipping-prone after any settle
+        // drift) but inside a real, hardcoded 16pt safety zone this test
+        // requires regardless of the exact tunable constant's value.
+        let requiredSafeZone: CGFloat = 16
+        let targetTrailingMaxX = mapSize.width - 14
+        let targetHeadCenterX = targetTrailingMaxX - MapAnnotationPlanner.labelGap - labelWidth - diameter / 2
+        let lngPerPoint = testRegion.span.longitudeDelta / mapSize.width
+        let currentPoint = projector.point(for: CLLocationCoordinate2D(latitude: 40.7335, longitude: -74.0027))
+        let lngShift = Double(targetHeadCenterX - currentPoint.x) * lngPerPoint
+        let stumptown = venue(id: venueID, lat: 40.7335, lng: -74.0027 + lngShift, score: 76, scoreDisplay: .rated(76))
+
+        let plan = MapAnnotationPlanner.plan(venues: [stumptown], region: testRegion, mapSize: mapSize)
+        // Unconditional: a trailing label whose right edge would land only
+        // 14pt from the screen edge must never actually be CHOSEN — the
+        // pre-fix 6pt margin accepted exactly this (clipping-prone after
+        // settle drift). The planner may still legitimately fall back to
+        // a leading label (there's nothing else nearby to block it) or
+        // omit entirely; either is fine, only an unsafe trailing choice
+        // isn't.
+        #expect(plan.markers[0].nameLabelSide != .trailing, "a trailing label only 14pt from the screen edge must not be chosen — it renders clipping-prone")
+        if let box = labelBox(for: plan.markers[0], region: testRegion, mapSize: mapSize, diameter: diameter) {
+            #expect(box.minX >= 0 && box.maxX <= mapSize.width, "a placed label must render fully inside the map bounds")
+            #expect(box.maxX <= mapSize.width - requiredSafeZone, "a placed label must clear a real screen-edge safety zone")
+        }
+        // Either way, the PIN itself (with its own number) must still
+        // render — only the LABEL may be omitted near an edge.
+        #expect(plan.teardrops.count == 1, "the pin itself must still render even when its label is omitted near an edge")
+    }
+
+    /// Regression for "'Caffe Reggio' runs into the '82' pin" (light
+    /// mode): a lower-scored, well-separated venue (eligible for a label)
+    /// sitting close enough to a HIGHER-scored neighbour's pin that a
+    /// naive label placement would visually run through that neighbour's
+    /// true circular head — named after the specific screenshot pair for
+    /// traceability; the underlying invariant is the same one
+    /// `nameLabelsNeverOverlapAPinsTrueVisualHeadNotJustItsTipCenteredFootprint`
+    /// covers generically.
+    @Test func namedRegressionCaffeReggioLabelNeverOverlapsTheEightyTwoPinsHead() {
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width, lat: 40.7335, lng: -74.0027)
+        let mpp = MapAnnotationPlanner.metersPerPoint(region: testRegion, mapWidth: mapSize.width)
+        let diameter = MapAnnotationPlanner.headDiameter(forMetersPerPoint: mpp)
+        let projector = ScreenProjector(region: testRegion, size: mapSize)
+        // "82" sits just above-right of where "Caffe Reggio"'s trailing
+        // label would naturally land — close enough that only the TRUE
+        // head-circle check (not the tip-centered footprint alone) can
+        // catch it.
+        let eightyTwo = venue(id: "eighty-two", lat: 40.7335, lng: -74.0027, score: 82)
+        let point = projector.point(for: CLLocationCoordinate2D(latitude: 40.7335, longitude: -74.0027))
+        let neighborScreenOffset = CGPoint(x: diameter / 2 + MapAnnotationPlanner.labelGap + 20, y: -diameter * 0.6)
+        let latPerPoint = testRegion.span.latitudeDelta / mapSize.height
+        let lngPerPoint = testRegion.span.longitudeDelta / mapSize.width
+        let caffeReggio = venue(
+            id: "caffe-reggio",
+            lat: 40.7335 - Double(neighborScreenOffset.y) * latPerPoint,
+            lng: -74.0027 + Double(neighborScreenOffset.x) * lngPerPoint,
+            score: 69
+        )
+        _ = point
+        let plan = MapAnnotationPlanner.plan(venues: [eightyTwo, caffeReggio], region: testRegion, mapSize: mapSize)
+
+        func trueHeadRect(for placement: MarkerPlacement) -> CGRect {
+            let p = projector.point(for: coordinate(of: placement.venue))
+            let center = CGPoint(x: p.x, y: p.y - diameter * MapAnnotationPlanner.headCenterFromTip)
+            let radius = diameter / 2
+            return CGRect(x: center.x - radius, y: center.y - radius, width: diameter, height: diameter)
+        }
+        let headRects = plan.teardrops.map(trueHeadRect(for:))
+        let labelBoxes = plan.markers.compactMap { labelBox(for: $0, region: testRegion, mapSize: mapSize, diameter: diameter) }
+        for label in labelBoxes {
+            for head in headRects {
+                #expect(!label.intersects(head), "a name label overlaps a neighbouring pin's true visual head")
+            }
+        }
+    }
+
     @Test func nameLabelsNeverChangeAPinsOwnKindOrNumberEvenInADenseLabelHostileLayout() {
         // Dense enough that most candidates LOSE every label placement
         // attempt — labels are pure decoration computed strictly after

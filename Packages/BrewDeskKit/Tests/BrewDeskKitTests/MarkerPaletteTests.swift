@@ -149,6 +149,32 @@ struct MarkerPaletteTests {
         }
     }
 
+    /// bd#227 (TestFlight build 29 — "in dark mode we have to change the
+    /// color... it's not bright enough, hard to see"): Bilal's explicit ask
+    /// was to go BRIGHTER than the approved mock (`#B4F5D6/#9BE8C4/
+    /// #86D9B3/#74C9A3`, this ramp's previous, byte-identical-to-mock
+    /// values), not merely match it. Pins the exact new per-tier hex so a
+    /// future edit can't silently drift back toward the dimmer mock values.
+    @Test func darkMapMarkerFillMatchesTheBrighterThanMockRampExactly() {
+        // (score, expected 0xRRGGBB)
+        let expected: [(Int, UInt32)] = [
+            (40, 0x86D6B0), // <60
+            (65, 0x98E4C0), // 60-69
+            (75, 0xADF0D0), // 70-79
+            (90, 0xC7F8E0), // >=80
+        ]
+        for (score, want) in expected {
+            let resolved = UIColor(BrewDeskPalette.markerFill(score: score)).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            resolved.getRed(&r, green: &g, blue: &b, alpha: &a)
+            let wr = Double((want & 0xFF0000) >> 16) / 255
+            let wg = Double((want & 0x00FF00) >> 8) / 255
+            let wb = Double(want & 0x0000FF) / 255
+            #expect(abs(Double(r) - wr) < 0.004 && abs(Double(g) - wg) < 0.004 && abs(Double(b) - wb) < 0.004,
+                    "score \(score) dark-map fill \((r, g, b)) does not match #\(String(format: "%06X", want))")
+        }
+    }
+
     @Test func speckFillIsNeutralNeverTierColored() {
         // A speck's fill must not shift hue with score — it isn't even
         // score-driven (unrated venues have no score to color by), but this
