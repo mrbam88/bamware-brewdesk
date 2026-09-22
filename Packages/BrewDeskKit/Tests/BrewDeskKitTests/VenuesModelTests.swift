@@ -345,16 +345,35 @@ import VenueKit
 }
 
 private actor ControlledVenueService: VenueListing {
-    private enum TestError: Error { case failed, timedOut }
+    private enum TestError: Error { case failed }
     private enum Outcome { case success, failure }
     private var requests: Set<String> = []
     private var outcomes: [String: Outcome] = [:]
+    /// Continuations parked by `waitForRequest`, resumed by `fetchVenues`
+    /// itself the instant it records the matching key — event-driven, not
+    /// polled against a deadline.
+    ///
+    /// bd#226/staleFailureCannotReplaceNewerSuccess CI investigation: even
+    /// the 30s poll-deadline this replaced (`ContinuousClock.now + .seconds(30)`,
+    /// 1ms-sleep loop) was observed timing out — "Caught error: .timedOut"
+    /// (GH Actions run 35770125411, commit 1c9ca46) — once the full
+    /// BrewDeskKit-Package suite's parallel `@MainActor` test load was heavy
+    /// enough to starve this actor for longer than any fixed wall-clock
+    /// budget. The production code was never late; the deadline was just
+    /// too tight for the scheduler pressure of ~340 tests running together.
+    /// Because this actor serializes `fetchVenues` and `waitForRequest`,
+    /// there's no race between "insert the key" and "park a continuation for
+    /// it" — whichever call reaches the actor first is handled correctly, so
+    /// waiting on the real event instead of a deadline removes the flake
+    /// entirely rather than just widening the margin again.
+    private var requestContinuations: [String: [CheckedContinuation<Void, Never>]] = [:]
 
     func fetchVenues(_ query: VenueQuery) async throws -> [Venue] {
         // Filters never reach the wire (brewdesk#77) — distinct requests are
         // driven by the query coordinate instead.
         let key = query.lat == VenuesModel.coverageCenterLat ? "any" : "moved"
         requests.insert(key)
+        resumeRequestWaiters(for: key)
         while true {
             try Task.checkCancellation()
             if let outcome = outcomes.removeValue(forKey: key) {
@@ -367,20 +386,21 @@ private actor ControlledVenueService: VenueListing {
         }
     }
 
+    /// Suspends until `fetchVenues` has recorded a request for `key`. Never
+    /// times out — see `requestContinuations` above for why that's the
+    /// point, not an oversight. `throws` is kept on the signature purely so
+    /// every existing `try await api.waitForRequest(...)` call site needs no
+    /// edit; the body itself never throws.
     func waitForRequest(key: String) async throws {
-        // Deadline, not iteration count: 1ms sleeps stretch under parallel
-        // test load and a 1s budget flaked (cold-simulator baseline runs).
-        // bd#226 CI investigation: the full BrewDeskKit-Package suite grew
-        // enough parallel @MainActor tests that even this 10s deadline was
-        // observed blown (CI log: "failed after 59.635 seconds") — the
-        // scheduler, not the production code, was the bottleneck. 30s keeps
-        // this a real safety net without masking an actual hang.
-        let deadline = ContinuousClock.now + .seconds(30)
-        while ContinuousClock.now < deadline {
-            if requests.contains(key) { return }
-            try await Task.sleep(for: .milliseconds(1))
+        guard !requests.contains(key) else { return }
+        await withCheckedContinuation { continuation in
+            requestContinuations[key, default: []].append(continuation)
         }
-        throw TestError.timedOut
+    }
+
+    private func resumeRequestWaiters(for key: String) {
+        guard let continuations = requestContinuations.removeValue(forKey: key) else { return }
+        for continuation in continuations { continuation.resume() }
     }
 
     func succeed(key: String) {
