@@ -114,6 +114,18 @@ public struct LaunchEnvironment: Sendable, Equatable {
     /// can't be driven by it. `nil` when absent, unparseable, or
     /// non-positive.
     public let debugInitialMetersPerPoint: Double?
+    /// `-brewdesk.recent-searches-seed '<json>'` (bd#223) — pre-populates
+    /// `RecentSearchStore` (BrewDeskKit) for a UI test/screenshot that needs
+    /// a recent already present (e.g. "tap Recent → flies back") without
+    /// first driving a real selection. Kept as the raw JSON string here,
+    /// same as `savedVenueIDs`' own "not yet consumed here" shape: this
+    /// module (VenueKit) can't import `RecentSearchEntry`'s type
+    /// (BrewDeskKit) without a cycle, so `RecentSearchStore.init` decodes
+    /// this string itself. `nil` when the argument is absent, in which case
+    /// a UI-test-run store starts empty instead (see `RecentSearchStore.init`
+    /// — every `-UITest…` launch resets recents one way or the other, never
+    /// inheriting a previous run's UserDefaults).
+    public let recentSearchSeedJSON: String?
     /// True when ANY `-UITest…` launch argument is present — the one seam
     /// that holds for every automated UI run, scenario or live. Every UI
     /// test that can reach user flows passes at least one (`-UITestSkipGates`
@@ -178,6 +190,7 @@ public struct LaunchEnvironment: Sendable, Equatable {
         debugInitialMetersPerPoint = Self.value(after: "-brewdesk.debug.initial-span", in: arguments)
             .flatMap(Double.init)
             .flatMap { $0 > 0 ? $0 : nil }
+        recentSearchSeedJSON = Self.value(after: "-brewdesk.recent-searches-seed", in: arguments)
         isUITestRun = arguments.contains { $0.hasPrefix("-UITest") }
     }
 
