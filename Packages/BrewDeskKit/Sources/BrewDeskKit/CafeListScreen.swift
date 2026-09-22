@@ -188,15 +188,18 @@ struct VenueRow: View {
         venue.displayScore.map { "Work Fit \($0)" } ?? "not rated yet"
     }
 
-    /// Laptop hostility is shown openly, never hidden: red "No laptops" for
-    /// discouraged venues, orange time markers for conditional policies.
+    /// Laptop hostility is shown openly, never hidden — via icon + explicit
+    /// wording, not color (brewdesk#216: `berryText`/red used to be the only
+    /// thing distinguishing "No laptops" here, unreadable to a red-green
+    /// colorblind viewer as a warning specifically; matched to the orange
+    /// used by the other two conditional-policy markers below).
     @ViewBuilder
     private var laptopPolicyMarker: some View {
         switch venue.attributes.laptopPolicy.value {
         case "discouraged":
             Label("No laptops", systemImage: "laptopcomputer.slash")
                 .font(.caption2.bold())
-                .foregroundStyle(BrewDeskPalette.berryText)
+                .foregroundStyle(.orange)
                 .accessibilityIdentifier("laptop-banned-marker")
         case "time_limited":
             Label("Time-limited", systemImage: "clock")

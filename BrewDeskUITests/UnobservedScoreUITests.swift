@@ -185,4 +185,47 @@ final class UnobservedScoreUITests: XCTestCase {
         XCTAssertTrue(explanation.label.contains("Rate it"),
                       "Should always offer the rate-it prompt, got: \(explanation.label)")
     }
+
+    // MARK: - brewdesk#216: estimate/unknown value styling contrast
+
+    /// "Fixture Unchecked Spot" is all-estimate claims (see file doc comment)
+    /// — its Workability card is exactly the "everything is an estimate"
+    /// case this ticket fixes (every value used to render `clayText`, a
+    /// brick red that reads as "bad" and that Bilal, red-green colorblind,
+    /// can't distinguish from the app's own "good" green). Runs the system
+    /// contrast audit against the live detail sheet, scoped past the same
+    /// two pre-existing low-contrast offenders `FilterUITests` already
+    /// exempts (brewdesk#226) — neither is part of this ticket's card.
+    @MainActor
+    func testUnobservedVenueDetailWorkabilityCardPassesContrastAudit() throws {
+        let app = launchFixtures()
+        dragShelfToFullDetent(app)
+
+        let unchecked = shelfButtons(app).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Fixture Unchecked Spot,")
+        ).firstMatch
+        XCTAssertTrue(unchecked.waitForExistence(timeout: wait))
+        unchecked.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
+        let workabilityCard = app.descendants(matching: .any).matching(identifier: "workability-card").firstMatch
+        XCTAssertTrue(workabilityCard.waitForExistence(timeout: wait), "Missing the Workability card")
+        capture("detail-workability-unobserved-contrast")
+
+        // Scoped to the Workability card's own frame, not the whole detail
+        // screen: the screen carries several pre-existing low-contrast
+        // elements with nothing to do with this ticket (the header's
+        // neighborhood line, "ENV: Localhost", the map's "Numbers are Work
+        // Fit" caption — the same class of offender `FilterUITests` already
+        // exempts by label, brewdesk#226) and `BrewDeskUITests
+        // .testVenueDetailAccessibilityAudit` is a documented pre-existing
+        // failure on this exact screen for that reason. A frame-based scope
+        // is more robust than another label list: it only ever asserts on
+        // the card this ticket actually changed.
+        let cardFrame = workabilityCard.frame
+        try app.performAccessibilityAudit(for: .contrast) { issue in
+            guard let frame = issue.element?.frame else { return true }
+            return !frame.intersects(cardFrame)
+        }
+    }
 }

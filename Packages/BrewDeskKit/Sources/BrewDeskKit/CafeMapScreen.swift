@@ -1786,12 +1786,20 @@ public struct CafeMapScreen: View {
     /// own per-call cost.
     private func cachedPlan() -> MapAnnotationPlan {
         let exclusionRects = chromeExclusionRects()
+        // bd#222: the same venues can stay identical while WHICH of them
+        // are filter-unknown changes (e.g. toggling a Wi-Fi floor never
+        // adds/removes/reorders `model.venues` if nothing was actually
+        // excluded) — `unknownVenueIDs` has to be its own cache-key field,
+        // not implied by `venues` alone, or a filter change with no venue-
+        // set change would silently reuse a stale plan.
+        let unknownVenueIDs = Set(model.unknownVenues.map(\.id))
         let key = PlanCacheKey(
             venues: model.venues,
             region: visibleRegion.map(RegionSnapshot.init),
             mapSize: mapSize,
             selectedID: selected?.id,
-            exclusionRects: exclusionRects
+            exclusionRects: exclusionRects,
+            unknownVenueIDs: unknownVenueIDs
         )
         if let cachedKey = planCache.key, cachedKey == key, let cached = planCache.plan {
             return cached
@@ -1801,7 +1809,12 @@ public struct CafeMapScreen: View {
             region: visibleRegion,
             mapSize: mapSize,
             selectedVenueID: selected?.id,
-            exclusionRects: exclusionRects
+            exclusionRects: exclusionRects,
+            // bd#222: confirmed venues render as normal pins, unknowns as
+            // faint specks, excluded hidden entirely (`model.venues` never
+            // includes them — `VenueFilter.matches`). Empty, a no-op, while
+            // no filter is active.
+            forcedUnratedVenueIDs: unknownVenueIDs
         )
         planCache.key = key
         planCache.plan = plan
@@ -2287,14 +2300,28 @@ public struct CafeMapScreen: View {
     /// Fit evidence (`Venue.isRated`, brewdesk#213 — honors the server's own
     /// `scoreDisplay` over the older `isObserved` heuristic); `total` is the
     /// plain loaded count — both dynamic, never hardcoded.
+    ///
+    /// bd#222: while a filter is active, this switches to "N match · M
+    /// unknown" — the same confirmed/unknown split the shelf sections show
+    /// — since "rated · cafés" no longer answers the question a filtered
+    /// view raises ("how many of these actually match?"). Unchanged
+    /// (`model.hasActiveFilter == false`) for ordinary browsing.
     private var ratedCafeCountLine: String {
-        let rated = model.venues.filter(\.isRated).count
-        let total = model.venues.count
+        guard model.hasActiveFilter else {
+            let rated = model.venues.filter(\.isRated).count
+            let total = model.venues.count
+            return String(
+                format: String(localized: "%1$lld rated · %2$lld cafés"),
+                locale: .current,
+                rated,
+                total
+            )
+        }
         return String(
-            format: String(localized: "%1$lld rated · %2$lld cafés"),
+            format: String(localized: "%1$lld match · %2$lld unknown"),
             locale: .current,
-            rated,
-            total
+            model.confirmedCount,
+            model.unknownCount
         )
     }
 
@@ -2437,6 +2464,7 @@ private struct PlanCacheKey: Equatable {
     let mapSize: CGSize
     let selectedID: String?
     let exclusionRects: [CGRect]
+    let unknownVenueIDs: Set<String>
 }
 
 /// Plain reference box, not `@State` itself — see `planCache`'s doc comment.

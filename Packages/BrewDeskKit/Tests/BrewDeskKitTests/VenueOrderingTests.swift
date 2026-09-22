@@ -101,6 +101,75 @@ import VenueKit
         ])
     }
 
+    // MARK: - cafeDefaultFirst (brewdesk#222)
+
+    private static func venue(id: String, venueType: String?, workScore: Int = 52) -> Venue {
+        var v = Self.venue(id: id, observed: true, workScore: workScore)
+        v = Self.retyped(v, venueType: venueType)
+        return v
+    }
+
+    private static func retyped(_ venue: Venue, venueType: String?) -> Venue {
+        Venue(
+            id: venue.id, name: venue.name, lat: venue.lat, lng: venue.lng, address: venue.address,
+            neighborhood: venue.neighborhood, borough: venue.borough, hoursRaw: venue.hoursRaw,
+            vertical: venue.vertical, attributes: venue.attributes, vibeTags: venue.vibeTags,
+            workScore: venue.workScore, lastVerified: venue.lastVerified, distanceM: venue.distanceM,
+            venueType: venueType
+        )
+    }
+
+    @Test func cafeDefaultFirstPutsCafesAndNilTypeBeforeOtherTypes() {
+        let venues = [
+            Self.venue(id: "library", venueType: "library"),
+            Self.venue(id: "cafe", venueType: "cafe"),
+            Self.venue(id: "coworking", venueType: "coworking"),
+            Self.venue(id: "untyped", venueType: nil),
+        ]
+
+        let result = VenueOrdering.cafeDefaultFirst(venues, venueTypeChosen: false)
+
+        #expect(result.map(\.id) == ["cafe", "untyped", "library", "coworking"])
+    }
+
+    /// The TestFlight build 28 shape: a coworking space (WeWork) with a
+    /// higher score than a café must still not lead — type ranks above
+    /// score by design (only when the user hasn't chosen a type).
+    @Test func cafeDefaultFirstRanksTypeAboveScore() {
+        let venues = [
+            Self.venue(id: "wework", venueType: "coworking", workScore: 90),
+            Self.venue(id: "cafe", venueType: "cafe", workScore: 40),
+        ]
+
+        let result = VenueOrdering.cafeDefaultFirst(venues, venueTypeChosen: false)
+
+        #expect(result.map(\.id) == ["cafe", "wework"])
+    }
+
+    /// The type filter still exposes every type once the user has chosen
+    /// one — `venueTypeChosen: true` is a no-op.
+    @Test func venueTypeChosenIsANoOp() {
+        let venues = [
+            Self.venue(id: "library", venueType: "library"),
+            Self.venue(id: "cafe", venueType: "cafe"),
+        ]
+
+        #expect(VenueOrdering.cafeDefaultFirst(venues, venueTypeChosen: true).map(\.id) == ["library", "cafe"])
+    }
+
+    @Test func cafeDefaultFirstIsStableWithinEachTypeGroup() {
+        let venues = [
+            Self.venue(id: "cafe-b", venueType: "cafe"),
+            Self.venue(id: "lib-a", venueType: "library"),
+            Self.venue(id: "cafe-a", venueType: "cafe"),
+            Self.venue(id: "lib-b", venueType: "library"),
+        ]
+
+        let result = VenueOrdering.cafeDefaultFirst(venues, venueTypeChosen: false)
+
+        #expect(result.map(\.id) == ["cafe-b", "cafe-a", "lib-a", "lib-b"])
+    }
+
     private static func renamed(_ venue: Venue, _ name: String) -> Venue {
         Venue(
             id: venue.id,

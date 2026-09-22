@@ -200,6 +200,24 @@ public enum MapAnnotationPlanner {
     /// Fixed box height a label collision-checks against — one line of
     /// 11pt Hanken Grotesk Semibold plus a hair of vertical breathing room.
     static let labelBoxHeight: CGFloat = 14
+    /// bd#227 (TestFlight build 29 — "Joe Coffee Company" and "Starbucks"
+    /// drawn on top of each other): the tightest gap a `grid` collision
+    /// check ever guaranteed between two independently-placed teardrops was
+    /// `footprintPadding` (0.5pt) below `diameter + 1`pt — which can be
+    /// LESS than `labelBoxHeight` (14pt) at the smaller numbered-teardrop
+    /// sizes (12.5–13.5pt). Two such neighbours can both legitimately win
+    /// teardrop slots (their PIN footprints don't overlap) while sitting
+    /// close enough that their `labelBoxHeight`-tall label rects come in
+    /// under a point of each other — technically non-intersecting by the
+    /// bare AABB test, but with no real visual gap once real font ascenders
+    /// and the halo's 2pt-radius blur (applied twice, `HaloText`) are
+    /// drawn. This margin is added on every side of a CANDIDATE label rect
+    /// before it's tested against `grid`/`headBoxes` (a "Minkowski sum"
+    /// buffer): the already-`grid`-inserted rects themselves stay
+    /// unpadded, so a later candidate's inflated query still correctly
+    /// guarantees at least this much real, visible clearance from every
+    /// previously-placed label, pin, and exclusion rect.
+    static let labelCollisionMargin: CGFloat = 3
     /// Widest a label may render, tail-truncated beyond this (mock's own
     /// `Math.min(132, …)`).
     public static let labelMaxWidth: CGFloat = 132
@@ -231,11 +249,23 @@ public enum MapAnnotationPlanner {
     /// label can never bump a pin out of its slot, only occupy space a pin
     /// left free.
     /// Screen-edge margin a label box must clear — matches the design-
-    /// review mock's own `lx<6||lx+tw>W-6` guard. Without this a label
-    /// beside a pin near the map's own left/right edge can render partly
-    /// off-screen (clipped by the device bezel, not by our own
-    /// truncation) instead of trying the OTHER side or being omitted.
-    private static let labelScreenMargin: CGFloat = 6
+    /// review mock's own `lx<6||lx+tw>W-6` guard, widened for bd#227
+    /// (TestFlight build 29 — "Stumptown 76" clipped at the right screen
+    /// edge). `plan()` is deliberately NOT re-run on every camera delta —
+    /// `CafeMapScreen.needsReplan` skips replanning for a pan/zoom under
+    /// 25% of the current span, by design, so a label judged safely inside
+    /// bounds at plan time can still end up much closer to the device's
+    /// fixed screen edge after one or more of those skipped-replan pans
+    /// nudge the camera before the next real replan fires. A bare 6pt
+    /// margin (enough only for the mock's own static-camera guard) had no
+    /// slack for that drift. 6pt still isn't enough to survive the FULL
+    /// 25% hysteresis budget without either gutting how many labels can
+    /// ever render near either edge or replanning far more often than the
+    /// perf budget allows — this widens the safety margin enough to
+    /// absorb a normal, modest settle-drift pan without fully solving the
+    /// worst case (tracked as a spec-gap decision in the PR, not silently
+    /// dropped).
+    static let labelScreenMargin: CGFloat = 20
 
     private static func placeNameLabels(
         into placed: inout [MarkerPlacement], grid: CollisionGrid, headBoxes: [AABB], projector: ScreenProjector,
@@ -280,13 +310,23 @@ public enum MapAnnotationPlanner {
             for (side, rect) in attempts {
                 guard rect.minX >= labelScreenMargin, rect.maxX <= mapSize.width - labelScreenMargin else { continue }
                 let box = AABB(minX: rect.minX, maxX: rect.maxX, minY: rect.minY, maxY: rect.maxY)
-                guard !grid.collides(box) else { continue }
+                // bd#227: the COLLISION QUERY is inflated by
+                // `labelCollisionMargin` on every side (a Minkowski-sum
+                // buffer — see that constant's own doc comment); the rect
+                // actually INSERTED into `grid` below stays the true,
+                // unpadded box, so this only ever guarantees real spacing,
+                // never shrinks anyone else's legitimately-placed content.
+                let queryBox = AABB(
+                    minX: box.minX - labelCollisionMargin, maxX: box.maxX + labelCollisionMargin,
+                    minY: box.minY - labelCollisionMargin, maxY: box.maxY + labelCollisionMargin
+                )
+                guard !grid.collides(queryBox) else { continue }
                 // `grid` alone isn't enough — see `headBoxes`' own doc
                 // comment in `plan()`: its footprints are tip-centered and
                 // under-cover a neighbour's TRUE visual head, so a label
                 // that clears `grid` can still visually run through part
                 // of a nearby pin's actual circle.
-                guard !headBoxes.contains(where: { $0.intersects(box) }) else { continue }
+                guard !headBoxes.contains(where: { $0.intersects(queryBox) }) else { continue }
                 grid.insert(box)
                 let m = placed[index]
                 placed[index] = MarkerPlacement(
@@ -369,13 +409,30 @@ public enum MapAnnotationPlanner {
     ///   to the un-culled venue list, every one a full (un-demoted) teardrop
     ///   at the "closest" diameter, rather than trusting pixel math against
     ///   a region already known to be wrong.
+    /// - Parameter forcedUnratedVenueIDs: bd#222 input classification — a
+    ///   venue in this set is treated as UNRATED for the rated/unrated split
+    ///   below regardless of its own `Venue.isRated`, i.e. it draws as a
+    ///   faint speck, never a teardrop/dot. The caller (`CafeMapScreen`)
+    ///   passes the active filter's `unknownVenues` ids here: a genuinely
+    ///   rated café (WeWork, Work Fit 48) whose Wi-Fi is UNKNOWN under a
+    ///   "fast Wi-Fi" filter must not present as a normal pin — TestFlight
+    ///   build 28's report. Empty (the default) whenever no filter is
+    ///   active, which is exactly when `unknownVenues` is itself always
+    ///   empty (`VenueFilter.classify`), so this is a no-op then — the
+    ///   ticket's own "behaviour is unchanged" requirement. Deliberately the
+    ///   ONLY thing this parameter touches: sizes, colors, and every other
+    ///   rendering decision below are untouched.
     public static func plan(
         venues: [Venue],
         region: MKCoordinateRegion?,
         mapSize: CGSize = .zero,
         selectedVenueID: String? = nil,
-        exclusionRects: [CGRect] = []
+        exclusionRects: [CGRect] = [],
+        forcedUnratedVenueIDs: Set<String> = []
     ) -> MapAnnotationPlan {
+        func isRated(_ venue: Venue) -> Bool {
+            venue.isRated && !forcedUnratedVenueIDs.contains(venue.id)
+        }
         guard let region else {
             let markers = venues.map {
                 MarkerPlacement(
@@ -383,7 +440,7 @@ public enum MapAnnotationPlanner {
                     kind: .teardrop(diameter: sizeStopsByMetersPerPoint.last!.diameter),
                     // brewdesk#213: `isRated` honors the server's explicit
                     // `scoreDisplay` over the `isObserved` heuristic.
-                    showsNumber: $0.isRated,
+                    showsNumber: isRated($0),
                     isSelected: $0.id == selectedVenueID
                 )
             }
@@ -449,7 +506,7 @@ public enum MapAnnotationPlanner {
                 MarkerPlacement(
                     venue: match,
                     kind: .teardrop(diameter: selectedDiameter),
-                    showsNumber: match.isRated,
+                    showsNumber: isRated(match),
                     isSelected: true
                 )
             )
@@ -466,7 +523,7 @@ public enum MapAnnotationPlanner {
         // `MapCircle`, never itself collision-checked, so no rated venue is
         // ever silently hidden by this pass any more.
         let rated = visible
-            .filter { $0.isRated && $0.id != selectedVenue?.id }
+            .filter { isRated($0) && $0.id != selectedVenue?.id }
             .sorted(by: byScoreDescendingThenID)
         let attemptTeardrops = ratedDiameter >= teardropShapeThreshold
         for candidate in rated {
@@ -511,7 +568,7 @@ public enum MapAnnotationPlanner {
         // collision-checked (native `MapCircle` overlays render fine
         // overlapping each other).
         if speckVisible {
-            let unratedEligible = visible.filter { !$0.isRated && $0.id != selectedVenue?.id }
+            let unratedEligible = visible.filter { !isRated($0) && $0.id != selectedVenue?.id }
             let nearest = nearestToCentre(unratedEligible, region: region, limit: unratedCandidateLimit)
             for candidate in nearest {
                 guard totalPlaced < maxAnnotations else { break }

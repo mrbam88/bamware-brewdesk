@@ -146,4 +146,45 @@ struct ScoreBadgeContrastTests {
             #expect(ratio >= 3, "dark mode dot step vs. page background: \(ratio):1")
         }
     }
+
+    // MARK: - brewdesk#216: estimate/unknown value styling contrast
+
+    /// `ClaimRow.claimValue` now colors an estimate/unknown VALUE with
+    /// `secondaryText` instead of `clayText` (brick red) — this is normal-
+    /// weight bold body text (`.subheadline.bold()`), so it needs the
+    /// stricter ≥4.5:1 bar, checked against both surfaces it actually sits
+    /// on (`surface`, the Workability card's background, and `page`, in
+    /// case a row ever renders card-less).
+    @Test func estimateValueTextMeetsFourPointFiveToOneOnSurfaceInLightMode() {
+        let ratio = contrastRatio(BrewDeskPalette.secondaryText, BrewDeskPalette.surface, style: .light)
+        #expect(ratio >= 4.5, "estimate value text vs. card surface (light): \(ratio):1")
+    }
+
+    @Test func estimateValueTextMeetsFourPointFiveToOneOnSurfaceInDarkMode() {
+        let ratio = contrastRatio(BrewDeskPalette.secondaryText, BrewDeskPalette.surface, style: .dark)
+        #expect(ratio >= 4.5, "estimate value text vs. card surface (dark): \(ratio):1")
+    }
+
+    @Test func estimateValueTextMeetsFourPointFiveToOneOnPageInLightMode() {
+        let ratio = contrastRatio(BrewDeskPalette.secondaryText, BrewDeskPalette.page, style: .light)
+        #expect(ratio >= 4.5, "estimate value text vs. page (light): \(ratio):1")
+    }
+
+    @Test func estimateValueTextMeetsFourPointFiveToOneOnPageInDarkMode() {
+        let ratio = contrastRatio(BrewDeskPalette.secondaryText, BrewDeskPalette.page, style: .dark)
+        #expect(ratio >= 4.5, "estimate value text vs. page (dark): \(ratio):1")
+    }
+
+    /// The trailing "estimate" tag is a caption on its own rounded
+    /// `surfaceSecondary` fill (not directly on `surface`/`page`) — captions
+    /// only need ≥3:1, but this clears the stricter bar too.
+    @Test func estimateTagTextMeetsThreeToOneOnItsOwnFillInLightMode() {
+        let ratio = contrastRatio(BrewDeskPalette.secondaryText, BrewDeskPalette.surfaceSecondary, style: .light)
+        #expect(ratio >= 3, "estimate tag text vs. tag fill (light): \(ratio):1")
+    }
+
+    @Test func estimateTagTextMeetsThreeToOneOnItsOwnFillInDarkMode() {
+        let ratio = contrastRatio(BrewDeskPalette.secondaryText, BrewDeskPalette.surfaceSecondary, style: .dark)
+        #expect(ratio >= 3, "estimate tag text vs. tag fill (dark): \(ratio):1")
+    }
 }
