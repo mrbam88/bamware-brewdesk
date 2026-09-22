@@ -102,6 +102,17 @@ struct MarkerPaletteTests {
         }
     }
 
+    /// bd#221 `numColor:"auto"` against the new all-bright dark-map ramp
+    /// (spec: "DARK map → near-black #08140F on the bright fills"): every
+    /// tier's dark-map fill is now bright enough that `auto` never needs
+    /// bd#212's old "darkest fill gets a light number" exception.
+    @Test func darkMapMarkerNumberIsAlwaysNearBlack() {
+        for score in tierScores {
+            let resolved = rgb(BrewDeskPalette.markerNumberColor(score: score), style: .dark)
+            #expect(resolved.r < 0.06 && resolved.g < 0.10 && resolved.b < 0.08, "score \(score) dark-map number must be near-black #08140F, got \(resolved)")
+        }
+    }
+
     @Test func markerNumberColorClearsContrastAgainstItsOwnFillInBothAppearances() {
         for style in [UIUserInterfaceStyle.light, .dark] {
             for score in tierScores {
@@ -115,15 +126,27 @@ struct MarkerPaletteTests {
         }
     }
 
-    /// bd#217 (Bilal, same PR as the white-number fix): "the border...
-    /// should be white instead of dark — on the pins" for the LIGHT map;
-    /// DARK keeps the bd#212 dark-hairline-plus-shadow pairing exactly as
-    /// shipped (his own earlier choice on the dark mock).
-    @Test func markerHairlineIsWhiteInLightMapAndStaysDarkInDarkMap() {
-        let resolvedLight = UIColor(BrewDeskPalette.markerHairline).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
-        let resolvedDark = UIColor(BrewDeskPalette.markerHairline).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
-        #expect(relativeLuminance(resolvedLight) > 0.85, "light map hairline must read as a near-white edge (bd#217)")
-        #expect(relativeLuminance(resolvedDark) < 0.05, "dark map hairline must stay a dark edge, unchanged from bd#212")
+    /// bd#221 rim `"tone"` (Bilal's round-2 selection, "lighter border
+    /// maybe"): replaces bd#217's fixed dark/white hairline outright — the
+    /// rim is now a lighter TINT OF THE MARKER'S OWN FILL in both
+    /// appearances, so it must be strictly brighter than the fill it rides
+    /// on at every tier, not a fixed color.
+    @Test func markerRimIsLighterThanItsOwnFillInBothAppearances() {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            for score in tierScores {
+                let fillLuminance = relativeLuminance(UIColor(BrewDeskPalette.markerFill(score: score)).resolvedColor(with: UITraitCollection(userInterfaceStyle: style)))
+                let rimLuminance = relativeLuminance(UIColor(BrewDeskPalette.markerRim(score: score)).resolvedColor(with: UITraitCollection(userInterfaceStyle: style)))
+                #expect(rimLuminance > fillLuminance, "\(style == .light ? "light" : "dark") map score \(score): rim (\(rimLuminance)) must be lighter than its own fill (\(fillLuminance))")
+            }
+        }
+    }
+
+    @Test func markerRimIsSingleHueInBothAppearances() {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let hues = tierScores.map { hueDegrees(rgb(BrewDeskPalette.markerRim(score: $0), style: style)) }
+            let spread = (hues.max() ?? 0) - (hues.min() ?? 0)
+            #expect(spread < 15, "\(style == .light ? "light" : "dark") map rim ramp hue spread \(spread)° — must read as one hue family, mixed toward white only")
+        }
     }
 
     @Test func speckFillIsNeutralNeverTierColored() {

@@ -1734,10 +1734,16 @@ public struct CafeMapScreen: View {
     /// perf fix for #211's stalls: hosting every one of ~150-200 unrated
     /// venues as a SwiftUI annotation view (each wrapped in a 44pt Button)
     /// was the real cost, not view type churn.
+    /// bd#221: `anchor` is no longer always `.bottom` — a teardrop carrying
+    /// a name label reports WIDER content (the label is a real `HStack`
+    /// sibling now, not an overflow overlay MapKit never measured; see
+    /// `TeardropMarkerView.body`'s doc comment), so the anchor must shift
+    /// to the pin's own fraction of that wider content or the tip would
+    /// visibly slide off the venue's true coordinate.
     @MapContentBuilder
     private func annotations(for plan: MapAnnotationPlan) -> some MapContent {
         ForEach(plan.teardrops) { placement in
-            Annotation("", coordinate: coordinate(of: placement.venue), anchor: .bottom) {
+            Annotation("", coordinate: coordinate(of: placement.venue), anchor: TeardropMarkerView.annotationAnchor(for: placement)) {
                 markerButton(for: placement)
             }
         }
