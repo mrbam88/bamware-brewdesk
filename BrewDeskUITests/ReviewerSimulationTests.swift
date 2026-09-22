@@ -95,19 +95,28 @@ final class ReviewerSimulationTests: XCTestCase {
         search.tap()
         search.typeText("Housing Works")
         app.keyboards.buttons["Search"].tap()
-        // Same UI3 drift as the Union Square step (#170): DatasetStatStrip's
-        // plural-aware "1 work spot" text is gone, folded into map-count-line's
-        // "N rated · M cafés" line. Assert the identifier's shape plus the
-        // narrowed-to-one outcome (a search result, not a live dataset size,
-        // so asserting "1" here doesn't break the brewdesk#37 rule).
-        let searchCountLine = app.staticTexts.matching(NSPredicate(
+        // Since brewdesk#219/#223 a search that resolves to exactly one café
+        // SELECTS it on Search/return: the field commits to the café's name,
+        // the detail sheet opens at the medium detent, and the map reloads
+        // that café's surroundings — so the count line deliberately shows the
+        // neighbourhood ("N rated · M cafés"), never "1". Assert the
+        // selection instead of a narrowed count (the old "1 …" expectation is
+        // the pre-#219 product; brewdesk#37 still forbids literal live counts).
+        let committed = app.staticTexts["search-committed-label"]
+        let heading = app.staticTexts["venue-detail-heading"]
+        let committedOrHeading = NSPredicate { _, _ in
+            (committed.exists && committed.label.localizedCaseInsensitiveContains("Housing Works"))
+                || (heading.exists && heading.label.localizedCaseInsensitiveContains("Housing Works"))
+        }
+        let selected = XCTNSPredicateExpectation(predicate: committedOrHeading, object: nil)
+        XCTAssertEqual(XCTWaiter().wait(for: [selected], timeout: 20), .completed,
+                       "Search for Housing Works did not select it (field: \(committed.exists ? committed.label : "-"), heading: \(heading.exists ? heading.label : "-"))")
+        let countLine = app.staticTexts.matching(NSPredicate(
             format: "identifier == %@ AND label MATCHES %@",
             "map-count-line", "^[0-9,]+ rated · [0-9,]+ cafés$"
         )).firstMatch
-        XCTAssertTrue(searchCountLine.waitForExistence(timeout: 15),
-                      "Search for Housing Works did not narrow the map (map-count-line missing)")
-        XCTAssertTrue(searchCountLine.label.hasPrefix("1"),
-                      "Search for Housing Works did not narrow to one venue (count line: \(searchCountLine.label))")
+        XCTAssertTrue(countLine.waitForExistence(timeout: 15),
+                      "After selecting Housing Works the surroundings count line is missing")
         capture("06-map-search-result")
 
         // ── 4. Detail: claim-level evidence (the 4.3(b) differentiator) ───
