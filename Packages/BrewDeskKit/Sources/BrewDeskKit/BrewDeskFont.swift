@@ -41,20 +41,47 @@ public enum BrewDeskFont {
     /// calls for (a "1" and a "9" occupy the same width, so a marker's
     /// number never visibly reflows the shape around it).
     ///
-    /// bd#217: LIGHT (300) is the bd#212 spec weight and stays the default
-    /// for every normal-size teardrop, but at the two smallest head sizes
-    /// that still show a number (11.5pt/12.5pt — below `headDiameter <
-    /// 15`, ≈6.7pt/7.3pt of actual glyph), white-on-fill Light read too
-    /// thin in this PR's own light-map screenshots to be a real legibility
-    /// win over the fix it's shipping. Bumped to REGULAR (400, never bold)
-    /// only for those small heads — every teardrop at 17pt/20pt/the fixed
-    /// 30pt selected size keeps Light.
-    public static func markerNumber(size: CGFloat, headDiameter: CGFloat) -> Font {
-        let weight: Font.Weight = headDiameter < 15 ? .regular : .light
+    /// bd#221 (Bilal's round-2 pin selection, TestFlight build 28
+    /// feedback — "the font be bolder and brighter"): REGULAR (400) at
+    /// every head size now, replacing bd#217's LIGHT default plus its
+    /// `headDiameter < 15` special-cased bump to Regular for the two
+    /// smallest numbered heads — Bilal's saved selection on the
+    /// design-review page was `weight: 400` outright, no per-size branch.
+    public static func markerNumber(size: CGFloat) -> Font {
         let base: Font = hankenGroteskLoaded
             ? .custom("HankenGrotesk-Regular", fixedSize: size)
             : .system(size: size, design: .default)
-        return base.weight(weight).monospacedDigit()
+        return base.weight(.regular).monospacedDigit()
+    }
+
+    /// bd#221 "names on": the café-name label drawn beside a top pin's
+    /// head — fixed 11pt Semibold (Apple POI label style), deliberately
+    /// NOT Dynamic-Type-scaled for the same reason `markerNumber` isn't:
+    /// it has to fit the collision-checked screen-space box the planner
+    /// already reserved for it.
+    ///
+    /// Supervisor review (bd#221 round 2 — "renders far larger than the
+    /// reference, ≈15-16pt vs the specified 11pt"): the first cut chained
+    /// `.custom("HankenGrotesk-Regular", fixedSize: 11).weight(.semibold)`
+    /// — `markerNumber` above uses the identical pattern at a genuinely
+    /// fixed size, so the bug wasn't Dynamic Type scaling the FONT; it was
+    /// this call asking a custom face registered under the PostScript name
+    /// "…-Regular" to synthesize a heavier weight it doesn't have. Unlike
+    /// `markerNumber` (always `.weight(.regular)`, the face's own real
+    /// weight, no synthesis needed), that produced an oversized/malformed
+    /// glyph run instead of a clean bold. `.system(size:weight:)` is a
+    /// real multi-weight family — semibold synthesis just works there —
+    /// so the label now uses the system face outright at a true fixed
+    /// 11pt, per the supervisor's own fix.
+    ///
+    /// `accessibilityBump`: this still isn't FULLY Dynamic-Type-deaf —
+    /// once the reader's text size crosses into an actual accessibility
+    /// category (`DynamicTypeSize.isAccessibilitySize`), the label bumps
+    /// to a capped 13pt rather than staying frozen at 11pt forever; below
+    /// that threshold (every normal, non-accessibility setting) it's
+    /// exactly 11pt, matching the spec and the reference.
+    public static func markerLabel(accessibilityBump: Bool = false) -> Font {
+        .system(size: accessibilityBump ? 13 : 11, weight: .semibold, design: .default)
     }
 
     /// Whether each bundled family actually registered — read by

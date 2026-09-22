@@ -104,29 +104,51 @@ struct CafeMapScreenSearchFitTests {
         #expect(unwrapped.center.latitude == target.lat)
     }
 
-    // MARK: - Selection guard (bd#219)
+    // MARK: - Selection/submit guard (bd#219, revised bd#223)
 
     /// `selectSearchResult` itself needs a running `Map` (it drives
     /// `@State`/animation), so these exercise the pure guard it and
     /// `scheduleSearchFit` both consult — `shouldApplySearchFit` — directly.
+    ///
+    /// bd#223 (requirement 5 — "no camera moves while typing", replacing the
+    /// brewdesk#158 tests that encoded the OLD "any non-empty, non-selected
+    /// query" behavior): the guard now ALSO requires `query == submittedQuery`
+    /// — nothing arms `submittedQuery` except an explicit keyboard Search/
+    /// return (`CafeMapScreen.runSubmittedSearch`), so a query the user is
+    /// still typing can never satisfy this guard regardless of how many
+    /// results it matches. Every case below now passes a `submittedQuery`
+    /// explicitly so the ORIGINAL brewdesk#158 intent (a settled search
+    /// still moves the camera once armed) keeps its own coverage alongside
+    /// the new "never while typing" cases.
     @Test func lateAnswerAfterASelectionProducesNoFitIntent() {
         // Once `searchSelectionQuery` (set by `selectSearchResult`) equals
         // the current query, a late server search answer — or the
         // selection's own surroundings reload changing `model.venues` again
-        // — must never re-fit the camera for that same query.
-        #expect(!CafeMapScreen.shouldApplySearchFit(forQuery: "sey", selectionQuery: "sey"))
+        // — must never re-fit the camera for that same query, even if it was
+        // also the last submitted one.
+        #expect(!CafeMapScreen.shouldApplySearchFit(forQuery: "sey", selectionQuery: "sey", submittedQuery: "sey"))
     }
 
-    @Test func stillTypingOrBrowsingWithNoSelectionProducesAFitIntent() {
-        #expect(CafeMapScreen.shouldApplySearchFit(forQuery: "sey", selectionQuery: nil))
+    @Test func aSubmittedQueryWithNoSelectionProducesAFitIntent() {
+        #expect(CafeMapScreen.shouldApplySearchFit(forQuery: "sey", selectionQuery: nil, submittedQuery: "sey"))
         // A genuinely different, later query is never blocked by a stale
         // selection recorded for an earlier one.
-        #expect(CafeMapScreen.shouldApplySearchFit(forQuery: "devocion", selectionQuery: "sey"))
+        #expect(CafeMapScreen.shouldApplySearchFit(forQuery: "devocion", selectionQuery: "sey", submittedQuery: "devocion"))
     }
 
     @Test func blankQueryNeverProducesAFitIntent() {
-        #expect(!CafeMapScreen.shouldApplySearchFit(forQuery: "   ", selectionQuery: nil))
-        #expect(!CafeMapScreen.shouldApplySearchFit(forQuery: "", selectionQuery: nil))
+        #expect(!CafeMapScreen.shouldApplySearchFit(forQuery: "   ", selectionQuery: nil, submittedQuery: "   "))
+        #expect(!CafeMapScreen.shouldApplySearchFit(forQuery: "", selectionQuery: nil, submittedQuery: ""))
+    }
+
+    /// bd#223: the core of requirement 5 — a query matching plenty of
+    /// results that the user is STILL TYPING (nothing has armed
+    /// `submittedQuery` for it yet) must never produce a fit intent. This is
+    /// the exact reproduction of Bilal's report: a one-letter query "T"
+    /// matching cafés across the whole metro area while he was still typing.
+    @Test func aQueryThatHasNotBeenSubmittedNeverProducesAFitIntentEvenIfNonEmpty() {
+        #expect(!CafeMapScreen.shouldApplySearchFit(forQuery: "t", selectionQuery: nil, submittedQuery: nil))
+        #expect(!CafeMapScreen.shouldApplySearchFit(forQuery: "t", selectionQuery: nil, submittedQuery: "some other, earlier submit"))
     }
 
     /// `selectSearchResult`'s fly-to reuses this exact function for its

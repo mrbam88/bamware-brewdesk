@@ -556,6 +556,26 @@ public final class VenuesModel {
         }
     }
 
+    /// bd#223: resolves a café by id for a tapped "Recent" row whose venue
+    /// isn't currently in `venues` (it scrolled out of the loaded viewport
+    /// since it was recorded). Checks memory first — free, and covers the
+    /// common case (the recent is still on screen or was just selected) —
+    /// then falls back to the same detail endpoint `SavedVenuesModel`/
+    /// `SavedVenuesStore` already use for a saved café. `api` doesn't
+    /// declare `VenueDetailServing` itself (this model's only documented
+    /// contract is `VenueListing`, so tests can inject a listing-only
+    /// double) — every real conformer (`VenueAPI`, `ScenarioVenueService`)
+    /// happens to also implement it, so the cast only ever fails for a
+    /// deliberately listing-only test double, in which case this correctly
+    /// reports "can't resolve" rather than crashing.
+    public func venue(id: String) async throws -> Venue {
+        if let cached = loadedVenues.first(where: { $0.id == id }) { return cached }
+        guard let detailService = api as? any VenueDetailServing else {
+            throw VenueAPIError.invalidResponse
+        }
+        return try await detailService.fetchVenue(id: id)
+    }
+
     public func load(_ request: VenueLoadRequest) async {
         loadGeneration += 1
         let generation = loadGeneration

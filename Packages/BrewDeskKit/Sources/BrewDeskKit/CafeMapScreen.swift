@@ -123,6 +123,26 @@ public struct CafeMapScreen: View {
     /// Maps' own "field shows what you picked" behavior), with a clear (x)
     /// affordance beside it. `nil` is the ordinary editable-field state.
     @State private var committedSelectionLabel: String?
+    /// bd#223: on-device-only recent-search memory (café selections and
+    /// submitted queries). Defaults to the same "phase-1 singleton" shape
+    /// `LaunchEnvironment.current` documents for itself — a composition-root
+    /// injection point is a follow-up, not this ticket's scope.
+    @State private var recentSearchStore = RecentSearchStore()
+    /// bd#223: the exact `model.searchQuery` text the keyboard's Search/
+    /// return last committed to — `scheduleSearchFit`'s guard requires this
+    /// to equal the query being asked about before it ever fits the camera,
+    /// which is what makes "no camera moves while typing" hold: nothing sets
+    /// this while the user is still typing, only `searchHeader`'s
+    /// `.onSubmit` and `runSubmittedSearch()` (the Recent-query-row path)
+    /// do. Disarmed back to `nil` the moment the query text changes away
+    /// from it (see the `.onChange(of: model.searchQuery)` below) so a STALE
+    /// arm from an earlier submit can never fire again if the user retypes
+    /// the exact same text without submitting again.
+    @State private var searchSubmittedQuery: String?
+    /// bd#223: the in-flight detail fetch for a tapped "Recent" café that
+    /// wasn't already in `model.venues` — cancelled by a later recent tap or
+    /// `onDisappear`.
+    @State private var recentCafeFetchTask: Task<Void, Never>?
     /// The shelf's resting detent (brewdesk#76). Changes once per settled
     /// drag — never per frame — so this body stays out of mid-gesture frames
     /// (the brewdesk#54 invariant). Mid-drag state lives in the card itself.
@@ -560,59 +580,63 @@ public struct CafeMapScreen: View {
         .overlay(alignment: .bottom) {
             DiscoveryShelfCard(
                 model: model,
+                recentSearchStore: recentSearchStore,
                 detent: $shelfDetent,
                 selectedID: selected?.id,
                 fullHeight: max(320, mapHeight * 0.7),
-                isSearchFocused: searchFocused
-            ) { venue in
-                // bd#219: a row tap while a search is active (typed text
-                // still in the field, matching `showSearchAreaPill`'s own
-                // gate) is a SEARCH RESULT selection — fly-to at walking
-                // scale, collapse the shelf, load surroundings. A plain
-                // browsing tap (no search text) keeps the original
-                // neighborhood-zoom recenter untouched.
-                if !model.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    selectSearchResult(venue)
-                } else {
-                    selected = venue
-                    stopTrackingUserLocation()
-                    // bd#219 (supervisor 2nd revision): a plain browsing
-                    // selection establishes its OWN camera intent, always
-                    // overriding a stale fly-to lock.
-                    flyTarget = nil
-                    let browseRegion = MKCoordinateRegion(
-                        center: coordinate(of: venue),
-                        span: MKCoordinateSpan(latitudeDelta: 0.012, longitudeDelta: 0.012)
-                    )
-                    logPositionWrite("plainBrowsingTap", region: browseRegion)
-                    position = .region(browseRegion)
+                isSearchActive: isShelfInSearchState,
+                onVenueTap: { venue in
+                    // bd#219: a row tap while a search is active (typed text
+                    // still in the field, matching `showSearchAreaPill`'s own
+                    // gate) is a SEARCH RESULT selection — fly-to at walking
+                    // scale, collapse the shelf, load surroundings. A plain
+                    // browsing tap (no search text) keeps the original
+                    // neighborhood-zoom recenter untouched.
+                    if !model.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        selectSearchResult(venue)
+                    } else {
+                        selected = venue
+                        stopTrackingUserLocation()
+                        // bd#219 (supervisor 2nd revision): a plain browsing
+                        // selection establishes its OWN camera intent, always
+                        // overriding a stale fly-to lock.
+                        flyTarget = nil
+                        let browseRegion = MKCoordinateRegion(
+                            center: coordinate(of: venue),
+                            span: MKCoordinateSpan(latitudeDelta: 0.012, longitudeDelta: 0.012)
+                        )
+                        logPositionWrite("plainBrowsingTap", region: browseRegion)
+                        position = .region(browseRegion)
+                    }
+                },
+                onRecentCafeTap: { entry in selectRecentCafe(entry) },
+                onRecentQueryTap: { text in
+                    model.searchQuery = text
+                    runSubmittedSearch()
                 }
-            }
-            // Dragging the shelf (resize or its own scroll content) also
-            // resigns the search field (brewdesk#87). Applied at the call
-            // site rather than inside `DiscoveryShelfCard` — its own
-            // `minimumDistance: 8` resize gesture and any internal
-            // scrolling both still recognize normally alongside this one.
-            //
-            // bd#219: `minimumDistance: 8`, not `0` — a zero-distance drag
-            // fires its `onChanged` on the very first touch-DOWN, before a
-            // tap gesture underneath (a venue row's `Button`) gets to
-            // recognize the touch as a tap. In search mode that touch-down
-            // set `searchFocused = false` immediately, which flips
-            // `DiscoveryShelfCard.isSearchFocused` mid-touch and swaps its
-            // content from the vertical search list back to the horizontal
-            // rail out from under the finger — cancelling the row's own tap
-            // gesture entirely (reproduced: a synthesized row tap in
-            // XCUITest never reached `onVenueTap` at all). Matches the same
-            // fix the card's own resize gesture already uses, and the same
-            // rationale ("venue-card and chip taps stay taps") — this
-            // gesture's own doc comment already says it exists for DRAGS
-            // (resize/scroll), never a stationary tap.
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 8)
-                    .onChanged { _ in searchFocused = false }
             )
-            .scrollDismissesKeyboard(.immediately)
+            // bd#223 (B2 root cause #1 — "I can't scroll the listing!! When
+            // typing!?"): this used to also carry a
+            // `simultaneousGesture(DragGesture(minimumDistance: 8))` that set
+            // `searchFocused = false` on the first 8pt of ANY drag over the
+            // WHOLE shelf overlay, including one starting inside the search
+            // results `ScrollView`. That flipped `DiscoveryShelfCard
+            // .isSearchActive` false mid-touch — swapping the vertical search
+            // list back out for the horizontal rail before the ScrollView
+            // ever got to recognize the drag as a scroll (reproduced: a
+            // scroll gesture on the results list never actually scrolled it;
+            // it just collapsed the shelf out from under the finger).
+            // Removed outright — `DiscoveryShelfCard`'s own
+            // `.scrollDismissesKeyboard(.interactively)` on its results
+            // `ScrollView` is now the ONLY thing that resigns focus on a list
+            // drag, ties natively into `@FocusState` (no competing gesture
+            // recognizer), and — critically — no longer collapses the shelf,
+            // because `isShelfInSearchState` below stays true off committed
+            // TEXT, not off focus alone. `.scrollDismissesKeyboard(
+            // .immediately)` also used to live here (an abrupt, non-
+            // interactive dismiss on top of the same competing gesture); the
+            // replacement lives with the ScrollView it actually affects.
+            //
             // bd#210: the shelf's REAL rendered frame at whatever detent
             // it's currently at — not `shelfClearance`'s constant estimate
             // (deliberately detent-invariant so the MAP doesn't jump; the
@@ -646,20 +670,33 @@ public struct CafeMapScreen: View {
                 if MapFrameStatsHUD.isEnabled {
                     MapFrameStatsHUD(annotationCount: plan.annotationCount)
                 }
-                LocateMeButton(
-                    isTracking: isTrackingUserLocation,
-                    isDenied: locationDenied,
-                    pulseScale: locateButtonScale,
-                    action: handleLocateTap
-                )
-                .onGeometryChange(for: CGRect.self) { proxy in
-                    proxy.frame(in: .named(Self.mapPlaneSpace))
-                } action: { rect in
-                    locateButtonFrame = rect
+                // bd#223 (requirement 4): hidden — not merely faded, REMOVED
+                // from the tree once the fade settles — while the search
+                // field is focused or the shelf is in its full-height search
+                // state (`isShelfInSearchState`, the same gate the shelf
+                // itself uses). Root complaint was the round button floating
+                // over a result row's content; conditionally including it
+                // (rather than only `.opacity(0)`) also satisfies
+                // `MapLocateButtonUITests`-style assertions that it doesn't
+                // exist at all while focused, not just that it's invisible.
+                if !isShelfInSearchState {
+                    LocateMeButton(
+                        isTracking: isTrackingUserLocation,
+                        isDenied: locationDenied,
+                        pulseScale: locateButtonScale,
+                        action: handleLocateTap
+                    )
+                    .onGeometryChange(for: CGRect.self) { proxy in
+                        proxy.frame(in: .named(Self.mapPlaneSpace))
+                    } action: { rect in
+                        locateButtonFrame = rect
+                    }
+                    .transition(.opacity)
                 }
             }
             .padding(.trailing, 12)
             .padding(.bottom, shelfClearance)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: isShelfInSearchState)
         }
         .sheet(item: $selected) { venue in
             NavigationStack {
@@ -744,11 +781,25 @@ public struct CafeMapScreen: View {
             }
             searchDrivenSelection = false
         }
-        // brewdesk#158: a settled, non-empty search must move the camera to
-        // its results (critique finding 9 — a one-result search left the
-        // map showing an unrelated neighborhood with no pin in view).
+        // bd#223 (requirement 5 — "no camera moves while typing"):
+        // brewdesk#158 used to call `scheduleSearchFit(query: newValue)`
+        // HERE, on every keystroke — that was the entire root cause of the
+        // reported bug (a one-letter query "T" fit the camera to every café
+        // it matched across the whole NY metro area while the user was
+        // still typing). Replaced with a disarm-only reaction: typing must
+        // never itself trigger a fit, but a query the user has since typed
+        // AWAY from must also stop being treated as still "submitted" —
+        // otherwise retyping the exact text an earlier Search/return already
+        // committed (`searchSubmittedQuery`) would let a late citywide
+        // answer (via `.onChange(of: model.venues)` below) sneak a fit in
+        // while the user is, again, still typing. The camera now moves only
+        // from `runSubmittedSearch()` (Search/return, or a tapped Recent
+        // query row) or `selectSearchResult` (a row tap, or a submit that
+        // resolves to exactly one result) — see `shouldApplySearchFit`.
         .onChange(of: model.searchQuery) { _, newValue in
-            scheduleSearchFit(query: newValue)
+            if newValue != searchSubmittedQuery {
+                searchSubmittedQuery = nil
+            }
         }
         .onChange(of: model.centerLat) {
             applyCenterChange()
@@ -829,6 +880,7 @@ public struct CafeMapScreen: View {
             gapFillTask?.cancel()
             searchAreaFetchTask?.cancel()
             flySettleTask?.cancel()
+            recentCafeFetchTask?.cancel()
         }
         // bd#210: declared LAST (outermost) so every overlay/safeAreaInset
         // attached anywhere above — the search header, the search-area
@@ -857,15 +909,21 @@ public struct CafeMapScreen: View {
 
     /// Pure guard behind `scheduleSearchFit` (bd#219, extracted for direct
     /// unit testing — everything else about the fit's scheduling/animation
-    /// needs a running `Map`). A "fit all results" pass is only ever
-    /// appropriate while the user is still typing/browsing a query with NO
-    /// committed selection: false for an empty/blank query (nothing to fit),
-    /// and false once `selectionQuery` — `searchSelectionQuery`, set by
-    /// `selectSearchResult` — already equals the query being asked about,
-    /// however that call arrived (a late server search answer, or the
-    /// selection's own surroundings reload changing `model.venues` again).
-    static func shouldApplySearchFit(forQuery query: String, selectionQuery: String?) -> Bool {
-        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && query != selectionQuery
+    /// needs a running `Map`).
+    ///
+    /// bd#223 (requirement 5, revising brewdesk#158): a "fit all results"
+    /// pass used to be appropriate for ANY non-empty, non-selected query —
+    /// which is exactly what let a one-letter query fit the camera to
+    /// matches across the whole metro area while the user was still typing.
+    /// Now ALSO requires `query == submittedQuery`: nothing arms
+    /// `submittedQuery` except an explicit keyboard Search/return
+    /// (`runSubmittedSearch`), so typing alone can never satisfy this guard
+    /// regardless of how many results the query matches. `selectionQuery`'s
+    /// existing role is unchanged — once a selection has committed for this
+    /// exact query, a late server answer must never re-fit it.
+    static func shouldApplySearchFit(forQuery query: String, selectionQuery: String?, submittedQuery: String?) -> Bool {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !trimmed.isEmpty && query != selectionQuery && query == submittedQuery
     }
 
     /// bd#219 (supervisor 2nd revision) instrumentation: every `position`
@@ -924,35 +982,71 @@ public struct CafeMapScreen: View {
             .contains { $0.hasPrefix(needle) }
     }
 
-    /// Cancels any pending fit and, for a non-empty query, schedules one
-    /// past `VenuesModel.scheduleSearchApplication`'s own ~200ms debounce
-    /// so `model.venues` already reflects the settled search by the time
-    /// this reads it. Clearing the query (or narrowing it to blank) simply
-    /// cancels — no move, camera stays put, matching the ticket's scope.
+    /// bd#223: the keyboard's Search/return key (`searchHeader`'s
+    /// `.onSubmit`) AND a tapped "Recent" query row (which puts the text
+    /// back in the field and re-runs the search) both funnel through here —
+    /// the single place a query ever ARMS a camera move. Records the recent
+    /// (≥2 characters, matching the ticket's trigger), then either selects
+    /// immediately (an already-loaded LOCAL match resolves to exactly one
+    /// word-prefix result — no need to wait on the server) or arms
+    /// `searchSubmittedQuery` and schedules the fit, which itself re-checks
+    /// for a single result once `model.venues` actually settles (a citywide
+    /// server answer can still be in flight at the moment of Return).
+    private func runSubmittedSearch() {
+        model.submitSearch()
+        let trimmed = model.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        searchSubmittedQuery = model.searchQuery
+        let localResults = Self.wordPrefixRankedResults(for: model.searchQuery, in: model.venues)
+        if localResults.count == 1, let only = localResults.first {
+            // bd#223: an immediate single-result submit IS "picking a row" —
+            // `selectSearchResult` below records the `.cafe` recent; recording
+            // a SECOND `.query` entry for the same submit would be redundant
+            // (the ticket's own wording: a query recent is for when the user
+            // "did not pick a row").
+            selectSearchResult(only)
+        } else {
+            recentSearchStore.recordSubmittedQuery(trimmed)
+            searchFocused = false
+            scheduleSearchFit(query: model.searchQuery)
+        }
+    }
+
+    /// Applies the fit `runSubmittedSearch` (or a late citywide answer for
+    /// the SAME submitted query, via `.onChange(of: model.venues)` below)
+    /// armed. Never runs from typing alone — see `shouldApplySearchFit`.
     private func scheduleSearchFit(query: String) {
         searchFitTask?.cancel()
         // bd#219 (supervisor 2nd revision): `flyTarget`, once set, is
         // authoritative — diagnosed root cause of the wide-camera
-        // regression was THIS task, still in flight from typing (a real
-        // network search's 260ms debounce can resolve either before OR
-        // after a row tap depending on live latency), writing `position`
-        // again after a selection's own fly-to landed.
+        // regression was a stale fit task writing `position` again after a
+        // selection's own fly-to landed.
         guard flyTarget == nil else { return }
-        guard Self.shouldApplySearchFit(forQuery: query, selectionQuery: searchSelectionQuery) else { return }
+        guard Self.shouldApplySearchFit(forQuery: query, selectionQuery: searchSelectionQuery, submittedQuery: searchSubmittedQuery)
+        else { return }
         searchFitTask = Task {
             try? await Task.sleep(for: .milliseconds(260))
             guard !Task.isCancelled, flyTarget == nil else { return }
             // Superseded by further typing, the user is mid-gesture (never
             // yank the camera out from under a drag/pinch in flight), or an
             // explicit selection landed for this query while sleeping —
-            // re-checked here since `searchSelectionQuery` may have been set
-            // AFTER this task's own guard above already passed.
+            // re-checked here since `searchSelectionQuery`/`searchSubmittedQuery`
+            // may have changed AFTER this task's own guard above already passed.
             guard model.searchQuery == query, !mapInteraction.isActive,
-                  Self.shouldApplySearchFit(forQuery: query, selectionQuery: searchSelectionQuery)
+                  Self.shouldApplySearchFit(forQuery: query, selectionQuery: searchSelectionQuery, submittedQuery: searchSubmittedQuery)
             else { return }
             let results = Self.wordPrefixRankedResults(for: query, in: model.venues)
-            guard !results.isEmpty,
-                  let region = Self.searchFitRegion(for: results, mapHeight: mapHeight, shelfClearance: shelfClearance)
+            guard !results.isEmpty else { return }
+            // bd#223: a citywide server answer landing AFTER the submit can
+            // narrow the word-prefix-ranked results to exactly one — the
+            // ticket's own rule ("if there is exactly one result treat it as
+            // a selection") applies here too, not just to the immediate
+            // local check in `runSubmittedSearch`.
+            if results.count == 1, let only = results.first {
+                selectSearchResult(only)
+                return
+            }
+            guard let region = Self.searchFitRegion(for: results, mapHeight: mapHeight, shelfClearance: shelfClearance)
             else { return }
             // Re-checked one last time immediately before the write itself
             // — a selection could have landed (and set `flyTarget`) at any
@@ -1101,9 +1195,18 @@ public struct CafeMapScreen: View {
         searchFitTask?.cancel()
         flyCorrectionTask?.cancel()
         searchSelectionQuery = model.searchQuery
+        // bd#223: a selection is one-shot — it must never leave a stale arm
+        // behind for `shouldApplySearchFit` to (re-)act on if the user later
+        // retypes this exact text without submitting again.
+        searchSubmittedQuery = nil
         searchFocused = false
         searchDrivenSelection = true
         shelfDetent = .medium
+        // bd#223: the PR #220 selection path, from wherever it's reached
+        // (a shelf row tap, a Search/return that resolved to one result, or
+        // a tapped "Recent" café row) — this is the single place a café
+        // selection is remembered.
+        recentSearchStore.recordSelection(of: venue)
         // bd#219: COMMITS the search — the café's name replaces the
         // editable field (Apple Maps' own "field shows what you picked"),
         // and `model.clearSearch()` stops `model.venues` from staying
@@ -1296,6 +1399,40 @@ public struct CafeMapScreen: View {
             // target) over the `region` this function was called with,
             // which could be the pre-correction estimate.
             visibleRegion = flyTarget ?? region
+        }
+    }
+
+    // MARK: - Recent search selection (bd#223)
+
+    /// A tap on a "Recent" café row — exactly the PR #220 selection
+    /// behaviour (`selectSearchResult`), reusing whatever's already in
+    /// `model.venues` if the café is still there, otherwise resolving it by
+    /// id via the same detail endpoint `SavedVenuesModel` uses for a saved
+    /// café. A stored coordinate builds a synthetic stand-in only for the
+    /// error path below — the fly-to itself always uses the REAL fetched
+    /// venue (or the in-memory one), never a hand-built approximation, so
+    /// the detail sheet always shows real, current data.
+    private func selectRecentCafe(_ entry: RecentSearchEntry) {
+        guard let cafeID = entry.cafeID else { return }
+        if let cached = model.venues.first(where: { $0.id == cafeID }) {
+            selectSearchResult(cached)
+            return
+        }
+        recentCafeFetchTask?.cancel()
+        recentCafeFetchTask = Task {
+            do {
+                let venue = try await model.venue(id: cafeID)
+                guard !Task.isCancelled else { return }
+                selectSearchResult(venue)
+            } catch {
+                guard !Task.isCancelled else { return }
+                // bd#223: "handle 'no longer exists' by removing the entry
+                // with a brief inline message" — any fetch failure (404,
+                // decoding, network) is treated the same way here: the
+                // stored recent is now unusable either way, and there's no
+                // separate "try again" affordance in the ticket's spec.
+                recentSearchStore.removeGoneCafe(id: cafeID, name: entry.title)
+            }
         }
     }
 
@@ -1734,10 +1871,16 @@ public struct CafeMapScreen: View {
     /// perf fix for #211's stalls: hosting every one of ~150-200 unrated
     /// venues as a SwiftUI annotation view (each wrapped in a 44pt Button)
     /// was the real cost, not view type churn.
+    /// bd#221: `anchor` is no longer always `.bottom` — a teardrop carrying
+    /// a name label reports WIDER content (the label is a real `HStack`
+    /// sibling now, not an overflow overlay MapKit never measured; see
+    /// `TeardropMarkerView.body`'s doc comment), so the anchor must shift
+    /// to the pin's own fraction of that wider content or the tip would
+    /// visibly slide off the venue's true coordinate.
     @MapContentBuilder
     private func annotations(for plan: MapAnnotationPlan) -> some MapContent {
         ForEach(plan.teardrops) { placement in
-            Annotation("", coordinate: coordinate(of: placement.venue), anchor: .bottom) {
+            Annotation("", coordinate: coordinate(of: placement.venue), anchor: TeardropMarkerView.annotationAnchor(for: placement)) {
                 markerButton(for: placement)
             }
         }
@@ -2037,27 +2180,24 @@ public struct CafeMapScreen: View {
                             TextField("Search spots", text: $model.searchQuery)
                                 .submitLabel(.search)
                                 .focused($searchFocused)
-                                .onSubmit {
-                                    model.submitSearch()
-                                    // bd#219: exactly one match already settled
-                                    // (a citywide server answer that landed
-                                    // before Return, or a plain local match) is
-                                    // treated as an explicit selection, same as
-                                    // tapping that one shelf row — flies to it
-                                    // rather than leaving the camera on a fit
-                                    // for a single-item list. A server answer
-                                    // still in flight at the moment of Return
-                                    // falls through to the ordinary settled-fit
-                                    // path once it lands (`scheduleSearchFit`
-                                    // via `.onChange(of: model.venues)`) —
-                                    // `searchFitRegion` already flies a lone
-                                    // result at the same walking scale.
-                                    if model.venues.count == 1, let only = model.venues.first {
-                                        selectSearchResult(only)
-                                    } else {
-                                        searchFocused = false
-                                    }
-                                }
+                                // bd#219/bd#223: exactly one WORD-PREFIX-
+                                // ranked match already settled (a citywide
+                                // server answer that landed before Return, or
+                                // a plain local match) is treated as an
+                                // explicit selection, same as tapping that one
+                                // shelf row — flies to it rather than leaving
+                                // the camera on a fit for a single-item list.
+                                // A server answer still in flight at the
+                                // moment of Return falls through to the
+                                // ordinary armed-fit path once it lands
+                                // (`scheduleSearchFit` via `.onChange(of:
+                                // model.venues)`) — `searchFitRegion` already
+                                // flies a lone result at the same walking
+                                // scale. This is ALSO the sole place the
+                                // camera is allowed to move for a query the
+                                // user just typed (requirement 5) — see
+                                // `runSubmittedSearch`.
+                                .onSubmit(runSubmittedSearch)
                             if !model.searchQuery.isEmpty {
                                 // bd#200: the citywide server search's own
                                 // in-flight indicator, distinct from the
@@ -2170,6 +2310,19 @@ public struct CafeMapScreen: View {
     /// covers them either way.
     private var shelfClearance: CGFloat {
         shelfChipRowHeight + 56 + shelfCardBlockHeight + 12
+    }
+
+    /// bd#223: true while the shelf is showing its full-height SEARCH
+    /// content — the field has focus, OR there's committed typed text even
+    /// after a results-list scroll dismissed the keyboard interactively
+    /// (`DiscoveryShelfCard`'s own `.scrollDismissesKeyboard(.interactively)`
+    /// clears `searchFocused` via the responder chain, but that alone must
+    /// NOT collapse the shelf back to the horizontal rail mid-scroll — the
+    /// B2 bug this ticket fixes). Drives both `DiscoveryShelfCard
+    /// .isSearchActive` (same gate, same reasoning) and the locate button's
+    /// visibility (requirement 4: never overlaps a result row).
+    private var isShelfInSearchState: Bool {
+        searchFocused || !model.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// A new plan is needed once the camera leaves what the current plan's
