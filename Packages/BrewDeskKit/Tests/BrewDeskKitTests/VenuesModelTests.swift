@@ -907,6 +907,114 @@ private actor SelectionSurroundingsService: VenueListing {
     }
 }
 
+/// brewdesk#222 — `VenuesModel.confirmedVenues`/`unknownVenues`/counts/
+/// `hasActiveFilter`, and the default-type ranking those sections carry.
+@Suite @MainActor struct FilterSectionsTests {
+    private static let observedAt = "2026-08-01T00:00:00Z"
+
+    private static func venue(
+        id: String, wifi: String, workScore: Int = 70, venueType: String? = "cafe"
+    ) -> Venue {
+        func claim(_ value: String) -> Claim {
+            Claim(value: value, source: "curated", confidence: 0.8, observedAt: observedAt)
+        }
+        return Venue(
+            id: id, name: id, lat: 40.7359, lng: -73.9911, address: nil,
+            neighborhood: "Union Square", borough: "Manhattan", hoursRaw: nil, vertical: "cafe",
+            attributes: VenueAttributes(
+                wifi: claim(wifi), outlets: claim("plenty"), laptopPolicy: claim("unrestricted"),
+                noise: claim("moderate"), seating: claim("plenty")
+            ),
+            vibeTags: [], workScore: workScore, lastVerified: nil, distanceM: nil, venueType: venueType
+        )
+    }
+
+    private func loadedModel(_ venues: [Venue]) async -> VenuesModel {
+        let model = VenuesModel(api: FixtureVenueService(venues: venues))
+        await model.load(model.request)
+        return model
+    }
+
+    @Test func noFilterMeansEveryVenueConfirmedAndNoUnknowns() async {
+        let venues = [
+            Self.venue(id: "a", wifi: "fast"),
+            Self.venue(id: "b", wifi: "unknown"),
+        ]
+        let model = await loadedModel(venues)
+        #expect(!model.hasActiveFilter)
+        #expect(model.confirmedVenues.map(\.id) == ["a", "b"])
+        #expect(model.unknownVenues.isEmpty)
+        #expect(model.confirmedCount == 2)
+        #expect(model.unknownCount == 0)
+    }
+
+    @Test func fastWifiFilterSplitsConfirmedAndUnknownAndExcludesKnownSlow() async {
+        let venues = [
+            Self.venue(id: "confirmed", wifi: "fast"),
+            Self.venue(id: "unknown", wifi: "unknown"),
+            Self.venue(id: "excluded", wifi: "slow"),
+        ]
+        let model = await loadedModel(venues)
+        model.minWifi = .fast
+
+        #expect(model.hasActiveFilter)
+        #expect(model.confirmedVenues.map(\.id) == ["confirmed"])
+        #expect(model.unknownVenues.map(\.id) == ["unknown"])
+        #expect(model.confirmedCount == 1)
+        #expect(model.unknownCount == 1)
+        // The excluded venue never appears in `venues` at all (`matches`),
+        // let alone either section.
+        #expect(!model.venues.map(\.id).contains("excluded"))
+    }
+
+    /// Ordering within each section stays observed-first/score (item 2) —
+    /// a stable filter over `venues`' own order, not a re-sort.
+    @Test func sectionsPreserveTheExistingOrderWithinEachHalf() async {
+        let venues = [
+            Self.venue(id: "confirmed-low", wifi: "fast", workScore: 40),
+            Self.venue(id: "unknown-first", wifi: "unknown", workScore: 90),
+            Self.venue(id: "confirmed-high", wifi: "fast", workScore: 95),
+            Self.venue(id: "unknown-second", wifi: "unknown", workScore: 10),
+        ]
+        let model = await loadedModel(venues)
+        model.minWifi = .fast
+
+        // `venues`' own order (server order here; nothing to re-rank on
+        // score since every venue is equally "rated" in this fixture) is
+        // preserved inside each split.
+        #expect(model.confirmedVenues.map(\.id) == ["confirmed-low", "confirmed-high"])
+        #expect(model.unknownVenues.map(\.id) == ["unknown-first", "unknown-second"])
+    }
+
+    /// The TestFlight build 28 shape: a coworking space must not lead a
+    /// section purely on score once cafés are also present, while the type
+    /// filter still exposes it when chosen.
+    @Test func confirmedSectionRanksCafesAboveOtherTypesByDefault() async {
+        let venues = [
+            Self.venue(id: "wework", wifi: "fast", workScore: 90, venueType: "coworking"),
+            Self.venue(id: "cafe", wifi: "fast", workScore: 40, venueType: "cafe"),
+        ]
+        let model = await loadedModel(venues)
+        model.minWifi = .fast
+
+        #expect(model.confirmedVenues.map(\.id) == ["cafe", "wework"])
+
+        model.venueType = .cafe
+        // Choosing a type is a no-op for the ranking rule itself; it also
+        // narrows `venues` to that type via `VenueFilter`, so the coworking
+        // space drops out entirely here (a separate, existing mechanism).
+        #expect(model.confirmedVenues.map(\.id) == ["cafe"])
+    }
+}
+
+/// Minimal fixture `VenueListing` for `FilterSectionsTests` — returns the
+/// given venues for any query, unfiltered (category filtering is local to
+/// `VenuesModel`/`VenueFilter`, never the wire).
+private struct FixtureVenueService: VenueListing {
+    let venues: [Venue]
+    func fetchVenues(_ query: VenueQuery) async throws -> [Venue] { venues }
+}
+
 @Suite @MainActor struct TakeoutImportTests {
     private func venue(_ id: String, _ name: String, lat: Double, lng: Double) -> Venue {
         Venue(

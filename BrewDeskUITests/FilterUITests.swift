@@ -88,6 +88,147 @@ final class FilterUITests: XCTestCase {
                       "Laptop-discouraged cafe should not pass laptop-friendly")
     }
 
+    // MARK: - Honest filters (brewdesk#222)
+
+    @MainActor
+    private func launchFilterHonesty() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-UITestSkipGates", "-UITestScenario", "filterHonesty"]
+        app.launch()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
+        app.spotsTab.tap()
+        XCTAssertTrue(app.mapPin(named: "Fixture Confirmed Cafe").waitForExistence(timeout: wait))
+        return app
+    }
+
+    /// Drags the shelf grabber to `.full` so the sectioned list (rather than
+    /// the compact rail) renders — mirrors `MapShelfDetentUITests`'
+    /// `dragGrabber`, duplicated locally rather than cross-file coupling for
+    /// one call site.
+    @MainActor
+    private func openFullShelf(_ app: XCUIApplication) {
+        let handle = app.descendants(matching: .any)["map-shelf-grabber"].firstMatch
+        XCTAssertTrue(handle.waitForExistence(timeout: wait), "shelf grabber missing")
+        let shelf = app.descendants(matching: .any)["map-discovery-shelf"].firstMatch
+        let window = app.windows.firstMatch
+        shelf.coordinate(withNormalizedOffset: .zero)
+            .withOffset(CGVector(dx: shelf.frame.width / 2, dy: 12))
+            .press(
+                forDuration: 0.05,
+                thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.10)),
+                withVelocity: .default,
+                thenHoldForDuration: 0.2
+            )
+    }
+
+    /// `-UITestScenario filterHonesty`: one CONFIRMED café (Wi-Fi fast), one
+    /// filter-UNKNOWN café (Wi-Fi unknown — the WeWork TestFlight build 28
+    /// report), one KNOWN-EXCLUDED café (Wi-Fi slow), against a "fast
+    /// Wi-Fi" filter. Asserts the header count, both sections, the
+    /// collapsed-by-default unknown toggle, and — the acceptance criterion
+    /// verbatim — that the unknown café is never in the confirmed section.
+    @MainActor
+    func testFastWifiFilterSeparatesConfirmedFromUnknownAndHidesExcluded() throws {
+        let app = launchFilterHonesty()
+
+        pick(app, identifier: "filter-wifi-fast")
+
+        // Header: "1 match · 1 unknown" — the excluded café never counts
+        // toward either number.
+        let countLine = app.descendants(matching: .any)["map-count-line"].firstMatch
+        XCTAssertTrue(countLine.waitForExistence(timeout: wait))
+        let settledCount = NSPredicate(format: "label CONTAINS %@", "1 match")
+        XCTAssertEqual(
+            XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: settledCount, object: countLine)], timeout: wait),
+            .completed,
+            "header never settled on the honest match/unknown count (was: \(countLine.label))"
+        )
+        XCTAssertTrue(countLine.label.contains("1 unknown"), "header missing the unknown count: \(countLine.label)")
+
+        // Map: the excluded café is hidden outright — not a pin, not a
+        // speck, not anywhere in the accessibility tree as a venue.
+        XCTAssertTrue(app.mapPin(named: "Fixture Slow WiFi Cafe").waitForNonExistence(timeout: wait),
+                      "known-slow café must be excluded, not just demoted")
+        // The unknown café never renders as a normal (numbered) pin —
+        // demoted to a faint speck, which carries no "Work Fit" accessibility
+        // label at all.
+        XCTAssertFalse(app.mapPin(named: "Fixture Unknown WiFi Cafe").exists,
+                        "filter-unknown café must not render as a confirmed pin")
+
+        openFullShelf(app)
+
+        let confirmedSection = app.descendants(matching: .any)["filter-confirmed-section"]
+        XCTAssertTrue(confirmedSection.waitForExistence(timeout: wait), "confirmed section missing")
+        XCTAssertTrue(
+            confirmedSection.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Confirmed Cafe,")).firstMatch
+                .waitForExistence(timeout: wait),
+            "confirmed café missing from the confirmed section"
+        )
+        XCTAssertFalse(
+            confirmedSection.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Unknown WiFi Cafe,")).firstMatch.exists,
+            "the acceptance criterion: an unknown-Wi-Fi café must never appear in the confirmed section"
+        )
+        XCTAssertFalse(
+            confirmedSection.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Slow WiFi Cafe,")).firstMatch.exists,
+            "excluded café leaked into the confirmed section"
+        )
+
+        // Unknown section: present, collapsed by default (the row isn't in
+        // the tree yet), toggle identifier exists.
+        let unknownToggle = app.descendants(matching: .any)["filter-unknown-toggle"]
+        XCTAssertTrue(unknownToggle.waitForExistence(timeout: wait), "unknown section toggle missing")
+        XCTAssertFalse(
+            app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Unknown WiFi Cafe,")).firstMatch.exists,
+            "unknown section must start collapsed"
+        )
+
+        unknownToggle.tap()
+        let unknownSection = app.descendants(matching: .any)["filter-unknown-section"]
+        XCTAssertTrue(unknownSection.waitForExistence(timeout: wait), "unknown section missing after expanding")
+        XCTAssertTrue(
+            unknownSection.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Unknown WiFi Cafe,")).firstMatch
+                .waitForExistence(timeout: wait),
+            "unknown café missing from the expanded unknown section"
+        )
+        XCTAssertFalse(
+            unknownSection.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Slow WiFi Cafe,")).firstMatch.exists,
+            "excluded café leaked into the unknown section"
+        )
+    }
+
+    /// `filterHonestyVenues`' confirmed café is known-SCARCE on outlets, so
+    /// adding an outlets-plenty floor on top of "fast Wi-Fi" excludes it —
+    /// the confirmed section goes honestly empty while the unknown café
+    /// (known-plenty outlets, still unknown-Wi-Fi) stays in the unknown
+    /// section: confirmed empty state + nudge, unknown section forced open.
+    @MainActor
+    func testEmptyConfirmedSectionShowsHonestEmptyStateAndNudge() throws {
+        let app = launchFilterHonesty()
+
+        pick(app, identifier: "filter-wifi-fast")
+        pick(app, identifier: "filter-outlets-plenty")
+        openFullShelf(app)
+
+        let confirmedSection = app.descendants(matching: .any)["filter-confirmed-section"]
+        XCTAssertTrue(confirmedSection.waitForExistence(timeout: wait), "confirmed section missing")
+        XCTAssertTrue(
+            confirmedSection.staticTexts["No café here is confirmed for these filters yet"].waitForExistence(timeout: wait),
+            "honest empty-confirmed copy missing"
+        )
+        XCTAssertTrue(
+            confirmedSection.staticTexts["Been here? Rate it."].waitForExistence(timeout: wait),
+            "rate-it nudge missing"
+        )
+
+        // The unknown section is FORCED open (nothing confirmed to hide
+        // behind) — no toggle tap needed to see the unknown café.
+        XCTAssertTrue(
+            app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Unknown WiFi Cafe,")).firstMatch
+                .waitForExistence(timeout: wait),
+            "unknown section should already be expanded when confirmed is empty"
+        )
+    }
+
     @MainActor
     func testHonestZeroShowsEmptyStateAndResetRestores() throws {
         let app = launchSpots()

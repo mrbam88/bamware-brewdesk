@@ -323,6 +323,56 @@ struct MapAnnotationPlannerTests {
         #expect(plan.markers.allSatisfy { $0.venue.isObserved }, "no unrated speck should have taken a slot from a rated venue")
     }
 
+    // MARK: - brewdesk#222: forced-unrated input classification (honest filters)
+
+    /// The WeWork shape (TestFlight build 28): a genuinely RATED venue
+    /// (`observed: true`, a real score) whose id is in `forcedUnratedVenueIDs`
+    /// must draw as a speck, not a teardrop/dot — `CafeMapScreen` passes the
+    /// active filter's `unknownVenues` ids here.
+    @Test func forcedUnratedVenueDrawsAsASpeckDespiteBeingActuallyRated() {
+        let weWork = venue(id: "wework", lat: 40.7360, lng: -73.9908, score: 48, observed: true)
+        let cafe = venue(id: "cafe", lat: 40.7300, lng: -73.9800, score: 70, observed: true)
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: wideMapSize.width)
+
+        let plan = MapAnnotationPlanner.plan(
+            venues: [weWork, cafe], region: testRegion, mapSize: wideMapSize,
+            forcedUnratedVenueIDs: ["wework"]
+        )
+
+        #expect(plan.specks.map(\.id) == ["wework"])
+        #expect(plan.teardrops.map(\.id) + plan.dots.map(\.id) == ["cafe"])
+    }
+
+    /// An empty `forcedUnratedVenueIDs` (the default, and what a model with
+    /// no active filter always passes) never changes the plan — behaviour
+    /// unchanged while no filter is active.
+    @Test func emptyForcedUnratedVenueIDsIsANoOp() {
+        let rated = wellSeparatedGrid(count: 8, step: 0.003, observed: true)
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: wideMapSize.width)
+
+        let withoutOverride = MapAnnotationPlanner.plan(venues: rated, region: testRegion, mapSize: wideMapSize)
+        let withEmptyOverride = MapAnnotationPlanner.plan(
+            venues: rated, region: testRegion, mapSize: wideMapSize, forcedUnratedVenueIDs: []
+        )
+
+        #expect(withoutOverride == withEmptyOverride)
+    }
+
+    /// A venue that's genuinely unrated stays a speck whether or not it's
+    /// also named in `forcedUnratedVenueIDs` — the override only ever
+    /// DEMOTES, never promotes.
+    @Test func forcedUnratedVenueIDsNeverPromotesAGenuinelyUnratedVenue() {
+        let unrated = venue(id: "unrated", lat: 40.7360, lng: -73.9908, observed: false)
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: wideMapSize.width)
+
+        let plan = MapAnnotationPlanner.plan(
+            venues: [unrated], region: testRegion, mapSize: wideMapSize,
+            forcedUnratedVenueIDs: ["unrated"]
+        )
+
+        #expect(plan.specks.map(\.id) == ["unrated"])
+    }
+
     // MARK: - brewdesk#213: planner keys off `isRated`, not `isObserved` directly
 
     /// The server's explicit `scoreDisplay` must override the client-side

@@ -46,6 +46,12 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         /// which decodes as `.researched` (the missing-field default) —
         /// `noCoverage` pins the coverage-driven path specifically.
         case noCoverage
+        /// bd#222 — the honest-filters UI test fixture: three cafés with
+        /// otherwise-identical strong attributes, differing only in Wi-Fi —
+        /// `.confirmed` (fast), `.unknown` (the value itself unknown — the
+        /// WeWork TestFlight build 28 report), `.excluded` (known-slow) —
+        /// against a "fast Wi-Fi" filter. See `filterHonestyVenues`.
+        case filterHonesty
         /// bd#200 — the regression fixture for "search must be city-wide":
         /// the normal three fixture venues near Union Square PLUS
         /// `farawayVenue`, a café in St. George, Staten Island — ~13.5km
@@ -152,6 +158,62 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             neighborhood: "Union Square"
         )
     ]
+
+    /// bd#222 — one CONFIRMED, one filter-UNKNOWN, one KNOWN-EXCLUDED café
+    /// against a "fast Wi-Fi" filter: seating and laptop policy are
+    /// identical and strong across all three, so only Wi-Fi drives that
+    /// classification. Outlets deliberately differ (confirmed café is
+    /// known-scarce; the unknown café is known-plenty) so a SECOND test can
+    /// add an outlets-plenty floor and empty the confirmed section (the
+    /// known-scarce café excludes) while the unknown café stays unknown
+    /// (its own unknown Wi-Fi is the only unresolved attribute, and outlets
+    /// alone doesn't fail it) — `FilterUITests
+    /// .testEmptyConfirmedSectionShowsHonestEmptyStateAndNudge`. Clustered
+    /// near Union Square like every other fixture, but far enough apart to
+    /// plan as distinct pins.
+    public static let filterHonestyVenues: [Venue] = [
+        filterHonestyVenue(
+            id: "filter-honesty-confirmed", name: "Fixture Confirmed Cafe",
+            lat: 40.7357, lng: -73.9905, wifi: "fast", outlets: "scarce", workScore: 82
+        ),
+        filterHonestyVenue(
+            id: "filter-honesty-unknown", name: "Fixture Unknown WiFi Cafe",
+            lat: 40.7364, lng: -73.9895, wifi: "unknown", outlets: "plenty", workScore: 71
+        ),
+        filterHonestyVenue(
+            id: "filter-honesty-excluded", name: "Fixture Slow WiFi Cafe",
+            lat: 40.7349, lng: -73.9918, wifi: "slow", outlets: "plenty", workScore: 90
+        ),
+    ]
+
+    private static func filterHonestyVenue(
+        id: String, name: String, lat: Double, lng: Double, wifi: String, outlets: String, workScore: Int
+    ) -> Venue {
+        let observedAt = "2026-08-01T00:00:00Z"
+        return Venue(
+            id: id,
+            name: name,
+            lat: lat,
+            lng: lng,
+            address: "1 Fixture Place",
+            neighborhood: "Union Square",
+            borough: "Manhattan",
+            hoursRaw: nil,
+            vertical: "cafe",
+            attributes: VenueAttributes(
+                wifi: Claim(value: wifi, source: "curated", confidence: 0.85, observedAt: observedAt),
+                outlets: Claim(value: outlets, source: "curated", confidence: 0.85, observedAt: observedAt),
+                laptopPolicy: Claim(value: "unrestricted", source: "curated", confidence: 0.85, observedAt: observedAt),
+                noise: Claim(value: "moderate", source: "curated", confidence: 0.85, observedAt: observedAt),
+                seating: Claim(value: "some", source: "curated", confidence: 0.85, observedAt: observedAt)
+            ),
+            vibeTags: ["fixture"],
+            workScore: workScore,
+            lastVerified: observedAt,
+            distanceM: 150,
+            venueType: "cafe"
+        )
+    }
 
     /// bd#200 — St. George, Staten Island: ~13.5km from `fixtureVenues`'
     /// Union Square cluster, outside every viewport radius `VenuesModel`
@@ -351,6 +413,8 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             return Self.perfVenues
         case .fixtureOK, .photosEmpty, .photosFail, .communityPhotos:
             return Self.fixtureVenues
+        case .filterHonesty:
+            return Self.filterHonestyVenues
         case .baselineCity:
             return Self.baselineVenues
         case .noCoverage:
@@ -470,6 +534,11 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
                 throw VenueAPIError.http(statusCode: 404)
             }
             return venue
+        case .filterHonesty:
+            guard let venue = Self.filterHonestyVenues.first(where: { $0.id == id }) else {
+                throw VenueAPIError.http(statusCode: 404)
+            }
+            return venue
         default:
             guard let venue = Self.fixtureVenues.first(where: { $0.id == id }) else {
                 throw VenueAPIError.http(statusCode: 404)
@@ -484,7 +553,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         switch scenario {
         case .engineDown, .photosFail: throw Self.serverError
         case .offline: throw Self.offlineError
-        case .emptyVenues, .photosEmpty, .manyVenues, .baselineCity, .noCoverage, .cityWideSearch: return []
+        case .emptyVenues, .photosEmpty, .manyVenues, .baselineCity, .noCoverage, .cityWideSearch, .filterHonesty: return []
         case .fixtureOK, .slow, .offlineThenRecovers:
             return blockStore.filteringBlocked(Self.fixturePhotos)
         case .communityPhotos:
@@ -513,7 +582,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             if observationAttempts.next() == 1 { throw Self.offlineError }
             return Self.observedVenue(id: venueId)
         case .fixtureOK, .emptyVenues, .photosEmpty, .photosFail, .manyVenues, .communityPhotos,
-             .baselineCity, .noCoverage, .cityWideSearch:
+             .baselineCity, .noCoverage, .cityWideSearch, .filterHonesty:
             return Self.observedVenue(id: venueId)
         }
     }

@@ -19,6 +19,18 @@ import VenueKit
 /// (unknown fails every floor) so these tests reproduce the live zero-cafes
 /// bug faithfully before the fix, and prove the app no longer delegates
 /// category filtering to that predicate after it.
+///
+/// brewdesk#222: `matches`/`apply` (what every test below still asserts on)
+/// are unchanged — a venue this suite calls a "match" is still exactly what
+/// `venues` includes. What changed is what's BEHIND that boolean: it's now
+/// `VenueFilter.classify(_:) != .excluded`, and several of the "matches"
+/// cases here are specifically `.unknown`, not `.confirmed` — `allUnknown`
+/// in particular is `.unknown` in every test it survives a filter in (its
+/// every attribute is the literal string `"unknown"`, or absent for
+/// seating). `FilterClassificationTests` is the new suite that asserts the
+/// three-way outcome directly; `matchesClassifyAgreesWithTheLegacyBooleanOnEveryFixture`
+/// below is the seam proving the two stay in lockstep for these exact
+/// fixtures.
 @Suite @MainActor struct FilterInclusivityTests {
     // The typical live venue: strong known claims, NO seating claim (99/100
     // live venues carry none — the exact shape the bug empties out).
@@ -189,6 +201,51 @@ import VenueKit
 
         model.minWifi = .fast
         #expect(model.venues.isEmpty)   // known-slow really is below the floor
+    }
+
+    // MARK: - brewdesk#222: `classify` justification
+
+    /// The seam this suite's class doc comment promises: for every fixture
+    /// venue here, `matches` still agrees exactly with `classify(_:) !=
+    /// .excluded` — the pre-#222 binary contract every test above asserts
+    /// on is a strict derivation of the new three-way one, not a parallel
+    /// implementation that could drift from it.
+    @Test func matchesClassifyAgreesWithTheLegacyBooleanOnEveryFixture() {
+        let filter = VenueFilter(
+            laptopFriendlyOnly: true, minWifi: .fast, minOutlets: .plenty,
+            minSeating: .plenty, venueType: .cafe
+        )
+        for venue in Self.all {
+            #expect(filter.matches(venue) == (filter.classify(venue) != .excluded), "disagreement for \(venue.id)")
+        }
+    }
+
+    /// `allUnknown` — every constrained attribute literally `"unknown"` (or
+    /// absent, for seating) — is the fixture the confirmed/unknown split
+    /// exists for: it "matches" every filter above because nothing about it
+    /// is KNOWN to fail, but it was never actually CONFIRMED. brewdesk#222
+    /// moves it from an undifferentiated "match" to `.unknown` — it now
+    /// renders in the shelf's "Might match · details unknown" section and
+    /// as a map speck, never presented as an equal to `known-good`, which
+    /// really does confirm every constraint.
+    @Test func allUnknownIsClassifiedUnknownNotConfirmedUnderEveryConstrainingFilter() {
+        let laptop = VenueFilter(laptopFriendlyOnly: true)
+        #expect(laptop.classify(Self.allUnknown) == .unknown)
+
+        let wifi = VenueFilter(minWifi: .ok)
+        #expect(wifi.classify(Self.allUnknown) == .unknown)
+
+        let outlets = VenueFilter(minOutlets: .plenty)
+        #expect(outlets.classify(Self.allUnknown) == .unknown)
+
+        let seating = VenueFilter(minSeating: .some)
+        #expect(seating.classify(Self.allUnknown) == .unknown)
+
+        // `known-good` has the same "matches" outcome as `allUnknown` under
+        // every filter above (see `selectingEveryFilterOptionStillShowsCafes`),
+        // but it's genuinely `.confirmed` — the distinction `matches` alone
+        // could never express.
+        #expect(wifi.classify(Self.knownGood) == .confirmed)
     }
 }
 

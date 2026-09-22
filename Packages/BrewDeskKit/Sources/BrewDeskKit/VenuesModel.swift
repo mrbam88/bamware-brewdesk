@@ -81,6 +81,46 @@ public final class VenuesModel {
         )
     }
 
+    // MARK: - Honest filter sections (brewdesk#222)
+
+    /// True while any of the four filter-menu dimensions constrain the
+    /// list — the same set `WorkFitFilterMenu.activeFilterCount` badges.
+    /// `venueType` is deliberately excluded: it has no "unknown" outcome of
+    /// its own (see `VenueFilter.classify`), so it never produces an
+    /// `unknownVenues` entry and doesn't change whether the shelf/map show
+    /// the confirmed/unknown split.
+    public var hasActiveFilter: Bool {
+        laptopFriendlyOnly || minWifi != nil || minOutlets != nil || minSeating != nil
+    }
+
+    /// `venues`, split by `VenueFilter.classify`: every constrained
+    /// attribute is known and passes. Order is a stable filter over
+    /// `venues`' own order — observed-first/score/search-rank, then (while
+    /// no venue type is explicitly chosen) cafés before other types — so
+    /// nothing about that composition changes here, only which half of it a
+    /// given venue lands in.
+    public var confirmedVenues: [Venue] {
+        VenueOrdering.cafeDefaultFirst(
+            venues.filter { filter.classify($0) == .confirmed },
+            venueTypeChosen: venueType != nil
+        )
+    }
+
+    /// `venues`' complementary half: nothing constrained is known to FAIL
+    /// the active filter, but at least one constrained attribute is
+    /// unknown (e.g. WeWork's Wi-Fi under a "fast Wi-Fi" filter — TestFlight
+    /// build 28). Always empty while `hasActiveFilter` is false — `classify`
+    /// never returns `.unknown` with no active constraint.
+    public var unknownVenues: [Venue] {
+        VenueOrdering.cafeDefaultFirst(
+            venues.filter { filter.classify($0) == .unknown },
+            venueTypeChosen: venueType != nil
+        )
+    }
+
+    public var confirmedCount: Int { confirmedVenues.count }
+    public var unknownCount: Int { unknownVenues.count }
+
     /// True while `venues` is the bundled snapshot rather than an engine
     /// response (brewdesk#28). Cleared by the first successful load.
     public private(set) var isShowingSnapshot = false
