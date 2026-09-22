@@ -327,15 +327,22 @@ public struct VenueDetailScreen: View {
     }
 
     /// Demoted, address-flavored secondary line under the hero name
-    /// (bd#197) — `.subheadline`/`.secondary` throughout, never `.headline`,
-    /// so nothing here competes with the venue name for "this is the title."
+    /// (bd#197) — `.subheadline` throughout, never `.headline`, so nothing
+    /// here competes with the venue name for "this is the title."
     /// The street line carries a small pin glyph so it reads as an address
     /// rather than a second line of title.
+    ///
+    /// brewdesk#170: system `.secondary` measured "Contrast nearly passed"
+    /// on the accessibility audit for both lines against the hero card's
+    /// `foam` background — same root cause bd#216 already fixed for the
+    /// Workability stamp (`informationCard` below). Same fix: the
+    /// contrast-verified `BrewDeskPalette.secondaryText` token in place of
+    /// the system semantic color.
     private var locationSummary: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("\(venue.neighborhood) · \(venue.borough)")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(BrewDeskPalette.secondaryText)
             if let address = venue.address {
                 Label {
                     Text(address)
@@ -343,7 +350,7 @@ public struct VenueDetailScreen: View {
                     Image(systemName: "mappin.and.ellipse")
                 }
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(BrewDeskPalette.secondaryText)
             }
         }
     }

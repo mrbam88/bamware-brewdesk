@@ -202,13 +202,20 @@ final class ObservationFormUITests: XCTestCase {
             // lives IN the bar and is never exempted while enabled.
             guard let element = issue.element else { return true }
             if element.identifier == "observation-submit" { return false }
-            // Selected option capsules: white-on-roast, measured ≈10:1 —
-            // comfortably past WCAG 1.4.3. The audit mis-samples the label
-            // against the CARD behind the capsule because the fill lives in
-            // a background modifier outside the accessibility node (started
-            // reporting on these iPhone 17 / iOS 26.5 runs; the identical
-            // styling passed the 17e audits for brewdesk#47).
-            if element.identifier.hasPrefix("observation-"), element.isSelected {
+            // Option capsules (`observation-<questionID>-<option>`, e.g.
+            // `observation-laptop-mixed`): both the selected (white-on-roast,
+            // ≈10:1) and unselected (black-on-oat, ≈16:1 — verified by hand
+            // against `BrewDeskPalette.oat` #E8E2D2) styles comfortably clear
+            // WCAG 1.4.3. The audit mis-samples the label against the CARD
+            // behind the capsule because the fill lives in a `.background`
+            // modifier outside the accessibility node — first the selected
+            // case (brewdesk#47, verified on 17e), now unselected too
+            // (issue #170, first seen on these iPhone 17 / iOS 26.5 runs:
+            // `observation-laptop-mixed`, unselected, flagged with no visible
+            // contrast problem in its own screenshot). Same root cause, same
+            // exemption; the card container (`observation-question-<id>`)
+            // and every other `observation-*` control keep a real audit.
+            if Self.isOptionCapsule(element) {
                 return true
             }
             return Self.isOccluded(element, in: app)
@@ -248,5 +255,18 @@ final class ObservationFormUITests: XCTestCase {
         if frame.maxY > barTop { return true }
         let navBottom = app.navigationBars.firstMatch.frame.maxY
         return frame.minY < navBottom
+    }
+
+    /// True for one of `ObservationOptionCard`'s per-option capsule buttons
+    /// (`observation-<questionID>-<option>`, `ObservationFormScreen.swift`),
+    /// never the card container (`observation-question-<id>`) or the other
+    /// singly-named `observation-*` controls (submit/error/retry/…).
+    private static let optionQuestionIDs: Set<String> = ["laptop", "seats", "outlets", "noise", "wifi"]
+
+    @MainActor
+    private static func isOptionCapsule(_ element: XCUIElement) -> Bool {
+        let parts = element.identifier.split(separator: "-", maxSplits: 2).map(String.init)
+        guard parts.count == 3, parts[0] == "observation" else { return false }
+        return optionQuestionIDs.contains(parts[1])
     }
 }
