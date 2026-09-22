@@ -165,18 +165,20 @@ struct MapAnnotationPlannerTests {
     // MARK: - bd#212 (supervisor revision): metres-per-point sizing
 
     @Test func headDiameterClampsAtBothEndsAndInterpolatesBetweenStops() {
+        // bd#221 (Bilal's round-2 selection, `size:"microplus"`): +1pt at
+        // every NUMBERED stop; the 9.0→4 "no number" floor is unchanged.
         #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 20) == 4, "zoomed out clamps at the 4pt floor")
         #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 9.0) == 4)
-        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 5.4) == 11.5, "numbers (>= 11 pt) hold through a normal neighborhood view")
-        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 3.6) == 12.5)
-        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 1.8) == 17)
-        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 0.9) == 20)
-        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 0.1) == 20, "closer than the closest stop clamps at the 20pt ceiling")
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 5.4) == 12.5, "numbers (>= 11 pt) hold through a normal neighborhood view")
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 3.6) == 13.5)
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 1.8) == 18)
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 0.9) == 21)
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 0.1) == 21, "closer than the closest stop clamps at the 21pt ceiling")
         // Midpoint (on the LOG scale) between two stops lands strictly
         // between their diameters.
         let midMPP = (9.0 * 5.4).squareRoot()
         let mid = MapAnnotationPlanner.headDiameter(forMetersPerPoint: midMPP)
-        #expect(mid > 4 && mid < 12)
+        #expect(mid > 4 && mid < 12.5)
     }
 
     @Test func headDiameterIsMonotonicAsMetersPerPointShrinks() {
@@ -207,7 +209,7 @@ struct MapAnnotationPlannerTests {
     // MARK: - bd#212: collision-free teardrop placement
 
     @Test func wellSeparatedRatedVenuesAllRenderAsFullTeardropsWithNumbers() {
-        // 1.8 m/pt ⇒ 17pt heads, well above both the shape and number
+        // 1.8 m/pt ⇒ 18pt heads, well above both the shape and number
         // thresholds; a generous step keeps every footprint collision-free.
         let venues = wellSeparatedGrid(count: 30, step: 0.0015)
         let testRegion = region(forMetersPerPoint: 1.8, mapWidth: wideMapSize.width)
@@ -216,14 +218,14 @@ struct MapAnnotationPlannerTests {
         #expect(plan.teardrops.count == 30)
         #expect(plan.dots.isEmpty)
         for marker in plan.teardrops {
-            #expect(marker.showsNumber, "a 17pt un-demoted teardrop must show its number")
+            #expect(marker.showsNumber, "an 18pt un-demoted teardrop must show its number")
         }
         assertNoOverlaps(teardropFootprints(for: plan, region: testRegion, mapSize: wideMapSize))
     }
 
     @Test func denselyPackedCandidatesDemoteToDotsInsteadOfOverlapping() {
         // Two observed venues close enough that their TEARDROP footprints
-        // (17+2=19pt side, half 9.5) collide, but the tight "head diameter +
+        // (18+1=19pt side, half 9.5) collide, but the tight "head diameter +
         // 1pt, tail excluded" box means only genuinely overlapping heads
         // ever demote.
         let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width)
@@ -240,7 +242,7 @@ struct MapAnnotationPlannerTests {
 
     @Test func wellSeparatedVenuesNeverDemoteEvenAtRealisticCafeDensity() {
         // Regression for the supervisor's hood-zoom finding: at 3.6 m/pt a
-        // 12pt head's footprint (12+1·2=14pt side) needs >14·3.6≈50.4m of
+        // 13.5pt head's footprint (13.5+1=14.5pt side) needs >14.5·3.6≈52.2m of
         // real-world clearance on at least one axis to stay collision-free.
         // 70m apart clears that with margin on both lat AND lng (using the
         // LONGITUDE metres-per-degree, the smaller of the two at this
@@ -252,7 +254,7 @@ struct MapAnnotationPlannerTests {
         let venues = wellSeparatedGrid(count: 20, step: stepDegrees, centerLat: lat, centerLng: -74.0027, observed: true)
         let testRegion = region(forMetersPerPoint: 3.6, mapWidth: mapSize.width, lat: lat, lng: -74.0027)
         let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize)
-        #expect(plan.teardrops.count == 20, "70m-separated venues at 3.6 m/pt (12pt heads) must not demote")
+        #expect(plan.teardrops.count == 20, "70m-separated venues at 3.6 m/pt (13.5pt heads) must not demote")
         assertNoOverlaps(teardropFootprints(for: plan, region: testRegion, mapSize: mapSize))
     }
 
@@ -288,6 +290,181 @@ struct MapAnnotationPlannerTests {
         let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize)
         #expect(plan.annotationCount <= MapAnnotationPlanner.maxAnnotations)
         assertNoOverlaps(teardropFootprints(for: plan, region: testRegion, mapSize: mapSize))
+    }
+
+    // MARK: - bd#221: café-name labels ("names on")
+
+    /// Every label's own screen-space box, reconstructed the same way
+    /// `MapAnnotationPlanner.placeNameLabels` builds it internally, so a
+    /// test can assert on the SAME geometry the planner collision-checked
+    /// against rather than a hand-approximated one.
+    private func labelBox(for placement: MarkerPlacement, region: MKCoordinateRegion, mapSize: CGSize, diameter: CGFloat) -> CGRect? {
+        guard let side = placement.nameLabelSide else { return nil }
+        let projector = ScreenProjector(region: region, size: mapSize)
+        let point = projector.point(for: coordinate(of: placement.venue))
+        let headCenter = CGPoint(x: point.x, y: point.y - diameter * MapAnnotationPlanner.headCenterFromTip)
+        let width = min(MapAnnotationPlanner.labelMaxWidth, CGFloat(placement.venue.name.count) * MapAnnotationPlanner.labelCharWidth + MapAnnotationPlanner.labelPadding)
+        let halfHeight = MapAnnotationPlanner.labelBoxHeight / 2
+        let x = side == .trailing
+            ? headCenter.x + diameter / 2 + MapAnnotationPlanner.labelGap
+            : headCenter.x - diameter / 2 - MapAnnotationPlanner.labelGap - width
+        return CGRect(x: x, y: headCenter.y - halfHeight, width: width, height: MapAnnotationPlanner.labelBoxHeight)
+    }
+
+    @Test func nameLabelsAppearOnlyOnNumberedTeardropsNeverOnDotsSpecksOrTheSelectedMarker() {
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: wideMapSize.width)
+        let venues = wellSeparatedGrid(count: 10, step: 0.003)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: wideMapSize, selectedVenueID: venues[0].id)
+        #expect(plan.markers.first { $0.id == venues[0].id }?.nameLabelSide == nil, "the selected marker must never carry a name label")
+        #expect(plan.dots.allSatisfy { $0.nameLabelSide == nil })
+        #expect(plan.specks.allSatisfy { $0.nameLabelSide == nil })
+        #expect(plan.teardrops.contains { $0.nameLabelSide != nil }, "at least one well-separated teardrop should win a label")
+    }
+
+    @Test func nameLabelsHiddenBelowTheNumberThreshold() {
+        // 8 m/pt is well past the number threshold — every rated venue is a
+        // dot, so no label may appear anywhere.
+        let venues = grid(count: 30, extent: 0.02, observed: true)
+        let testRegion = region(forMetersPerPoint: 8, mapWidth: mapSize.width)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize)
+        #expect(plan.markers.allSatisfy { $0.nameLabelSide == nil })
+    }
+
+    @Test func nameLabelCountCapsAtEightNeighborhoodTwelveStreetBestScoredFirst() {
+        let neighborhoodRegion = region(forMetersPerPoint: 3.6, mapWidth: wideMapSize.width)
+        let venues = wellSeparatedGrid(count: 30, step: 0.002, scoreOffset: 0)
+        let neighborhoodPlan = MapAnnotationPlanner.plan(venues: venues, region: neighborhoodRegion, mapSize: wideMapSize)
+        let neighborhoodLabelCount = neighborhoodPlan.markers.filter { $0.nameLabelSide != nil }.count
+        #expect(neighborhoodLabelCount <= MapAnnotationPlanner.labelCountNeighborhood)
+
+        let streetRegion = region(forMetersPerPoint: 1.8, mapWidth: wideMapSize.width)
+        let streetPlan = MapAnnotationPlanner.plan(venues: venues, region: streetRegion, mapSize: wideMapSize)
+        let streetLabelCount = streetPlan.markers.filter { $0.nameLabelSide != nil }.count
+        #expect(streetLabelCount <= MapAnnotationPlanner.labelCountStreet)
+
+        // Best-scored first: the top-scored venue among the well-separated
+        // set (plenty of room, no collisions) must always win a label slot.
+        let best = venues.max { $0.workScore < $1.workScore }!
+        #expect(streetPlan.markers.first { $0.id == best.id }?.nameLabelSide != nil, "the best-scored venue must win a label when there's room for one")
+    }
+
+    @Test func nameLabelsNeverOverlapAPinsTrueVisualHeadNotJustItsTipCenteredFootprint() {
+        // Regression (bd#221 round 2 supervisor review, screenshot
+        // evidence): `teardropFootprint`'s own collision box is centered
+        // on a pin's TIP, which sits `diameter · headCenterFromTip` BELOW
+        // its true circular head — a label that clears that footprint
+        // alone can still visually run through the upper part of a
+        // neighbour's actual head (a "52" pin drew straight through the
+        // middle of "Joe Coffee Company"'s label in the live screenshot).
+        // Dense enough that tight spacing between a labeled pin and its
+        // neighbours is reliably exercised.
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width)
+        let venues = grid(count: 80, extent: 0.012, observed: true)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize)
+        let mpp = MapAnnotationPlanner.metersPerPoint(region: testRegion, mapWidth: mapSize.width)
+        let diameter = MapAnnotationPlanner.headDiameter(forMetersPerPoint: mpp)
+        let projector = ScreenProjector(region: testRegion, size: mapSize)
+
+        func trueHeadRect(for placement: MarkerPlacement) -> CGRect {
+            let point = projector.point(for: coordinate(of: placement.venue))
+            let center = CGPoint(x: point.x, y: point.y - diameter * MapAnnotationPlanner.headCenterFromTip)
+            let radius = diameter / 2
+            return CGRect(x: center.x - radius, y: center.y - radius, width: diameter, height: diameter)
+        }
+
+        let labelBoxes = plan.markers.compactMap { labelBox(for: $0, region: testRegion, mapSize: mapSize, diameter: diameter) }
+        let headRects = plan.teardrops.map(trueHeadRect(for:))
+
+        for label in labelBoxes {
+            for head in headRects {
+                #expect(!label.intersects(head), "a name label overlaps a pin's true visual head circle, not just its tip-centered footprint")
+            }
+        }
+    }
+
+    @Test func nameLabelsNeverOverlapAnyPinFootprintOrAnotherLabel() {
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width)
+        let venues = grid(count: 60, extent: 0.01, observed: true)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize)
+        let mpp = MapAnnotationPlanner.metersPerPoint(region: testRegion, mapWidth: mapSize.width)
+        let diameter = MapAnnotationPlanner.headDiameter(forMetersPerPoint: mpp)
+
+        let labelBoxes = plan.markers.compactMap { labelBox(for: $0, region: testRegion, mapSize: mapSize, diameter: diameter) }
+        let pinFootprints = teardropFootprints(for: plan, region: testRegion, mapSize: mapSize)
+
+        for label in labelBoxes {
+            for pin in pinFootprints {
+                let pinRect = CGRect(x: pin.minX, y: pin.minY, width: pin.maxX - pin.minX, height: pin.maxY - pin.minY)
+                #expect(!label.intersects(pinRect), "a name label overlaps a pin footprint")
+            }
+        }
+        for i in 0..<max(labelBoxes.count - 1, 0) {
+            for j in (i + 1)..<labelBoxes.count {
+                #expect(!labelBoxes[i].intersects(labelBoxes[j]), "two name labels overlap")
+            }
+        }
+    }
+
+    @Test func nameLabelsNeverRenderPartlyOffScreen() {
+        // A venue right at the map's own left edge: a trailing (right-side)
+        // label has room, but a leading (left-side) one would run off the
+        // visible map — must never be chosen, and every label actually
+        // placed anywhere in this plan must fit within the map bounds.
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width)
+        let projector = ScreenProjector(region: testRegion, size: mapSize)
+        // Find a coordinate that projects near screen x=2 (well inside the
+        // 6pt margin) so only a TRAILING label could ever fit.
+        let edgeVenue = venue(id: "edge", lat: 40.7335, lng: -74.0027, score: 99)
+        let edgePoint = projector.point(for: CLLocationCoordinate2D(latitude: edgeVenue.lat, longitude: edgeVenue.lng))
+        // Shift the region so that point lands at x≈2.
+        var shiftedRegion = testRegion
+        shiftedRegion.center.longitude += (edgePoint.x - 2) / mapSize.width * testRegion.span.longitudeDelta
+        let plan = MapAnnotationPlanner.plan(venues: [edgeVenue], region: shiftedRegion, mapSize: mapSize)
+        let mpp = MapAnnotationPlanner.metersPerPoint(region: shiftedRegion, mapWidth: mapSize.width)
+        let diameter = MapAnnotationPlanner.headDiameter(forMetersPerPoint: mpp)
+        if let box = labelBox(for: plan.markers[0], region: shiftedRegion, mapSize: mapSize, diameter: diameter) {
+            #expect(plan.markers[0].nameLabelSide == .trailing, "a pin hard against the left edge may only ever get a TRAILING label")
+            #expect(box.minX >= 0, "a placed label must not render off the left edge of the map")
+            #expect(box.maxX <= mapSize.width, "a placed label must not render off the right edge of the map")
+        }
+    }
+
+    @Test func nameLabelsNeverOverlapAChromeExclusionRect() {
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width)
+        let venues = grid(count: 60, extent: 0.01, observed: true)
+        let exclusions = [CGRect(x: 0, y: 0, width: mapSize.width, height: 140)]
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize, exclusionRects: exclusions)
+        let mpp = MapAnnotationPlanner.metersPerPoint(region: testRegion, mapWidth: mapSize.width)
+        let diameter = MapAnnotationPlanner.headDiameter(forMetersPerPoint: mpp)
+        let labelBoxes = plan.markers.compactMap { labelBox(for: $0, region: testRegion, mapSize: mapSize, diameter: diameter) }
+        for label in labelBoxes {
+            for exclusion in exclusions {
+                #expect(!label.intersects(exclusion), "a name label sits under a chrome exclusion rect")
+            }
+        }
+    }
+
+    @Test func nameLabelsNeverChangeAPinsOwnKindOrNumberEvenInADenseLabelHostileLayout() {
+        // Dense enough that most candidates LOSE every label placement
+        // attempt — labels are pure decoration computed strictly after
+        // every pin already exists, so even here every teardrop's
+        // `showsNumber` must still be exactly "diameter >= numberThreshold"
+        // and every dot must still show no number, independent of whether
+        // it also picked up a label.
+        let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width)
+        let venues = grid(count: 150, extent: 0.006, observed: true)
+        let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: mapSize)
+        let mpp = MapAnnotationPlanner.metersPerPoint(region: testRegion, mapWidth: mapSize.width)
+        let diameter = MapAnnotationPlanner.headDiameter(forMetersPerPoint: mpp)
+        let expectedShowsNumber = diameter >= MapAnnotationPlanner.numberThreshold
+        for marker in plan.teardrops {
+            #expect(marker.showsNumber == expectedShowsNumber, "a name label must never change whether its own pin shows a number")
+        }
+        #expect(plan.dots.allSatisfy { !$0.showsNumber })
+        // Plenty of candidates in a 0.006°-extent, 150-venue grid at 1.8
+        // m/pt must lose the label race entirely — confirms this test is
+        // actually exercising the "no room" path, not a vacuous one.
+        #expect(plan.markers.contains { $0.showsNumber && $0.nameLabelSide == nil }, "test setup: expected at least one numbered pin to lose every label attempt")
     }
 
     // MARK: - bd#159/#212: unrated venues are specks, never numbered

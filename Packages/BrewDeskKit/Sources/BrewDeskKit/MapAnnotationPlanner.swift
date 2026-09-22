@@ -49,6 +49,15 @@ public enum MarkerKind: Equatable, Sendable {
 ///, relatively rare trade-off for keeping the steady-state cost of ~150-200
 /// unrated specks at native-overlay prices instead of SwiftUI-annotation
 /// prices.)
+/// bd#221: which side of its own head a teardrop's café-name label sits on
+/// — decided once, deterministically, by the planner (screen space), never
+/// by the view. `nil` on `MarkerPlacement` means "no label" (not eligible,
+/// zoomed too far out, or lost every placement attempt this plan).
+public enum NameLabelSide: Equatable, Sendable {
+    case trailing
+    case leading
+}
+
 public struct MarkerPlacement: Identifiable, Equatable, Sendable {
     public let venue: Venue
     public let kind: MarkerKind
@@ -58,14 +67,23 @@ public struct MarkerPlacement: Identifiable, Equatable, Sendable {
     /// pt").
     public let showsNumber: Bool
     public let isSelected: Bool
+    /// bd#221 "names on": which side (if any) this marker's café-name label
+    /// should render on, decided once by `MapAnnotationPlanner.plan(...)`.
+    /// Always `nil` for the selected marker (it carries its own name above
+    /// the halo instead) and for anything below the number threshold.
+    public let nameLabelSide: NameLabelSide?
 
     public var id: String { venue.id }
 
-    public init(venue: Venue, kind: MarkerKind, showsNumber: Bool, isSelected: Bool = false) {
+    public init(
+        venue: Venue, kind: MarkerKind, showsNumber: Bool, isSelected: Bool = false,
+        nameLabelSide: NameLabelSide? = nil
+    ) {
         self.venue = venue
         self.kind = kind
         self.showsNumber = showsNumber
         self.isSelected = isSelected
+        self.nameLabelSide = nameLabelSide
     }
 }
 
@@ -154,7 +172,12 @@ public enum MapAnnotationPlanner {
         // the screen's aspect), so every café became a dot. Numbered
         // teardrops now hold through a normal neighborhood view (~5.4 m/pt,
         // ≈ 2.1 km across) and only then shrink to pin-pricks.
-        (9.0, 4), (5.4, 11.5), (3.6, 12.5), (1.8, 17), (0.9, 20),
+        //
+        // bd#221 (Bilal's round-2 pin selection, "microscopical bigger"):
+        // +1pt at every NUMBERED stop — the 9.0→4 "no number" floor is
+        // unchanged. Matches the design-review page's `size:"microplus"`
+        // selection exactly (`SIZES.microplus` in the prototype).
+        (9.0, 4), (5.4, 12.5), (3.6, 13.5), (1.8, 18), (0.9, 21),
     ]
     /// Beyond this many metres/point an unrated speck draws nothing at all
     /// (too zoomed out to mean anything).
@@ -168,6 +191,113 @@ public enum MapAnnotationPlanner {
     public static let numberThreshold: CGFloat = 11
     /// Selected marker: fixed size regardless of zoom (bd#212 spec).
     public static let selectedDiameter: CGFloat = 30
+
+    // MARK: - bd#221: café-name labels ("names on")
+
+    /// Gap between a head's edge and its name label (design-review mock's
+    /// own value, `stylePin`'s label block).
+    static let labelGap: CGFloat = 4
+    /// Fixed box height a label collision-checks against — one line of
+    /// 11pt Hanken Grotesk Semibold plus a hair of vertical breathing room.
+    static let labelBoxHeight: CGFloat = 14
+    /// Widest a label may render, tail-truncated beyond this (mock's own
+    /// `Math.min(132, …)`).
+    public static let labelMaxWidth: CGFloat = 132
+    /// Cheap per-character width estimate (mock's own `n.length*5.9+4`) —
+    /// good enough for a deterministic, allocation-free layout pass; the
+    /// view still truncates with `.lineLimit(1)` if this ever under-shoots
+    /// a real glyph's width.
+    static let labelCharWidth: CGFloat = 5.9
+    static let labelPadding: CGFloat = 4
+    /// Vertical distance from a teardrop's TIP (the coordinate the planner
+    /// projects to screen space) up to its HEAD's own center — the closed
+    /// form of `TeardropShape`'s geometry: tip sits `frameHeight` from the
+    /// head's top edge, head center sits `diameter/2` from that same top
+    /// edge, so tip-to-center is `diameter · (tailHeightFactor - 0.5)`.
+    /// Matches `TeardropMarkerView.numberVerticalOffset`'s own geometry.
+    static let headCenterFromTip: CGFloat = tailHeightFactor - 0.5
+    /// Below this many metres/point the viewport reads as "street" scale
+    /// (12 labels); at or above it, "neighborhood" scale (8 labels) — the
+    /// midpoint between the two reference zooms the spec names explicitly
+    /// (3.6 m/pt neighborhood, 1.8 m/pt street).
+    public static let labelStreetScaleMpp: Double = 2.7
+    public static let labelCountNeighborhood = 8
+    public static let labelCountStreet = 12
+
+    /// bd#221 "names on": mutates `placed` in place, attaching a
+    /// `nameLabelSide` to whichever already-placed teardrops win a
+    /// collision-free label slot. Runs entirely in screen space, after
+    /// every pin this `plan()` call will ever draw already exists — a
+    /// label can never bump a pin out of its slot, only occupy space a pin
+    /// left free.
+    /// Screen-edge margin a label box must clear — matches the design-
+    /// review mock's own `lx<6||lx+tw>W-6` guard. Without this a label
+    /// beside a pin near the map's own left/right edge can render partly
+    /// off-screen (clipped by the device bezel, not by our own
+    /// truncation) instead of trying the OTHER side or being omitted.
+    private static let labelScreenMargin: CGFloat = 6
+
+    private static func placeNameLabels(
+        into placed: inout [MarkerPlacement], grid: CollisionGrid, headBoxes: [AABB], projector: ScreenProjector,
+        diameter: CGFloat, mpp: Double, mapSize: CGSize
+    ) {
+        guard diameter >= numberThreshold else { return }
+        let limit = mpp <= labelStreetScaleMpp ? labelCountStreet : labelCountNeighborhood
+        let eligibleIndices = placed.indices.filter { index in
+            let m = placed[index]
+            return !m.isSelected && m.showsNumber && m.kind.teardropDiameter != nil
+        }
+        // `placed` is already score-descending for rated teardrops (the
+        // selected venue, if any, is index 0 and excluded above), so
+        // `eligibleIndices` is too. Supervisor review (bd#221 round 2):
+        // this used to `.prefix(limit)` the CANDIDATE pool — i.e. only
+        // ever ATTEMPT the top `limit` scored venues — so a dense cluster
+        // could lose several of the very best-scored candidates to
+        // collisions and end up with fewer labels than `limit`, while
+        // never giving the next-best-scored venues (rank `limit+1`,
+        // `limit+2`, …) a chance to fill those slots. `limit` is a target
+        // COUNT OF SUCCESSFUL PLACEMENTS, not a candidate cutoff — keep
+        // walking the score-ranked list until `limit` labels actually
+        // land or candidates run out.
+        var placedCount = 0
+        for index in eligibleIndices {
+            guard placedCount < limit else { break }
+            let venue = placed[index].venue
+            let point = projector.point(for: coordinate(of: venue))
+            let headCenter = CGPoint(x: point.x, y: point.y - diameter * headCenterFromTip)
+            let width = min(labelMaxWidth, CGFloat(venue.name.count) * labelCharWidth + labelPadding)
+            let halfHeight = labelBoxHeight / 2
+            let attempts: [(NameLabelSide, CGRect)] = [
+                (.trailing, CGRect(
+                    x: headCenter.x + diameter / 2 + labelGap, y: headCenter.y - halfHeight,
+                    width: width, height: labelBoxHeight
+                )),
+                (.leading, CGRect(
+                    x: headCenter.x - diameter / 2 - labelGap - width, y: headCenter.y - halfHeight,
+                    width: width, height: labelBoxHeight
+                )),
+            ]
+            for (side, rect) in attempts {
+                guard rect.minX >= labelScreenMargin, rect.maxX <= mapSize.width - labelScreenMargin else { continue }
+                let box = AABB(minX: rect.minX, maxX: rect.maxX, minY: rect.minY, maxY: rect.maxY)
+                guard !grid.collides(box) else { continue }
+                // `grid` alone isn't enough — see `headBoxes`' own doc
+                // comment in `plan()`: its footprints are tip-centered and
+                // under-cover a neighbour's TRUE visual head, so a label
+                // that clears `grid` can still visually run through part
+                // of a nearby pin's actual circle.
+                guard !headBoxes.contains(where: { $0.intersects(box) }) else { continue }
+                grid.insert(box)
+                let m = placed[index]
+                placed[index] = MarkerPlacement(
+                    venue: m.venue, kind: m.kind, showsNumber: m.showsNumber, isSelected: m.isSelected,
+                    nameLabelSide: side
+                )
+                placedCount += 1
+                break
+            }
+        }
+    }
 
     /// Piecewise LOG-scale interpolation over `sizeStopsByMetersPerPoint`,
     /// clamped at both ends — a smaller metres/point (more zoomed in)
@@ -284,13 +414,37 @@ public enum MapAnnotationPlanner {
 
         var placed: [MarkerPlacement] = []
         var totalPlaced = 0
+        // bd#221 "names on" — TRUE visual head boxes (headCenter ± radius),
+        // separate from `grid`'s own teardrop footprints (which are
+        // centered on the TIP, per `teardropFootprint`'s own doc comment —
+        // "head diameter + 1pt" measured from the coordinate, not from the
+        // shape's actual visual center). A teardrop's real circular head
+        // sits `diameter · headCenterFromTip` ABOVE its tip, which the
+        // tip-centered footprint only partially covers — fine for
+        // teardrop-vs-teardrop spacing (every pin uses the same
+        // convention, so relative spacing stays conservative), but a
+        // label placed to CLEAR that footprint could still visually
+        // overlap a neighbour's real head above it. Supervisor review
+        // (bd#221 round 2) caught exactly this: a label sitting flush
+        // against `grid`'s footprint boundary still drew through part of
+        // the next pin's head. Checked ADDITIONALLY, alongside `grid`, in
+        // `placeNameLabels` — this never changes teardrop-vs-teardrop
+        // placement itself, only what a LABEL is allowed to sit under.
+        var headBoxes: [AABB] = []
+        func headBox(diameter: CGFloat, tip: CGPoint) -> AABB {
+            let center = CGPoint(x: tip.x, y: tip.y - diameter * headCenterFromTip)
+            let radius = diameter / 2
+            return AABB(minX: center.x - radius, maxX: center.x + radius, minY: center.y - radius, maxY: center.y + radius)
+        }
 
         // 1. Selected venue — highest priority, always a full teardrop at
         // the fixed 30pt size, seeded before anything else.
         var selectedVenue: Venue?
         if let selectedVenueID, let match = visible.first(where: { $0.id == selectedVenueID }) {
-            let box = teardropFootprint(diameter: selectedDiameter, at: projector.point(for: coordinate(of: match)))
+            let point = projector.point(for: coordinate(of: match))
+            let box = teardropFootprint(diameter: selectedDiameter, at: point)
             grid.insert(box)
+            headBoxes.append(headBox(diameter: selectedDiameter, tip: point))
             placed.append(
                 MarkerPlacement(
                     venue: match,
@@ -322,6 +476,7 @@ public enum MapAnnotationPlanner {
                 let teardropBox = teardropFootprint(diameter: ratedDiameter, at: point)
                 if !grid.collides(teardropBox) {
                     grid.insert(teardropBox)
+                    headBoxes.append(headBox(diameter: ratedDiameter, tip: point))
                     placed.append(MarkerPlacement(
                         venue: candidate,
                         kind: .teardrop(diameter: ratedDiameter),
@@ -343,6 +498,13 @@ public enum MapAnnotationPlanner {
             placed.append(MarkerPlacement(venue: candidate, kind: .dot, showsNumber: false))
             totalPlaced += 1
         }
+
+        // 2b. bd#221 "names on" — café-name labels beside the best-scored
+        // numbered teardrops (Apple POI label style). Computed AFTER every
+        // pin above is already placed: labels are pure decoration and must
+        // never cause a pin to demote (spec's own rule) — this pass only
+        // ever appends to `grid`, it never removes or re-checks a pin.
+        placeNameLabels(into: &placed, grid: grid, headBoxes: headBoxes, projector: projector, diameter: ratedDiameter, mpp: mpp, mapSize: size)
 
         // 3. Unrated (unobserved) venues — faint neutral specks, nearest-
         // to-centre first, never numbered, never tier-colored, never

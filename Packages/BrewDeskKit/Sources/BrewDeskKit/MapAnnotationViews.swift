@@ -65,13 +65,10 @@ struct TeardropShape: Shape {
 struct TeardropMarkerView: View, Equatable {
     let placement: MarkerPlacement
 
-    /// bd#217: the hairline's WIDTH (not just its color) differs by
-    /// appearance now — light map's new white edge is 1pt, dark map keeps
-    /// the bd#212 0.75pt value unchanged — so this view needs to read the
-    /// appearance itself, not just resolve an adaptive `Color`. Reading
-    /// `colorScheme` here does not defeat the `Equatable` fast-path above:
-    /// SwiftUI still tracks this as a real dependency of `body` and
-    /// invalidates on an appearance change regardless of the custom `==`.
+    // bd#221 perf fallback: `MarkerBodyImageCache` needs to know which of
+    // the TWO pre-rendered images (light/dark) to hand back, since a cached
+    // `UIImage` — unlike a `BrewDeskPalette` adaptive `Color` — can't
+    // resolve itself against the current trait collection at draw time.
     @Environment(\.colorScheme) private var colorScheme
 
     static func == (lhs: TeardropMarkerView, rhs: TeardropMarkerView) -> Bool {
@@ -79,11 +76,6 @@ struct TeardropMarkerView: View, Equatable {
     }
 
     private var diameter: CGFloat { placement.kind.teardropDiameter ?? MapAnnotationPlanner.selectedDiameter }
-    /// bd#217: white-on-light needed a touch more edge to read at all,
-    /// dark stays exactly the bd#212 hairline. "1pt (not thicker)" per
-    /// Bilal's own note — wider would start reading as a bigger pin, not
-    /// just a different-colored edge.
-    private var hairlineWidth: CGFloat { colorScheme == .light ? 1.0 : 0.75 }
     /// Total frame height (head + tail) — see `MapAnnotationPlanner
     /// .tailHeightFactor`'s doc comment for the `TeardropShape` geometry
     /// this matches exactly.
@@ -95,30 +87,129 @@ struct TeardropMarkerView: View, Equatable {
     /// frame's top; the frame's own center sits at `frameHeight/2`.
     private var numberVerticalOffset: CGFloat { (diameter - frameHeight) / 2 }
 
+    /// bd#221 "names on": the `Annotation` this view sits inside anchors
+    /// by a `UnitPoint` fraction of the content's OWN reported bounds — a
+    /// plain `.overlay()`/`.offset()` label (this view's FIRST
+    /// implementation) draws outside those bounds, which MapKit does not
+    /// measure: the reference sheet's own supervisor review caught this as
+    /// a corrupted/garbled render (the label's pixels got clipped and
+    /// mis-composited at the edge of MapKit's rasterized annotation
+    /// buffer), not a font or Unicode problem. The fix is to give the
+    /// label REAL layout space — an `HStack` sibling of the pin, not an
+    /// overlay — so the reported content size actually includes it, and
+    /// to anchor the `Annotation` at the PIN's fraction of that now-wider
+    /// content instead of a fixed `.bottom`, via `annotationAnchor(for:)`
+    /// below (used by `CafeMapScreen.annotations(for:)`).
     var body: some View {
-        let fill = BrewDeskPalette.markerFill(score: placement.venue.workScore)
-        ZStack {
-            TeardropShape()
-                .fill(fill)
-                .overlay(TeardropShape().stroke(BrewDeskPalette.markerHairline, lineWidth: hairlineWidth))
-                .shadow(color: .black.opacity(0.55), radius: 2, x: 0, y: 1)
+        HStack(alignment: .bottom, spacing: 0) {
+            if placement.nameLabelSide == .leading {
+                labelSlot(side: .leading)
+            }
+            pinBody
+            if placement.nameLabelSide == .trailing {
+                labelSlot(side: .trailing)
+            }
+        }
+        .overlay(alignment: .top) {
+            // Never fires alongside a label — `nameLabelSide` is always
+            // `nil` for the selected marker (bd#221 spec), so the HStack
+            // above is just the pin alone here and this still centers
+            // correctly over it.
+            if placement.isSelected {
+                selectedHalo
+            }
+        }
+    }
+
+    private var pinBody: some View {
+        let score = placement.venue.workScore
+        return ZStack {
+            // bd#221 perf fallback: the "depth" finish's gradient + inner
+            // highlight + rim + shadow measurably cost fill-rate at map-pan
+            // density (MAP-PERF evidence in the PR — scripted-pan
+            // hitchRatio came in above the accepted 0.02 regression budget
+            // against origin/main with this drawn live every frame). Per
+            // the ticket's own contingency, that STATIC part of the body is
+            // rendered ONCE per (tier, size bucket, appearance) into a
+            // `UIImage` by `MarkerBodyImageCache` and reused as a plain
+            // `Image` — only the live score `Text` below (and the name
+            // label, when present) still draws fresh.
+            Image(uiImage: MarkerBodyImageCache.image(score: score, diameter: diameter, isDark: colorScheme == .dark))
             if placement.showsNumber {
                 // brewdesk#213: `showsNumber` is only ever true for a rated
                 // venue (`isRated`), so `displayScore` is never nil here —
                 // the `workScore` fallback only guards the type, it never
                 // actually fires.
-                Text(verbatim: "\(placement.venue.displayScore ?? placement.venue.workScore)")
-                    .font(BrewDeskFont.markerNumber(size: diameter * 0.58, headDiameter: diameter))
-                    .foregroundStyle(BrewDeskPalette.markerNumberColor(score: placement.venue.workScore))
+                Text(verbatim: "\(placement.venue.displayScore ?? score)")
+                    .font(BrewDeskFont.markerNumber(size: diameter * 0.58))
+                    .foregroundStyle(BrewDeskPalette.markerNumberColor(score: score))
                     .offset(y: numberVerticalOffset)
             }
         }
         .frame(width: diameter, height: frameHeight, alignment: .bottom)
-        .overlay(alignment: .top) {
-            if placement.isSelected {
-                selectedHalo
-            }
-        }
+    }
+
+    /// bd#221 "names on": the café name beside this pin's head — a real
+    /// `HStack` sibling (see `body`'s doc comment for why), fixed at
+    /// `labelSlotWidth` (the 4pt gap PLUS `labelMaxWidth`, matching what
+    /// `MapAnnotationPlanner.placeNameLabels` reserves) × the pin's own
+    /// `frameHeight`, so `annotationAnchor(for:)` can compute a stable
+    /// fraction and the pin's own bottom edge (its tip) stays exactly
+    /// where `HStack(alignment: .bottom)` puts it regardless of the
+    /// label's actual text height.
+    ///
+    /// Supervisor review (bd#221 round 2 — "the name touches the pin
+    /// head"): the first cut gave the label the SAME `labelMaxWidth`-wide
+    /// slot the pin itself is adjacent to, with `spacing: 0` on the
+    /// enclosing `HStack` — nothing in that layout ever reserved the
+    /// planner's own 4pt gap, so the text rendered flush against the
+    /// pin's edge. The gap is now real layout space (`.padding`), not a
+    /// value that only existed in the planner's collision math.
+    ///
+    /// The text itself hugs the FAR edge of the gap and grows away from
+    /// the head, vertically re-centered onto the HEAD (not the frame)
+    /// with the same `numberVerticalOffset` geometry the score number
+    /// uses. Not hit-testable and hidden from accessibility —
+    /// `markerButton`'s own `.accessibilityLabel` already carries the
+    /// café name for VoiceOver.
+    private func labelSlot(side: NameLabelSide) -> some View {
+        HaloText(
+            text: placement.venue.name,
+            color: BrewDeskPalette.markerLabelText,
+            halo: BrewDeskPalette.markerLabelHalo
+        )
+        .lineLimit(1)
+        .truncationMode(.tail)
+        .padding(side == .trailing ? .leading : .trailing, MapAnnotationPlanner.labelGap)
+        .frame(
+            width: Self.labelSlotWidth, height: frameHeight,
+            alignment: side == .trailing ? .leading : .trailing
+        )
+        .offset(y: numberVerticalOffset)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// Total reserved width for a label slot — the 4pt gap plus the max
+    /// text width — kept in one place so the view (here) and the
+    /// planner's own collision/anchor math (`MapAnnotationPlanner
+    /// .placeNameLabels`) can never drift apart the way the missing-gap
+    /// bug above did.
+    static let labelSlotWidth = MapAnnotationPlanner.labelGap + MapAnnotationPlanner.labelMaxWidth
+
+    /// The `Annotation` anchor this placement needs — see `body`'s doc
+    /// comment. `.bottom` (the pin's own tip, centered) when there's no
+    /// label; otherwise the pin's fraction of the wider (label + pin)
+    /// content, so the TIP still lands exactly on the venue's coordinate
+    /// instead of sliding sideways by roughly half the label's reserved
+    /// width.
+    static func annotationAnchor(for placement: MarkerPlacement) -> UnitPoint {
+        guard let side = placement.nameLabelSide else { return .bottom }
+        let diameter = placement.kind.teardropDiameter ?? MapAnnotationPlanner.selectedDiameter
+        let labelWidth = labelSlotWidth
+        let totalWidth = diameter + labelWidth
+        let pinCenterX = side == .trailing ? diameter / 2 : labelWidth + diameter / 2
+        return UnitPoint(x: pinCenterX / totalWidth, y: 1)
     }
 
     private var selectedHalo: some View {
@@ -132,6 +223,148 @@ struct TeardropMarkerView: View, Equatable {
             .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
             .fixedSize()
             .offset(y: -diameter * 0.35)
+    }
+}
+
+/// bd#221 finish `"depth"`: the STATIC part of a teardrop's body — gradient
+/// fill, inner top highlight, rim, shadow — factored out of
+/// `TeardropMarkerView.body` so the exact same visuals can be drawn either
+/// live (cheap: nothing else references this type directly any more, but it
+/// stays the single source of truth for what the cached image below
+/// captures) or once into `MarkerBodyImageCache`'s cached `UIImage`.
+private struct MarkerBodyShape: View {
+    let score: Int
+    let diameter: CGFloat
+    let frameHeight: CGFloat
+
+    /// bd#221 rim `"tone"`: 1pt in BOTH appearances — Bilal's saved
+    /// design-review selection has no per-appearance width split (that was
+    /// bd#217's fixed-hairline-color era; the rim COLOR now carries the
+    /// per-appearance difference instead, via `BrewDeskPalette
+    /// .markerRim(score:)`).
+    private let hairlineWidth: CGFloat = 1.0
+
+    var body: some View {
+        TeardropShape()
+            .fill(markerGradient)
+            .overlay(
+                // The 0.5pt inner top highlight (mock's own `inset 0 .5px
+                // 0 rgba(255,255,255,…)`) — a soft white fade from the
+                // very top of the head down to about a fifth of its
+                // height, clipped to the teardrop's own silhouette.
+                // `TeardropShape` isn't `InsettableShape` (its path is
+                // built directly via a `UIBezierPath` bridge, not
+                // SwiftUI's rounded-rect primitives), so this reads as a
+                // fading fill rather than a literal inset stroke — same
+                // visual effect, no shape-protocol conformance needed.
+                TeardropShape().fill(
+                    LinearGradient(
+                        colors: [BrewDeskPalette.markerHighlight, BrewDeskPalette.markerHighlight.opacity(0)],
+                        startPoint: .top,
+                        endPoint: UnitPoint(x: 0.5, y: 0.24)
+                    )
+                )
+            )
+            .overlay(
+                TeardropShape().stroke(BrewDeskPalette.markerRim(score: score), lineWidth: hairlineWidth)
+            )
+            .shadow(color: BrewDeskPalette.markerShadow, radius: 1.5, x: 0, y: 1.5)
+            .frame(width: diameter, height: frameHeight, alignment: .bottom)
+    }
+
+    /// Vertical gradient read top-to-bottom ON SCREEN — `TeardropShape
+    /// .path(in:)` already builds its final path points directly in the
+    /// view's own (screen-space) frame rect rather than in some pre-
+    /// rotation local space (see its own doc comment: the 45°-rotation
+    /// happens INSIDE the path math, not as a `View`-level
+    /// `.rotationEffect`), so a plain `.top`→`.bottom` `LinearGradient`
+    /// already reads correctly with no extra rotation trick needed the way
+    /// the design-review mock's CSS (`rotate(-45deg)` on the whole div)
+    /// required.
+    private var markerGradient: LinearGradient {
+        LinearGradient(
+            stops: [
+                .init(color: BrewDeskPalette.markerGradientTop(score: score), location: 0),
+                .init(color: BrewDeskPalette.markerFill(score: score), location: 0.52),
+                .init(color: BrewDeskPalette.markerGradientBottom(score: score), location: 1),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+}
+
+/// bd#221 perf fallback (ticket's own contingency clause): renders
+/// `MarkerBodyShape` ONCE per (tier, size bucket, appearance) into a
+/// `UIImage` and reuses it — MAP-PERF evidence in the PR showed the live
+/// gradient/highlight/shadow draw pushed scripted-pan `hitchRatio` outside
+/// the accepted 0.02 regression budget against origin/main at the fixture's
+/// 220-annotation density. Only the live score `Text` (and, when present,
+/// the name label) still draws fresh every frame — see `TeardropMarkerView
+/// .body`.
+@MainActor
+enum MarkerBodyImageCache {
+    private struct Key: Hashable {
+        let tierIndex: Int
+        let sizeBucket: Int
+        let isDark: Bool
+    }
+
+    private static var cache: [Key: UIImage] = [:]
+
+    /// Rounds a continuous head diameter (the planner interpolates on a LOG
+    /// scale, so a settled camera can land on almost any value between the
+    /// size stops) to the nearest half-point — visually identical to the
+    /// exact value, but bounds the cache to a small, fixed set of images
+    /// (roughly 4pt–30pt in 0.5pt steps × 4 tiers × 2 appearances) instead
+    /// of a fresh entry per exact pinch-zoom frame.
+    private static func sizeBucket(_ diameter: CGFloat) -> Int { Int((diameter * 2).rounded()) }
+
+    static func image(score: Int, diameter: CGFloat, isDark: Bool) -> UIImage {
+        let key = Key(tierIndex: BrewDeskPalette.markerTierIndex(score: score), sizeBucket: sizeBucket(diameter), isDark: isDark)
+        if let cached = cache[key] { return cached }
+        let frameHeight = diameter * MapAnnotationPlanner.tailHeightFactor
+        let renderer = ImageRenderer(content:
+            MarkerBodyShape(score: score, diameter: diameter, frameHeight: frameHeight)
+                .environment(\.colorScheme, isDark ? .dark : .light)
+        )
+        renderer.scale = UIScreen.main.scale
+        renderer.isOpaque = false
+        let image = renderer.uiImage ?? UIImage()
+        cache[key] = image
+        return image
+    }
+}
+
+/// bd#221 "names on": a haloed text label — the design-review mock's own
+/// `text-shadow` halo (no solid background pill, so a label reads over any
+/// basemap detail without ever looking like its own chrome element).
+///
+/// Supervisor review (bd#221 round 2 — "the dark map's hood screenshot
+/// shows label halos as a visible dark box around text; use a soft 2-3pt
+/// blurred shadow, not a filled rect"): the first cut stacked EIGHT
+/// ±1pt-offset opaque copies of the text behind the real one — at this
+/// tiny 11pt size those copies overlapped densely enough to read as one
+/// solid rounded rectangle, not a halo. A real SwiftUI `.shadow(radius:)`
+/// (a true Gaussian blur, applied twice to push it closer to the mock's
+/// own multi-layer CSS `text-shadow`) reads as the intended soft glow —
+/// cheaper too: two shadow passes on one `Text`, not nine laid-out copies.
+private struct HaloText: View {
+    let text: String
+    let color: Color
+    let halo: Color
+
+    /// Only crosses out of the fixed 11pt at a genuine ACCESSIBILITY text
+    /// size (not every step of Dynamic Type) — see `BrewDeskFont
+    /// .markerLabel(accessibilityBump:)`'s doc comment.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        Text(verbatim: text)
+            .font(BrewDeskFont.markerLabel(accessibilityBump: dynamicTypeSize.isAccessibilitySize))
+            .foregroundStyle(color)
+            .shadow(color: halo, radius: 2)
+            .shadow(color: halo, radius: 2)
     }
 }
 
