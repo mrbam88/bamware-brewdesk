@@ -198,6 +198,17 @@ final class SearchUITests: XCTestCase {
     /// finding 9: a one-result search left the map showing an unrelated
     /// neighborhood with no pin in view).
     ///
+    /// bd#223 (requirement 5 — "no camera moves while typing") revises this:
+    /// the ORIGINAL version of this test typed the query and asserted the
+    /// camera moved with NO Search/return, because that auto-fit-while-
+    /// typing was exactly the bug in Bilal's report (a one-letter query
+    /// fit the camera across the whole metro area while he was still
+    /// typing). Updated to press Search/return before asserting the fit —
+    /// the camera-moves-to-results behavior this test was written to prove
+    /// still holds, just gated on an explicit submit instead of every
+    /// keystroke. `testTypingNeverMovesTheCameraButSearchDoes` below is the
+    /// new, direct coverage for the "never while typing" half.
+    ///
     /// `mapPin(named:)` alone can't prove this: "Fixture Roasters" matches
     /// its predicate twice at once — the shelf's horizontal rail card
     /// (`DiscoveryShelfCard`, always on screen and never filtered by
@@ -245,13 +256,125 @@ final class SearchUITests: XCTestCase {
 
         let field = searchField(app)
         field.tap()
-        field.typeText("Roasters")
+        // bd#223: types, THEN presses Search — typing alone must not move
+        // the camera any more (see `testTypingNeverMovesTheCameraButSearchDoes`).
+        field.typeText("Roasters\n")
 
         XCTAssertTrue(poll(timeout: wait) { matchCount() == 2 },
-                      "search did not bring the map pin back onto the panned-away viewport " +
+                      "pressing Search did not bring the map pin back onto the panned-away viewport " +
                       "(got \(matchCount()) matches, want 2 — shelf card + map pin)")
         XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitUntilHittable(timeout: wait),
                       "search-centered result pin is not hittable")
+    }
+
+    /// bd#223 (requirement 5) — the direct reproduction of Bilal's report:
+    /// typing alone, with NO Search/return, must never move the camera —
+    /// not even onto a result it unambiguously, uniquely matches. Must FAIL
+    /// on `origin/main` (brewdesk#158's auto-fit ran on every keystroke) and
+    /// PASS on this branch.
+    @MainActor
+    func testTypingNeverMovesTheCameraButSearchDoes() throws {
+        let app = launchSpots()
+
+        func matchCount() -> Int {
+            app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Roasters,")).count
+        }
+        func poll(timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
+            let deadline = Date().addingTimeInterval(timeout)
+            repeat {
+                if condition() { return true }
+                RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            } while Date() < deadline
+            return condition()
+        }
+        func metersBetween(_ a: (lat: Double, lng: Double), _ b: (lat: Double, lng: Double)) -> Double {
+            let earthRadiusM = 6_371_000.0
+            let dLat = (b.lat - a.lat) * .pi / 180
+            let dLng = (b.lng - a.lng) * .pi / 180
+            let x = sin(dLat / 2) * sin(dLat / 2)
+                + cos(a.lat * .pi / 180) * cos(b.lat * .pi / 180) * sin(dLng / 2) * sin(dLng / 2)
+            return earthRadiusM * 2 * atan2(sqrt(x), sqrt(1 - x))
+        }
+        func parseCoordinate(_ raw: String?) -> (lat: Double, lng: Double)? {
+            guard let raw else { return nil }
+            let parts = raw.components(separatedBy: ",")
+            guard parts.count == 2, let lat = Double(parts[0]), let lng = Double(parts[1]) else { return nil }
+            return (lat, lng)
+        }
+
+        XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitForExistence(timeout: wait))
+
+        let window = app.windows.firstMatch
+        let panStart = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.42))
+        let panEnd = window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.20))
+        for _ in 0..<10 {
+            panStart.press(forDuration: 0.05, thenDragTo: panEnd)
+        }
+        XCTAssertTrue(poll(timeout: wait) { matchCount() == 1 }, "panning away did not cull the map pin")
+
+        let cameraCenter = app.descendants(matching: .any)["map-camera-center"]
+        XCTAssertTrue(cameraCenter.waitForExistence(timeout: wait))
+
+        // Focus the field FIRST and let the keyboard-driven relayout settle
+        // before taking the "before" snapshot — focusing alone (independent
+        // of this ticket) nudges MapKit's `.onMapCameraChange` resync once
+        // as the visible frame's aspect ratio changes under the keyboard,
+        // which would otherwise be misattributed to typing.
+        let field = searchField(app)
+        field.tap()
+        XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: wait), "keyboard never appeared")
+        var lastCenter = cameraCenter.value as? String
+        for _ in 0..<20 {
+            Thread.sleep(forTimeInterval: 0.15)
+            let now = cameraCenter.value as? String
+            if now == lastCenter { break }
+            lastCenter = now
+        }
+        let centerBeforeTyping = parseCoordinate(lastCenter)
+        XCTAssertNotNil(centerBeforeTyping, "could not parse the camera center before typing")
+
+        // A single, UNAMBIGUOUS local match — the strongest possible case
+        // for the old auto-fit to have fired. No Search key pressed.
+        field.typeText("Roasters")
+        // Generous settle window — the OLD behavior's debounce was 260ms;
+        // this waits well past it before asserting nothing moved.
+        Thread.sleep(forTimeInterval: 1.2)
+
+        // bd#223's own contract is "no CAMERA MOVE while typing" — not
+        // "the reported centre never drifts by a single metre". Even on
+        // this branch, `model.venues` narrowing while typing still re-syncs
+        // `visibleRegion` from the live camera image via `MapProxy.convert`
+        // (brewdesk#157, pre-existing and untouched by this ticket) — a
+        // harmless few-hundred-metre reporting artifact from the keyboard's
+        // predictive-text bar nudging the map's measured height, not an
+        // actual pan. `cameraMoveToleranceMeters` is sized comfortably
+        // above that noise floor and comfortably below what the OLD bug
+        // produced (see the assertion below): panning the pin fully out of
+        // view, then having the camera fly back onto a single unambiguous
+        // result, moves it by many KILOMETRES (this fixture is ~26km from
+        // where the pan leaves the camera) — `matchCount()` (whether the
+        // real MapKit annotation re-enters the culled viewport) is this
+        // test's primary, unambiguous signal; the distance check is a
+        // secondary, generous sanity bound on the same claim.
+        let cameraMoveToleranceMeters = 2_500.0
+        if let before = centerBeforeTyping, let after = parseCoordinate(cameraCenter.value as? String) {
+            let moved = metersBetween(before, after)
+            XCTAssertLessThanOrEqual(
+                moved, cameraMoveToleranceMeters,
+                "typing alone moved the map camera \(Int(moved))m — bd#223 requirement 5 regression " +
+                "(this is the exact bug: a query matched while typing fitting the camera to it)"
+            )
+        }
+        XCTAssertEqual(
+            matchCount(), 1,
+            "typing alone brought the culled pin back on screen (got \(matchCount()), want 1 — shelf only)"
+        )
+
+        // Pressing Search/return DOES move it — same result this file's
+        // other search-fit tests already prove, checked here too so this
+        // test can't pass by accident (e.g. a camera that never moves at all).
+        field.typeText("\n")
+        XCTAssertTrue(poll(timeout: wait) { matchCount() == 2 }, "pressing Search never moved the camera onto the result")
     }
 
     /// bd#200 — "Search must be city-wide". Root cause: `VenuesModel.venues`
@@ -293,7 +416,16 @@ final class SearchUITests: XCTestCase {
 
         let field = searchField(app)
         field.tap()
-        field.typeText("Ferry Roasters")
+        XCTAssertTrue(app.keyboards.element.waitForExistence(timeout: wait), "keyboard never appeared after tapping the field")
+        // bd#223: presses Search — a citywide result landing while the user
+        // is still typing must not fit the camera on its own any more (see
+        // `testTypingNeverMovesTheCameraButSearchDoes`); pressing Search
+        // both records the recent and arms the fit once the server answers,
+        // which resolves to exactly one word-prefix match here and so
+        // becomes a full PR #220 selection (`selectSearchResult`) — a
+        // strictly stronger proof than the original bounding-box fit this
+        // test used to rely on.
+        field.typeText("Ferry Roasters\n")
 
         // 2 == both the shelf row (bd#200's server result landed in
         // `venues`) AND the real map pin (the camera moved onto it,
@@ -304,6 +436,98 @@ final class SearchUITests: XCTestCase {
                       "(got \(matchCount()) matches, want 2)")
         XCTAssertTrue(app.mapPin(named: "Fixture Ferry Roasters").waitUntilHittable(timeout: wait),
                       "citywide search result pin is not hittable")
+    }
+
+    /// bd#223 (B2 — "I can't scroll the listing!! When typing!?"). Must FAIL
+    /// on `origin/main` (the competing shelf-drag-resigns-focus gesture
+    /// swallowed the scroll before the `ScrollView` ever recognized it) and
+    /// PASS on this branch. Uses `manyVenues` (2,180 fixtures) so the
+    /// focused, empty-query "browse" list genuinely needs scrolling —
+    /// `fixtureOK`'s 3 rows might already fully fit above the keyboard.
+    @MainActor
+    func testResultsListScrollsWithTheKeyboardUp() throws {
+        let app = XCUIApplication()
+        app.launchArguments += ["-UITestSkipGates", "-UITestScenario", "manyVenues"]
+        app.launch()
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
+        app.spotsTab.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["map-header-card"].waitForExistence(timeout: wait))
+
+        let field = searchField(app)
+        field.tap()
+        XCTAssertEqual(app.keyboards.count, 1, "keyboard did not appear")
+
+        let shelf = app.descendants(matching: .any)["map-discovery-shelf"]
+        XCTAssertTrue(shelf.waitForExistence(timeout: wait), "discovery shelf missing")
+
+        let firstRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Perf Cafe")).firstMatch
+        XCTAssertTrue(firstRow.waitForExistence(timeout: wait), "browse-all list showed no rows while focused")
+        let beforeY = firstRow.frame.minY
+        // bd#223 B2 root cause: the OLD competing shelf-drag gesture
+        // resigned focus and collapsed the card from full height back to
+        // `.medium`'s horizontal rail — which ALSO happens to move a
+        // "Perf Cafe…"-labelled row's `frame.minY` (the rail renders the
+        // same venues, just horizontally, at the collapsed card's shallower
+        // height), so a bare "did minY change" check can't tell a genuine
+        // scroll apart from that collapse. The shelf's own HEIGHT is the
+        // unambiguous signal: a collapse shrinks it dramatically; a scroll
+        // leaves it exactly where it was.
+        let shelfHeightBefore = shelf.frame.height
+        // A second, independent signal: the horizontal rail caps at
+        // `model.venues.prefix(12)` — collect every "Perf Cafe…" row
+        // currently in the accessibility tree so a genuine scroll (which
+        // brings rows the rail could NEVER show) is distinguishable from a
+        // collapse (which can only ever re-show a subset of this same set).
+        let rowsBeforeScroll = Set(
+            app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Perf Cafe")).allElementsBoundByIndex.map(\.label)
+        )
+
+        for _ in 0..<6 {
+            shelf.swipeUp()
+        }
+
+        XCTAssertTrue(
+            Self.waitFor(timeout: wait) { firstRow.frame.minY != beforeY || !firstRow.exists },
+            "swiping the results list under the keyboard did not scroll it (bd#223 B2) — " +
+            "first row stayed pinned at y=\(beforeY)"
+        )
+        XCTAssertTrue(shelf.exists, "shelf disappeared while scrolling the results list")
+        XCTAssertGreaterThan(
+            shelf.frame.height, shelfHeightBefore * 0.9,
+            "shelf collapsed from full height to the horizontal rail while scrolling (bd#223 B2) — " +
+            "was \(shelfHeightBefore)pt, now \(shelf.frame.height)pt"
+        )
+        XCTAssertTrue(
+            Self.waitFor(timeout: wait) {
+                let now = Set(
+                    app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Perf Cafe")).allElementsBoundByIndex.map(\.label)
+                )
+                return !now.isSubset(of: rowsBeforeScroll)
+            },
+            "scrolling never brought any row into view that wasn't already visible before — " +
+            "the list only ever showed the same handful of rows (bd#223 B2)"
+        )
+    }
+
+    /// bd#223 (requirement 4). The button must not just be invisible — it
+    /// must not exist at all — while the search field has focus.
+    @MainActor
+    func testLocateButtonDoesNotExistWhileSearchFieldIsFocused() throws {
+        let app = launchSpots()
+        let locate = app.buttons["map-locate-me"]
+        XCTAssertTrue(locate.waitForExistence(timeout: wait), "locate button missing before search")
+
+        let field = searchField(app)
+        field.tap()
+        XCTAssertTrue(
+            Self.waitFor(timeout: wait) { !locate.exists },
+            "locate button still exists while the search field is focused"
+        )
+
+        let cancel = app.descendants(matching: .any)["search-cancel"]
+        XCTAssertTrue(cancel.waitForExistence(timeout: wait))
+        cancel.tap()
+        XCTAssertTrue(locate.waitForExistence(timeout: wait), "locate button never returned after Cancel")
     }
 
     /// bd#219 — "selecting a far-away café must fly the map to it

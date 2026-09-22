@@ -59,6 +59,23 @@ identity, App Functionality"); that call is a store-submission gate (Bilal).
 brewdesk#48 (real accounts) replaces this UUID and owns the final privacy
 position.
 
+### Recent searches (bd#223) — on-device only, never sent
+
+`RecentSearchStore` (`Packages/BrewDeskKit/Sources/BrewDeskKit/RecentSearchStore.swift`)
+remembers up to 10 recent café selections/searches so the search field can
+show them again. It is pure client-side state: a plain `UserDefaults` JSON
+blob under `brewdesk.recent-searches` (same CA92.1 UserDefaults reason
+already declared for the observation submitter id above), written only by
+`RecentSearchStore` itself, read only to render the "Recent" list. Nothing
+here ever reaches `VenueAPI` or any other network call — a recent café is
+re-flown-to using its already-known coordinate/id, and a recent query is
+just typed text re-submitted through the exact same search path already
+audited above. Cleared by the shelf's own "Clear" control or by deleting the
+app (removes the whole `UserDefaults` domain). Reset to empty (or an explicit
+seed) on every UI-test launch (`RecentSearchStore.init`, gated on
+`LaunchEnvironment.isUITestRun`) so tests never depend on — or leak into —
+whatever a previous run happened to persist.
+
 ### Out of band (not URLSession, not interceptable, not ours)
 
 - **MapKit** tiles/geocoding: Apple's GEO XPC service under Apple's privacy
