@@ -1,11 +1,19 @@
 import XCTest
 
-/// Marketing capture: replays the store-listing flow and attaches the five
-/// raw screens. Locale comes from the `SCREENSHOT_LOCALE` environment
-/// variable (`en` default, `es` supported) — pass it from xcodebuild as
-/// `TEST_RUNNER_SCREENSHOT_LOCALE=es`. Launches with `-UITestNoPhotos` so the
-/// detail screen collapses its Google Places photo strip and leads with
-/// Workability instead (brewdesk#30: no Google photos in marketing shots).
+/// Marketing capture: onboarding only. Locale comes from the
+/// `SCREENSHOT_LOCALE` environment variable (`en` default, `es`
+/// supported) — pass it from xcodebuild as `TEST_RUNNER_SCREENSHOT_LOCALE=es`.
+///
+/// 1.1 supervisor review (PR #237): the map/filters/detail/search/saved
+/// shots moved to `AppStoreScreenshots11Tests`, which launches with a
+/// granted, fixed CoreLocation fix (`-brewdesk.uitest-fixed-location`)
+/// instead of declining location — the decline path's "Location is off —
+/// showing NYC" banner is a degraded state and must never appear in a
+/// marketing shot. This class keeps only the one shot that's genuinely
+/// about the onboarding flow itself (04): the location-is-optional page
+/// (formerly 05) was dropped so a real "location is optional" claim isn't
+/// made twice — the sign-in screen and the granted-location map together
+/// already carry that message honestly.
 final class AppStoreScreenshotTests: XCTestCase {
     /// Every user-visible string the flow touches, per capture locale. The
     /// values mirror `BrewDesk/Localizable.xcstrings`; if a translation
@@ -16,48 +24,19 @@ final class AppStoreScreenshotTests: XCTestCase {
         let appleLocale: String
         let continueButton: String
         let honestHeadline: String
-        let findMyWorkCafe: String
-        let startWhereYouAre: String
-        let useUnionSquare: String
-        let searchField: String
-        /// Shape, not literal: the Union Square load is a real API count
-        /// from a real-viewport query (bd#108), no longer a fixed number.
-        /// bd#37's rank-independence rule applies to counts too — match
-        /// the pattern "<digits> rated · <digits> cafés" (bd#212), not a
-        /// specific total.
-        let workCafeCountPattern: String
-        let oneWorkCafe: String
-        let detailsNav: String
-        let workability: String
 
         static let en = CaptureLocale(
             appleLanguage: "(en)",
             appleLocale: "en_US",
             continueButton: "Continue",
-            honestHeadline: "Every score shows its work.",
-            findMyWorkCafe: "Find my work spot",
-            startWhereYouAre: "Start where you are.",
-            useUnionSquare: "Use Union Square instead",
-            searchField: "Search spots",
-            workCafeCountPattern: "^[0-9,]+ rated · [0-9,]+ cafés$",
-            oneWorkCafe: "1 rated · ",
-            detailsNav: "Details",
-            workability: "Workability"
+            honestHeadline: "Every score shows its work."
         )
 
         static let es = CaptureLocale(
             appleLanguage: "(es)",
             appleLocale: "es_ES",
             continueButton: "Continuar",
-            honestHeadline: "Cada puntuación muestra su evidencia.",
-            findMyWorkCafe: "Encontrar mi lugar de trabajo",
-            startWhereYouAre: "Empieza donde estás.",
-            useUnionSquare: "Usar Union Square",
-            searchField: "Buscar lugares",
-            workCafeCountPattern: "^[0-9.,]+ calificados · [0-9.,]+ cafés$",
-            oneWorkCafe: "1 calificados · ",
-            detailsNav: "Detalles",
-            workability: "Aptitud para trabajar"
+            honestHeadline: "Cada puntuación muestra su evidencia."
         )
 
         static func current() -> CaptureLocale {
@@ -69,17 +48,9 @@ final class AppStoreScreenshotTests: XCTestCase {
     }
 
     @MainActor
-    func testCaptureAppStoreScreens() throws {
+    func testCaptureOnboarding() throws {
         let locale = CaptureLocale.current()
         let app = XCUIApplication()
-        // A stale granted-location permission (left by an earlier run on the
-        // same simulator) leaks a real CoreLocation fix into this launch;
-        // bd#108 removed the >50km-from-NYC rejection, so that fix recenters
-        // the map on wherever the simulator actually is instead of Union
-        // Square, breaking the deterministic NYC dataset this capture
-        // depends on. Force a clean not-determined state so "Use Union
-        // Square instead" is the only location this run can show.
-        app.resetAuthorizationStatus(for: .location)
         app.launchArguments += [
             "-brewdesk.onboarding.complete", "NO",
             "-brewdesk.location-intro.complete", "NO",
@@ -94,76 +65,6 @@ final class AppStoreScreenshotTests: XCTestCase {
         app.buttons[locale.continueButton].tap()
         XCTAssertTrue(app.staticTexts[locale.honestHeadline].waitForExistence(timeout: 2))
         capture("04-honest-by-design")
-
-        // Last page's button label swaps to `findMyWorkCafe` and finishes
-        // onboarding directly — no account pitch page (brewdesk#184
-        // removed it).
-        app.buttons[locale.findMyWorkCafe].tap()
-        XCTAssertTrue(app.staticTexts[locale.startWhereYouAre].waitForExistence(timeout: 2))
-        capture("05-location-is-optional")
-
-        app.buttons[locale.useUnionSquare].tap()
-        // UI3: the single count line ("N of M spots") replaced the old
-        // "N work spots" text. Identifier + shape, never an exact count
-        // (brewdesk#37/#131).
-        let workCafeCount = app.descendants(matching: .any).matching(
-            NSPredicate(
-                format: "identifier == %@ AND label MATCHES %@",
-                "map-count-line",
-                locale.workCafeCountPattern
-            )
-        ).firstMatch
-        XCTAssertTrue(workCafeCount.waitForExistence(timeout: 15))
-        XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: 5))
-        capture("03-work-fit-map")
-
-        // UI3 (#118): the Work Fit filter menu is home again — reinstate
-        // the 02 capture with the score-tier legend on screen.
-        let filterButton = app.descendants(matching: .any)["filter-button"].firstMatch
-        XCTAssertTrue(filterButton.waitForExistence(timeout: 5))
-        filterButton.tap()
-        XCTAssertTrue(
-            app.descendants(matching: .any)["work-fit-filter-menu"].firstMatch
-                .waitForExistence(timeout: 5)
-        )
-        capture("02-work-filters")
-        // Dismiss by tapping the map area outside the anchored menu.
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75)).tap()
-
-        // UI3: filter surface moves to WorkFitFilterMenu — un-skip in #118.
-        // brewdesk#117 collapsed Explore + Nearby into one Spots tab; the
-        // "02-work-filters" capture (Nearby's list Filters menu) has no
-        // home until #118 ports filters onto Spots. Re-shooting a full,
-        // filters-included marketing set is also its own follow-up ticket
-        // per the #116 epic ("screenshot re-shoot") — this flow keeps
-        // proving the rest of the store-submission surface end to end.
-
-        let search = app.textFields[locale.searchField]
-        search.tap()
-        search.typeText("Housing Works\n")
-        // Since brewdesk#219/#223 a submitted search that resolves to exactly
-        // one café SELECTS it: the field commits to the café's name, the
-        // detail sheet opens at the medium detent and the map reloads that
-        // café's surroundings — so the count line no longer narrows to "1".
-        // If the sheet did not open on its own (e.g. more than one match),
-        // fall back to tapping the result row.
-        let heading = app.staticTexts["venue-detail-heading"]
-        if !heading.waitForExistence(timeout: 12) {
-            let housingWorks = app.buttons.matching(
-                NSPredicate(format: "label BEGINSWITH %@", "Housing Works")
-            ).firstMatch
-            XCTAssertTrue(housingWorks.waitForExistence(timeout: 5))
-            housingWorks.tap()
-        }
-        // brewdesk#119: the nav title is now the venue's own name (not a
-        // localized "Details"/"Detalles" constant), so this keys off the
-        // detail root's identifier instead — locale-independent.
-        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts[locale.workability].waitForExistence(timeout: 2))
-        // Ticket rule: no Google Places photos prominent in marketing shots.
-        // -UITestNoPhotos nils the photo service, so no thumbnail may exist.
-        XCTAssertFalse(app.buttons.matching(identifier: "photo-thumb").firstMatch.exists)
-        capture("01-claim-provenance")
     }
 
     @MainActor
