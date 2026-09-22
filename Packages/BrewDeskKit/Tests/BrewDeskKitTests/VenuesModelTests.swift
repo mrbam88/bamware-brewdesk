@@ -623,19 +623,6 @@ private actor ControlledVenueService: VenueListing {
         return model
     }
 
-    // bd#226 CI investigation: 20s default, not 5s — matches the
-    // ControlledVenueService/SearchControlledService deadlines above; the
-    // full suite's parallel @MainActor load can push real scheduling delays
-    // well past a tight budget without the production code being at fault.
-    private func poll(timeout: TimeInterval = 20, _ condition: @MainActor () -> Bool) async throws {
-        let deadline = ContinuousClock.now + .seconds(Int(timeout))
-        while ContinuousClock.now < deadline {
-            if condition() { return }
-            try await Task.sleep(for: .milliseconds(5))
-        }
-        Issue.record("timed out waiting for condition")
-    }
-
     @Test func serverResultAppearsForANameNotInLoadedVenues() async throws {
         // The bug, reproduced: "Conwell" is nowhere in the loaded viewport.
         let local = [venue(id: "local-1", name: "Fixture Roasters")]
@@ -653,8 +640,11 @@ private actor ControlledVenueService: VenueListing {
 
         try await api.waitForSearchRequest("conwell")
         await api.succeed("conwell", with: [conwell])
+        // Awaits the model's own citywide search Task instead of polling
+        // `venues` against a deadline — it can only resume once the task has
+        // actually applied "conwell"'s answer.
+        await model.serverSearchTask?.value
 
-        try await poll { model.venues.map(\.id) == ["conwell"] }
         #expect(model.venues.map(\.id) == ["conwell"])
         #expect(!model.isSearchingServer)
     }
@@ -676,7 +666,10 @@ private actor ControlledVenueService: VenueListing {
         await api.succeed("aaa", with: [venue(id: "aaa-result", name: "Aaa Cafe")])
         await api.succeed("bbb", with: [venue(id: "bbb-result", name: "Bbb Cafe")])
 
-        try await poll { model.venues.map(\.id) == ["bbb-result"] }
+        // `serverSearchTask` is "bbb"'s — "aaa"'s own task was replaced (and
+        // cancelled) the moment "bbb" was submitted, so awaiting the current
+        // task is exactly "wait for the query that's still in flight".
+        await model.serverSearchTask?.value
         #expect(model.venues.map(\.id) == ["bbb-result"])
     }
 
@@ -727,13 +720,16 @@ private actor ControlledVenueService: VenueListing {
         model.submitSearch()
         try await api.waitForSearchRequest("ferry")
         await api.succeedSearch("ferry", with: [farCafe])
-        try await poll { model.venues.map(\.id) == ["far-cafe"] }
+        await model.serverSearchTask?.value
+        #expect(model.venues.map(\.id) == ["far-cafe"])
 
-        // The selection's own surroundings reload.
+        // The selection's own surroundings reload. `await model.load(...)`
+        // already fully awaits the viewport fetch — `venues` reflects it the
+        // instant `load` returns, no separate wait needed.
         #expect(model.updateViewport(lat: farCafe.lat, lng: farCafe.lng, radiusM: 500))
         #expect(model.centerSource == .exploredViewport)
         await model.load(model.request)
-        try await poll { Set(model.venues.map(\.id)) == Set(["far-cafe", "far-neighbor"]) }
+        #expect(Set(model.venues.map(\.id)) == Set(["far-cafe", "far-neighbor"]))
 
         model.clearSearch()
 
@@ -763,8 +759,8 @@ private actor ControlledVenueService: VenueListing {
         model.submitSearch()
         try await api.waitForSearchRequest("prefix")
         await api.succeed("prefix", with: [duplicateOfNear, farPrefix, containsMatch])
+        await model.serverSearchTask?.value
 
-        try await poll { model.venues.count == 3 }
         // De-duped to one "near"; prefix matches ("near", "far") rank
         // before the contains match; the nearer prefix match wins first.
         #expect(model.venues.map(\.id) == ["near", "far", "contains"])
@@ -781,8 +777,8 @@ private actor ControlledVenueService: VenueListing {
 
         try await api.waitForSearchRequest("prefix")
         await api.fail("prefix")
+        await model.serverSearchTask?.value
 
-        try await poll { !model.isSearchingServer }
         #expect(model.serverSearchFailed)
         #expect(model.venues.map(\.id) == ["local-1"])   // still there — never cleared on failure
     }
@@ -801,11 +797,15 @@ private actor ControlledVenueService: VenueListing {
 }
 
 private actor SearchControlledService: VenueListing {
-    private enum TestError: Error { case timedOut }
     private let localVenues: [Venue]
     private var pendingRequests: Set<String> = []
     private var outcomes: [String: Result<[Venue], Error>] = [:]
     private(set) var searchCallCount = 0
+    /// Same event-driven wait as `ControlledVenueService.requestContinuations`
+    /// (see there for the full bd#226 writeup) — resumed by
+    /// `fetchVenuesResult` the instant it records the matching search text,
+    /// never polled against a deadline.
+    private var requestContinuations: [String: [CheckedContinuation<Void, Never>]] = [:]
 
     init(localVenues: [Venue]) {
         self.localVenues = localVenues
@@ -824,6 +824,7 @@ private actor SearchControlledService: VenueListing {
         }
         searchCallCount += 1
         pendingRequests.insert(search)
+        resumeRequestWaiters(for: search)
         while true {
             try Task.checkCancellation()
             if let outcome = outcomes.removeValue(forKey: search) {
@@ -836,15 +837,20 @@ private actor SearchControlledService: VenueListing {
         }
     }
 
+    /// Suspends until `fetchVenuesResult` has recorded a request for `text`.
+    /// Event-driven, not deadline-polled — see `requestContinuations`.
+    /// `throws` stays on the signature so every existing
+    /// `try await api.waitForSearchRequest(...)` call site needs no edit.
     func waitForSearchRequest(_ text: String) async throws {
-        // bd#226 CI investigation: 30s, not 10s — see ControlledVenueService
-        // .waitForRequest above for why.
-        let deadline = ContinuousClock.now + .seconds(30)
-        while ContinuousClock.now < deadline {
-            if pendingRequests.contains(text) { return }
-            try await Task.sleep(for: .milliseconds(1))
+        guard !pendingRequests.contains(text) else { return }
+        await withCheckedContinuation { continuation in
+            requestContinuations[text, default: []].append(continuation)
         }
-        throw TestError.timedOut
+    }
+
+    private func resumeRequestWaiters(for text: String) {
+        guard let continuations = requestContinuations.removeValue(forKey: text) else { return }
+        for continuation in continuations { continuation.resume() }
     }
 
     func succeed(_ text: String, with venues: [Venue]) {
@@ -864,11 +870,15 @@ private actor SearchControlledService: VenueListing {
 /// (`model.updateViewport` + a re-`load`) moves the viewport to a whole new
 /// location, not just what a citywide search widened `venues` with locally.
 private actor SelectionSurroundingsService: VenueListing {
-    private enum TestError: Error { case timedOut }
     private let initialVenues: [Venue]
     private let surroundingsVenues: [Venue]
     private var pendingSearch: Set<String> = []
     private var searchOutcomes: [String: [Venue]] = [:]
+    /// Same event-driven wait as `ControlledVenueService.requestContinuations`
+    /// (see there for the full bd#226 writeup) — resumed by
+    /// `fetchVenuesResult` the instant it records the matching search text,
+    /// never polled against a deadline.
+    private var searchContinuations: [String: [CheckedContinuation<Void, Never>]] = [:]
 
     init(initialVenues: [Venue], surroundingsVenues: [Venue]) {
         self.initialVenues = initialVenues
@@ -887,6 +897,7 @@ private actor SelectionSurroundingsService: VenueListing {
             return VenueLoadResult(venues: venues(for: query), coverage: .researched)
         }
         pendingSearch.insert(search)
+        resumeSearchWaiters(for: search)
         while true {
             try Task.checkCancellation()
             if let result = searchOutcomes.removeValue(forKey: search) {
@@ -896,15 +907,20 @@ private actor SelectionSurroundingsService: VenueListing {
         }
     }
 
+    /// Suspends until `fetchVenuesResult` has recorded a request for `text`.
+    /// Event-driven, not deadline-polled — see `searchContinuations`.
+    /// `throws` stays on the signature so the existing
+    /// `try await api.waitForSearchRequest(...)` call site needs no edit.
     func waitForSearchRequest(_ text: String) async throws {
-        // bd#226 CI investigation: 30s, not 10s — see ControlledVenueService
-        // .waitForRequest above for why.
-        let deadline = ContinuousClock.now + .seconds(30)
-        while ContinuousClock.now < deadline {
-            if pendingSearch.contains(text) { return }
-            try await Task.sleep(for: .milliseconds(1))
+        guard !pendingSearch.contains(text) else { return }
+        await withCheckedContinuation { continuation in
+            searchContinuations[text, default: []].append(continuation)
         }
-        throw TestError.timedOut
+    }
+
+    private func resumeSearchWaiters(for text: String) {
+        guard let continuations = searchContinuations.removeValue(forKey: text) else { return }
+        for continuation in continuations { continuation.resume() }
     }
 
     func succeedSearch(_ text: String, with venues: [Venue]) {
