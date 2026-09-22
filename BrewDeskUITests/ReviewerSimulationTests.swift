@@ -92,9 +92,20 @@ final class ReviewerSimulationTests: XCTestCase {
 
         let search = app.textFields["Search spots"]
         XCTAssertTrue(search.waitForExistence(timeout: 5))
+        // GitHub's simulator can lose the tap→focus race (run 35770125422:
+        // "Failed to synthesize event: Neither element nor any descendant has
+        // keyboard focus"): wait for the keyboard, retry the tap once, then type.
         search.tap()
+        var focused = app.keyboards.firstMatch.waitForExistence(timeout: 5)
+        if !focused {
+            search.tap()
+            focused = app.keyboards.firstMatch.waitForExistence(timeout: 5)
+        }
+        XCTAssertTrue(focused, "Search field never took keyboard focus")
         search.typeText("Housing Works")
-        app.keyboards.buttons["Search"].tap()
+        let searchKey = app.keyboards.buttons["Search"]
+        XCTAssertTrue(searchKey.waitForExistence(timeout: 5), "Keyboard Search key missing")
+        searchKey.tap()
         // Since brewdesk#219/#223 a search that resolves to exactly one café
         // SELECTS it on Search/return: the field commits to the café's name,
         // the detail sheet opens at the medium detent, and the map reloads
