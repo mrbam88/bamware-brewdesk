@@ -5,18 +5,21 @@ import XCTest
 ///
 /// The authorized case needs a REAL CoreLocation fix, not one of the
 /// `-UITestLocation*` fixture seams (those only pin `authorizationStatus`;
-/// `LocationService` still reads an actual coordinate from
-/// `CLLocationUpdate.liveUpdates()`). `Foundation.Process` isn't available
-/// inside an iOS UI-test runner, so the simulator's location privacy and
-/// simulated GPS fix have to be set from the HOST side before `xcodebuild
-/// test` runs — see `scripts/prepare_locate_button_uitests.sh`, which the CI
-/// step (and this file's own doc) both call out. Locally:
+/// before bd#198, `LocationService` still needed an actual coordinate from
+/// `CLLocationUpdate.liveUpdates()`, which meant provisioning the
+/// simulator's location privacy and a simulated GPS fix from the HOST side
+/// before `xcodebuild test` ran — brittle across machines/CI runners, and
+/// this test skipped outright whenever that host setup was missing (issue
+/// #170).
 ///
-///   xcrun simctl privacy <udid> grant location io.bamware.brewdesk
-///   xcrun simctl location <udid> set 40.729100,-73.996500
-///
-/// before running `testAuthorizedTapCentersOnSimulatedLocation`. The denied
-/// case needs no simulator setup — it uses the same `-UITestLocationDenied`
+/// `-brewdesk.uitest-fixed-location "<lat>|<lng>"` (bd#198,
+/// `LaunchEnvironment.fixedLocation`) replaces that: it authorizes location
+/// and delivers the fixture coordinate immediately in-process (re-ticking
+/// it roughly once a second so `onChange` observers fire like real
+/// CoreLocation does), no `simctl` host setup, no skip. See
+/// `MapSearchAreaGPSRegressionUITests` for the same seam already proving a
+/// different regression deterministically in CI. The denied case still
+/// needs no simulator setup — it uses the same `-UITestLocationDenied`
 /// fixture seam `DegradedStateTests` already relies on.
 final class MapLocateButtonUITests: XCTestCase {
     private let wait: TimeInterval = 15
@@ -39,20 +42,23 @@ final class MapLocateButtonUITests: XCTestCase {
     @MainActor
     func testAuthorizedTapCentersOnSimulatedLocation() throws {
         let app = XCUIApplication()
-        // No `-UITestLocation*` seam: this exercises the real
-        // authorized-with-a-fix rail, which is the one the original bug
-        // report ("the button's not working") was actually about.
+        // brewdesk#170: `-brewdesk.uitest-fixed-location` (bd#198) delivers
+        // an authorized fix in-process at launch — no host-side `simctl`
+        // provisioning, and so no skip when that provisioning is missing.
+        // This is still the real authorized-with-a-fix rail (the fixture
+        // sets `authorizationStatus = .authorizedWhenInUse` and a real
+        // `CLLocation`, exactly like the original "the button's not
+        // working" bug report needed), just delivered deterministically.
         app.launchArguments += [
             "-UITestSkipGates",
             "-UITestScenario", "fixtureOK",
             "-brewdesk.saved-venue-ids", "()",
+            "-brewdesk.uitest-fixed-location", "\(simulatedLat)|\(simulatedLng)",
         ]
         app.launch()
 
         let locate = app.buttons["map-locate-me"]
-        guard locate.waitForExistence(timeout: wait) else {
-            throw XCTSkip("locate button never appeared — device location privacy likely not authorized for io.bamware.brewdesk; see this file's header for the simctl setup this test needs")
-        }
+        XCTAssertTrue(locate.waitForExistence(timeout: wait), "locate button missing despite the fixed-location fixture authorizing location")
 
         let center = app.descendants(matching: .any)["map-camera-center"]
         XCTAssertTrue(center.waitForExistence(timeout: wait), "map camera center accessibility element missing")

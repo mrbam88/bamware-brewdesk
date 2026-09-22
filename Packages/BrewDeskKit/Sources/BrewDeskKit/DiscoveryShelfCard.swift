@@ -814,15 +814,23 @@ struct DiscoveryShelfCard: View {
                 Text(venue.name)
                     .font(.headline)
                     .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                // brewdesk#170: system `.secondary` measured "Contrast
+                // nearly passed" against this card's `surface` background —
+                // same root cause bd#216 already fixed for the Workability
+                // stamp, same fix: the contrast-verified
+                // `BrewDeskPalette.secondaryText` token.
                 Text(venue.neighborhood)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(BrewDeskPalette.secondaryText)
+                // brewdesk#170: same `.secondary`-on-`surface` contrast
+                // issue as the neighborhood line above ("Unknown"/"Fast"
+                // wifi labels both measured "nearly passed") — same fix.
                 HStack(spacing: 10) {
                     Label(localizedAttributeValue(venue.attributes.wifi.value), systemImage: "wifi")
                     Label(localizedAttributeValue(venue.attributes.outlets.value), systemImage: "powerplug")
                 }
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(BrewDeskPalette.secondaryText)
                 ProvenanceStamp(attributes: venue.attributes, tier: venue.tier)
             }
 

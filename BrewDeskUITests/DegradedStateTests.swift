@@ -59,16 +59,24 @@ final class DegradedStateTests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
     }
 
-    // MARK: - Dataset stat strip (brewdesk#34)
+    // MARK: - Dataset count line (brewdesk#34, folded per brewdesk#118)
 
-    /// The provenance line must render on both discovery tabs whenever the
-    /// engine reports health. It never did before #34: the strip's own
-    /// `.task` hung off a view that did not exist while health was nil.
+    /// The provenance/count line must render on Spots whenever the engine
+    /// reports health. It never did before #34: the strip's own `.task`
+    /// hung off a view that did not exist while health was nil.
+    ///
+    /// brewdesk#118 folded the standalone `DatasetStatStrip` row into the
+    /// header's single count line (`ratedCafeCountLine`, identifier
+    /// `map-count-line`) — `DatasetStatStrip`'s only remaining call site is
+    /// the now-unreachable `CafeListScreen` (no navigation path constructs
+    /// it), so `dataset-stat-strip` never appears on Spots any more. Retarget
+    /// to the current element (issue #170); shape-based, not literal text,
+    /// since both numbers in the line are dynamic.
     @MainActor
     func testStatStripRendersOnSpots() {
         let app = launch("fixtureOK")
-        XCTAssertTrue(element(app, "dataset-stat-strip").waitForExistence(timeout: wait),
-                      "Dataset stat strip missing from Spots")
+        XCTAssertTrue(element(app, "map-count-line").waitForExistence(timeout: wait),
+                      "Dataset count line missing from Spots")
     }
 
     // MARK: - Cold start (brewdesk#28)
@@ -89,24 +97,35 @@ final class DegradedStateTests: XCTestCase {
 
     /// Slow network: snapshot rows first, a quiet "updating" banner, then the
     /// engine's answer replaces them and the banner goes away.
+    ///
+    /// brewdesk#212/#213 replaced the old literal "N work spots" header with
+    /// the dynamic "N rated · M cafés" count line, so a literal-text wait
+    /// here always failed (issue #170). Retarget to shape-based evidence
+    /// that live data landed: the fixture-only "Fixture Roasters" pin, which
+    /// never appears in the bundled snapshot (`VenueSnapshot.json`), so its
+    /// existence proves the live fixtures replaced the snapshot rows rather
+    /// than merely re-rendering them.
     @MainActor
     func testColdStartSlowNetworkShowsSnapshotThenLiveData() {
         let app = launch("slow", extra: ["-UITestSeedSnapshot"])
         XCTAssertTrue(element(app, "snapshot-banner-loading").waitForExistence(timeout: 2))
         XCTAssertFalse(element(app, "map-state-loading").exists, "spinner shown over snapshot rows")
-        XCTAssertTrue(app.staticTexts["4 work spots"].waitForExistence(timeout: 20),
+        XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitForExistence(timeout: 20),
                       "live fixtures never replaced the snapshot")
         XCTAssertFalse(element(app, "snapshot-banner-loading").exists)
     }
 
     /// Reconnect recovers without relaunch: the first fetch fails offline,
     /// Retry on the banner brings live data into the same session.
+    ///
+    /// See `testColdStartSlowNetworkShowsSnapshotThenLiveData` above for why
+    /// this no longer waits for the retired "N work spots" literal (#170).
     @MainActor
     func testColdStartRetryRecoversWithoutRelaunch() {
         let app = launch("offlineThenRecovers", extra: ["-UITestSeedSnapshot"])
         XCTAssertTrue(element(app, "snapshot-banner-offline").waitForExistence(timeout: wait))
         app.buttons["snapshot-retry"].tap()
-        XCTAssertTrue(app.staticTexts["4 work spots"].waitForExistence(timeout: wait),
+        XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitForExistence(timeout: wait),
                       "retry did not bring live data")
         XCTAssertFalse(element(app, "snapshot-banner-offline").exists)
         XCTAssertFalse(element(app, "snapshot-banner-loading").exists)
@@ -133,11 +152,16 @@ final class DegradedStateTests: XCTestCase {
         XCTAssertFalse(element(app, "map-state-error").exists)
     }
 
+    /// See `testColdStartSlowNetworkShowsSnapshotThenLiveData` above for why
+    /// this waits for the pin rather than the retired "N work spots" literal
+    /// (#170) — no bundled snapshot is seeded here, so the count line itself
+    /// (`map-count-line`) is equally valid shape-based evidence that content
+    /// replaced the loading state.
     @MainActor
     func testMapSlowShowsLoadingThenContent() {
         let app = launch("slow")
         XCTAssertTrue(element(app, "map-state-loading").waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["4 work spots"].waitForExistence(timeout: 20))
+        XCTAssertTrue(app.mapPin(named: "Fixture Roasters").waitForExistence(timeout: 20))
         XCTAssertFalse(element(app, "map-state-loading").exists)
     }
 
