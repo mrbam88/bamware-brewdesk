@@ -1,6 +1,9 @@
-• Cada tarjeta muestra cuándo se actualizó su dato y desde qué fuente
-• "Cómo funciona Work Fit": la metodología completa, dentro de la app
-• Avisos de política de portátiles mostrados abiertamente
-• Nuevo filtro de asientos
-• Importa tus lugares guardados de Google Maps (en el dispositivo)
-• ¿Fuera de NYC? Ahora se muestran todos los datos en lugar de un mapa vacío
+• Inicia sesión con Apple o Google: tus lugares guardados ahora se sincronizan entre dispositivos
+• Miles de cafés más en Manhattan y Brooklyn, sin los locales cerrados
+• Busca en toda la ciudad: elige un resultado y el mapa vuela hasta él
+• Búsquedas recientes, justo debajo del campo de búsqueda
+• Un mapa más limpio: pines pequeños con puntuación que crecen al acercar, con el nombre junto a los mejores
+• "Buscar en esta zona" cuando te mueves a otro lugar
+• Los filtros muestran primero las coincidencias confirmadas y avisan cuando faltan datos
+• Los cafés sin valorar dicen "Sin valorar aún" en lugar de mostrar una puntuación inventada
+• Inicio de sesión más rápido, nueva animación de inicio y decenas de mejoras menores
