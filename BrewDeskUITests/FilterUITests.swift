@@ -194,6 +194,56 @@ final class FilterUITests: XCTestCase {
             unknownSection.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Slow WiFi Cafe,")).firstMatch.exists,
             "excluded café leaked into the unknown section"
         )
+
+        // Supervisor follow-up (PR #226 dark-mode review): a screenshot
+        // caught the shelf uniformly dimmed once, and it wasn't clear
+        // whether that was a real `.disabled`/`.opacity` contrast bug on
+        // the new sections or a one-off capture-during-fade-in. Two
+        // independent checks against the CURRENT rendered state, neither
+        // dependent on screenshot timing luck: `.contrast` is Apple's own
+        // audit for exactly this class of bug (already used elsewhere in
+        // this suite — `BrewDeskUITests.testLaunchAccessibilityAudit`); the
+        // luminance stability check is the closest XCUITest gets to
+        // "opacity == 1" directly — no public API reads rendered opacity,
+        // so this compares the SAME element's on-screen pixels moments
+        // apart and asserts they match, which a still-settling fade
+        // (opacity < 1, animating toward 1) would fail.
+        try assertSettledOpacity(unknownSection.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Fixture Unknown WiFi Cafe,")
+        ).firstMatch, label: "unknown row title")
+        // "ENV: Localhost" is a pre-existing debug-only badge
+        // (DiscoveryRootView) shown whenever a UI test launches without
+        // pinning production — unrelated to this ticket's sections, and
+        // already low-contrast-by-design on `main`; exempted the same way
+        // `BrewDeskUITests.testLaunchAccessibilityAudit` exempts its own
+        // known pre-existing strings.
+        try app.performAccessibilityAudit(for: .contrast) { issue in
+            // "Numbers are Work Fit" (CafeMapScreen's map-header caption,
+            // bd#212) is the OTHER pre-existing low-contrast element this
+            // audit turns up here — also unrelated to this ticket's
+            // sections, also already this way on `main`.
+            issue.element?.label == "ENV: Localhost" || issue.element?.label == "Numbers are Work Fit"
+        }
+    }
+
+    /// Samples an element's on-screen luminance twice, `settleDelay`
+    /// apart, and asserts they match within `tolerance` — see
+    /// `XCUIElement.averageLuminance()`'s own doc comment for why this
+    /// stands in for "opacity == 1, not still fading" here.
+    @MainActor
+    private func assertSettledOpacity(
+        _ element: XCUIElement, label: String, tolerance: Double = 6,
+        file: StaticString = #filePath, line: UInt = #line
+    ) throws {
+        XCTAssertTrue(element.waitForExistence(timeout: wait), "\(label) missing", file: file, line: line)
+        let first = try XCTUnwrap(element.averageLuminance(), "\(label): couldn't sample luminance", file: file, line: line)
+        Thread.sleep(forTimeInterval: 1.0)
+        let second = try XCTUnwrap(element.averageLuminance(), "\(label): couldn't re-sample luminance", file: file, line: line)
+        XCTAssertEqual(
+            first, second, accuracy: tolerance,
+            "\(label) is still changing brightness a second later (\(first) -> \(second)) — looks like it's still fading in, not settled at full opacity",
+            file: file, line: line
+        )
     }
 
     /// `filterHonestyVenues`' confirmed café is known-SCARCE on outlets, so
@@ -222,11 +272,37 @@ final class FilterUITests: XCTestCase {
 
         // The unknown section is FORCED open (nothing confirmed to hide
         // behind) — no toggle tap needed to see the unknown café.
+        let unknownRow = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Unknown WiFi Cafe,")).firstMatch
         XCTAssertTrue(
-            app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Fixture Unknown WiFi Cafe,")).firstMatch
-                .waitForExistence(timeout: wait),
+            unknownRow.waitForExistence(timeout: wait),
             "unknown section should already be expanded when confirmed is empty"
         )
+
+        // Supervisor follow-up (PR #226 dark-mode review): this is EXACTLY
+        // the screenshot's scenario — confirmed empty, the unknown toggle
+        // `.disabled(true)` (nothing to collapse to). That's the one
+        // control in this feature that's deliberately non-default-opacity
+        // in its DISABLED trait; the surrounding TEXT (the empty-state
+        // copy and the unknown row's own title) must still read at full,
+        // settled opacity — see `assertSettledOpacity`'s doc comment.
+        try assertSettledOpacity(
+            confirmedSection.staticTexts["No café here is confirmed for these filters yet"],
+            label: "confirmed-empty header"
+        )
+        try assertSettledOpacity(unknownRow, label: "unknown row title")
+        // "ENV: Localhost" is a pre-existing debug-only badge
+        // (DiscoveryRootView) shown whenever a UI test launches without
+        // pinning production — unrelated to this ticket's sections, and
+        // already low-contrast-by-design on `main`; exempted the same way
+        // `BrewDeskUITests.testLaunchAccessibilityAudit` exempts its own
+        // known pre-existing strings.
+        try app.performAccessibilityAudit(for: .contrast) { issue in
+            // "Numbers are Work Fit" (CafeMapScreen's map-header caption,
+            // bd#212) is the OTHER pre-existing low-contrast element this
+            // audit turns up here — also unrelated to this ticket's
+            // sections, also already this way on `main`.
+            issue.element?.label == "ENV: Localhost" || issue.element?.label == "Numbers are Work Fit"
+        }
     }
 
     @MainActor

@@ -554,7 +554,7 @@ struct DiscoveryShelfCard: View {
             } else {
                 Text("Matches your filters (\(model.confirmedVenues.count))")
                     .font(.subheadline.bold())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(BrewDeskPalette.secondaryText)
                     .accessibilityAddTraits(.isHeader)
                 ForEach(model.confirmedVenues) { venue in
                     venueButton(venue, fillsWidth: true)
@@ -583,7 +583,7 @@ struct DiscoveryShelfCard: View {
                 .font(.subheadline.weight(.semibold))
             Text("Been here? Rate it.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(BrewDeskPalette.secondaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -593,22 +593,33 @@ struct DiscoveryShelfCard: View {
         if !model.unknownVenues.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 Button {
+                    // bd#222 (supervisor follow-up, PR #226 dark-mode
+                    // review): a no-op tap when there's nothing to collapse
+                    // TO, rather than `.disabled(...)` — SwiftUI applies an
+                    // automatic reduced-opacity treatment to a disabled
+                    // control regardless of `.buttonStyle(.plain)` or an
+                    // explicit `.foregroundStyle`, which read as the whole
+                    // row being dimmed (caught by
+                    // `.performAccessibilityAudit(for: .contrast)`, added
+                    // alongside this fix). The row stays fully interactive
+                    // and fully legible; it just has nothing to do while
+                    // the confirmed section is empty.
+                    guard !model.confirmedVenues.isEmpty else { return }
                     FilterUnknownSectionMemory.session.isExpanded.toggle()
                 } label: {
                     HStack {
                         Text("Might match · details unknown (\(model.unknownVenues.count))")
                             .font(.subheadline.bold())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(BrewDeskPalette.secondaryText)
                         Spacer(minLength: 8)
                         Image(systemName: "chevron.right")
                             .font(.caption.bold())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(BrewDeskPalette.secondaryText)
                             .rotationEffect(.degrees(isUnknownSectionExpanded ? 90 : 0))
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .disabled(model.confirmedVenues.isEmpty)
                 .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("filter-unknown-toggle")
                 .accessibilityValue(isUnknownSectionExpanded ? "Expanded" : "Collapsed")
