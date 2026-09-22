@@ -134,7 +134,26 @@ struct TeardropMarkerView: View, Equatable {
             // `UIImage` by `MarkerBodyImageCache` and reused as a plain
             // `Image` — only the live score `Text` below (and the name
             // label, when present) still draws fresh.
-            Image(uiImage: MarkerBodyImageCache.image(score: score, diameter: diameter, isDark: colorScheme == .dark))
+            // bd#227 (TestFlight build 29 — "weird box... small" around
+            // every pin): `MarkerBodyImageCache`'s raster now carries
+            // transparent PADDING around the true pin silhouette so the
+            // depth finish's shadow/stroke can fade to alpha 0 before
+            // hitting the canvas edge (see that type's own doc comment) —
+            // the padded image is therefore LARGER than this `diameter` ×
+            // `frameHeight` slot. Composited via `Color.clear.overlay(...)`
+            // rather than a bare `Image(uiImage:)` so the extra padding
+            // bleeds outward from this slot WITHOUT changing what this
+            // slot itself reports as its size — `numberVerticalOffset`,
+            // `labelSlotWidth`, and `annotationAnchor(for:)` below all
+            // assume an exact `diameter` × `frameHeight` pin box, and an
+            // `.overlay()` (like `selectedHalo`'s own established, already-
+            // shipped bleed-beyond-bounds pattern) never changes its base
+            // view's reported size the way growing `Image`'s own intrinsic
+            // size would.
+            Color.clear
+                .overlay(
+                    Image(uiImage: MarkerBodyImageCache.image(score: score, diameter: diameter, isDark: colorScheme == .dark))
+                )
             if placement.showsNumber {
                 // brewdesk#213: `showsNumber` is only ever true for a rated
                 // venue (`isRated`), so `displayScore` is never nil here —
@@ -236,12 +255,19 @@ private struct MarkerBodyShape: View {
     let score: Int
     let diameter: CGFloat
     let frameHeight: CGFloat
+    /// bd#227: which appearance to draw, told explicitly rather than read
+    /// from `\.colorScheme` — see `MarkerBodyImageCache`'s own doc comment
+    /// for why an offscreen `ImageRenderer` can't be trusted to resolve
+    /// this package's adaptive colors correctly on its own, and
+    /// `BrewDeskPalette`'s new non-adaptive `isDark:` accessors this shape
+    /// now calls instead.
+    let isDark: Bool
 
     /// bd#221 rim `"tone"`: 1pt in BOTH appearances — Bilal's saved
     /// design-review selection has no per-appearance width split (that was
     /// bd#217's fixed-hairline-color era; the rim COLOR now carries the
     /// per-appearance difference instead, via `BrewDeskPalette
-    /// .markerRim(score:)`).
+    /// .markerRim(score:isDark:)`).
     private let hairlineWidth: CGFloat = 1.0
 
     var body: some View {
@@ -259,16 +285,19 @@ private struct MarkerBodyShape: View {
                 // visual effect, no shape-protocol conformance needed.
                 TeardropShape().fill(
                     LinearGradient(
-                        colors: [BrewDeskPalette.markerHighlight, BrewDeskPalette.markerHighlight.opacity(0)],
+                        colors: [
+                            BrewDeskPalette.markerHighlight(isDark: isDark),
+                            BrewDeskPalette.markerHighlight(isDark: isDark).opacity(0),
+                        ],
                         startPoint: .top,
                         endPoint: UnitPoint(x: 0.5, y: 0.24)
                     )
                 )
             )
             .overlay(
-                TeardropShape().stroke(BrewDeskPalette.markerRim(score: score), lineWidth: hairlineWidth)
+                TeardropShape().stroke(BrewDeskPalette.markerRim(score: score, isDark: isDark), lineWidth: hairlineWidth)
             )
-            .shadow(color: BrewDeskPalette.markerShadow, radius: 1.5, x: 0, y: 1.5)
+            .shadow(color: BrewDeskPalette.markerShadow(isDark: isDark), radius: 1.5, x: 0, y: 1.5)
             .frame(width: diameter, height: frameHeight, alignment: .bottom)
     }
 
@@ -284,9 +313,9 @@ private struct MarkerBodyShape: View {
     private var markerGradient: LinearGradient {
         LinearGradient(
             stops: [
-                .init(color: BrewDeskPalette.markerGradientTop(score: score), location: 0),
-                .init(color: BrewDeskPalette.markerFill(score: score), location: 0.52),
-                .init(color: BrewDeskPalette.markerGradientBottom(score: score), location: 1),
+                .init(color: BrewDeskPalette.markerGradientTop(score: score, isDark: isDark), location: 0),
+                .init(color: BrewDeskPalette.markerFill(score: score, isDark: isDark), location: 0.52),
+                .init(color: BrewDeskPalette.markerGradientBottom(score: score, isDark: isDark), location: 1),
             ],
             startPoint: .top,
             endPoint: .bottom
@@ -302,8 +331,32 @@ private struct MarkerBodyShape: View {
 /// 220-annotation density. Only the live score `Text` (and, when present,
 /// the name label) still draws fresh every frame — see `TeardropMarkerView
 /// .body`.
+///
+/// bd#227 (TestFlight build 29 — "weird box... really small" around every
+/// pin, light mode close-up): ROOT CAUSE was this cache's `ImageRenderer`
+/// canvas being sized EXACTLY to `MarkerBodyShape`'s own `diameter` ×
+/// `frameHeight` frame — the depth finish's `.shadow(radius: 1.5, y: 1.5)`
+/// and 1pt rim stroke both paint a few points BEYOND that shape's exact
+/// silhouette (a blurred shadow has no hard edge; a centered stroke bleeds
+/// half its width outside the path), and `ImageRenderer` (like
+/// `UIGraphicsImageRenderer`) clips its output to exactly the content's own
+/// proposed size — cutting the shadow's soft falloff off at a hard
+/// rectangular boundary instead of letting it fade to alpha 0, which reads
+/// as a faint box (most visible where a corner's antialiasing sits right at
+/// that cut line). The SAME clipping also blunts the teardrop's own sharp
+/// TIP: the tip sits almost exactly at the canvas's bottom edge, so the
+/// stroke's outer half-width and the shadow right at the tip get clipped
+/// too, rounding off what should be a crisp point (feeding directly into
+/// the separate "not really a tear shape" defect).
 @MainActor
 enum MarkerBodyImageCache {
+    /// Transparent margin added on every side of the raster canvas — see
+    /// this type's own doc comment for why. Generous enough to cover the
+    /// shadow's blur radius (1.5) plus its 1.5pt y-offset plus the 1pt rim
+    /// stroke's 0.5pt outer half, with real margin to spare; verified by
+    /// `MarkerBodyImageCacheTests.cachedRasterCornersAreFullyTransparent`.
+    static let bodyRasterPadding: CGFloat = 8
+
     private struct Key: Hashable {
         let tierIndex: Int
         let sizeBucket: Int
@@ -324,8 +377,29 @@ enum MarkerBodyImageCache {
         let key = Key(tierIndex: BrewDeskPalette.markerTierIndex(score: score), sizeBucket: sizeBucket(diameter), isDark: isDark)
         if let cached = cache[key] { return cached }
         let frameHeight = diameter * MapAnnotationPlanner.tailHeightFactor
+        // bd#227: pad EVERY side by the same amount (`bodyRasterPadding`,
+        // generous enough to cover the shadow's blur + its 1.5pt y-offset
+        // + the rim stroke's 0.5pt outer half — see the type's own doc
+        // comment). Padding symmetrically, rather than more on the bottom
+        // alone, keeps the true shape's geometric center exactly at the
+        // padded canvas's own center, so `TeardropMarkerView.pinBody`'s
+        // plain `Color.clear.overlay(Image(...))` — whose overlay defaults
+        // to CENTER alignment — reproduces the identical unpadded position
+        // with no extra offset math needed.
+        // bd#227: `isDark` is passed straight into `MarkerBodyShape`, which
+        // now reads `BrewDeskPalette`'s non-adaptive `isDark:` accessors —
+        // see `MarkerBodyShape`'s and those accessors' own doc comments.
+        // `ImageRenderer` has no public `traitCollection` override to force
+        // correct resolution of this package's raw-`UIColor`-backed
+        // adaptive colors offscreen, and setting `\.colorScheme` alone (the
+        // PREVIOUS approach) only steers SwiftUI's own native color
+        // resolution, not that raw `UIColor { traits in … }` provider — so
+        // telling the shape explicitly, rather than relying on either
+        // mechanism resolving an ambient appearance correctly, is the only
+        // reliable fix.
         let renderer = ImageRenderer(content:
-            MarkerBodyShape(score: score, diameter: diameter, frameHeight: frameHeight)
+            MarkerBodyShape(score: score, diameter: diameter, frameHeight: frameHeight, isDark: isDark)
+                .padding(MarkerBodyImageCache.bodyRasterPadding)
                 .environment(\.colorScheme, isDark ? .dark : .light)
         )
         renderer.scale = UIScreen.main.scale
