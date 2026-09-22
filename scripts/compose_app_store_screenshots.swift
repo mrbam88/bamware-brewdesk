@@ -96,6 +96,26 @@ let captions: [String: [CaptureLocale: Captions]] = [
             evidence: "TÚ DECIDES  /  SIN HISTORIAL DE UBICACIÓN"
         ),
     ],
+    "06": [
+        .en: Captions(
+            headline: "Sign in if you want to. Never to browse.",
+            evidence: "APPLE  /  GOOGLE  /  EMAIL"
+        ),
+        .es: Captions(
+            headline: "Inicia sesión si quieres. Nunca para explorar.",
+            evidence: "APPLE  /  GOOGLE  /  CORREO"
+        ),
+    ],
+    "07": [
+        .en: Captions(
+            headline: "Save the spots you'll actually return to.",
+            evidence: "LOCAL ONLY OR SYNCED  /  YOUR CHOICE"
+        ),
+        .es: Captions(
+            headline: "Guarda los lugares a los que volverás.",
+            evidence: "SOLO EN EL DISPOSITIVO O SINCRONIZADO"
+        ),
+    ],
 ]
 
 func caption(_ index: String) -> Captions {
@@ -167,6 +187,26 @@ let slides = [
         background: foam,
         foreground: espresso,
         accent: moss
+    ),
+    Slide(
+        input: "06-sign-in.png",
+        output: "06_sign_in_optional.png",
+        index: "06",
+        headline: caption("06").headline,
+        evidence: caption("06").evidence,
+        background: espresso,
+        foreground: foam,
+        accent: moss
+    ),
+    Slide(
+        input: "07-saved-spot.png",
+        output: "07_save_your_spots.png",
+        index: "07",
+        headline: caption("07").headline,
+        evidence: caption("07").evidence,
+        background: oat,
+        foreground: espresso,
+        accent: clay
     ),
 ]
 
