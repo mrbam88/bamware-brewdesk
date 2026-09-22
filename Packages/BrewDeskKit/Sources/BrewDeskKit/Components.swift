@@ -188,6 +188,51 @@ struct ProvenanceStamp: View {
     }()
 }
 
+/// brewdesk#216: how a claim's VALUE should render, decided from evidence
+/// (source + value) rather than a hue lookup — a red-green colorblind
+/// reader can't tell "estimate" from "verified" by color, so color is never
+/// the only signal for any of these three:
+///   - `.known` — verified/curated/user-reported: primary text (the
+///     existing human-source seal, when shown, already lives on the card's
+///     provenance stamp, not per-row).
+///   - `.unverified` — the claim is an estimate, or its value is literally
+///     "unknown": secondary text, plus a small trailing "estimate" tag
+///     UNLESS the value is already the plain word "unknown" (redundant).
+///   - `.negativeKnown` — a genuinely negative value from a NON-estimate
+///     source (laptops discouraged / banned on weekends): stays primary
+///     text, but gets a leading warning icon so the row still reads as
+///     negative without relying on color alone.
+/// A free function (not a `View` method) so the mapping is unit-testable
+/// without rendering SwiftUI.
+enum ClaimValueStyle: Equatable {
+    case known
+    case unverified(showsEstimateTag: Bool)
+    case negativeKnown
+
+    /// Values that are a real, known restriction/prohibition — never
+    /// "unknown" and never gated on `isEstimate` (that case is covered by
+    /// `.unverified` first). Currently laptop-policy-only; the engine wire
+    /// carries both a singular (`weekend_banned`, `Components.swift`'s own
+    /// `localizedAttributeValue`) and plural (`weekends_banned`,
+    /// `VenueFilter`'s filter match) spelling for the same state — a
+    /// pre-existing engine/client inconsistency (brewdesk#170-adjacent, not
+    /// this ticket's scope) — so both are listed here to be safe either way.
+    static let negativeKnownValues: Set<String> = ["discouraged", "weekend_banned", "weekends_banned"]
+
+    static func classify(_ claim: Claim) -> ClaimValueStyle {
+        if claim.value == "unknown" {
+            return .unverified(showsEstimateTag: false)
+        }
+        if claim.isEstimate {
+            return .unverified(showsEstimateTag: true)
+        }
+        if negativeKnownValues.contains(claim.value) {
+            return .negativeKnown
+        }
+        return .known
+    }
+}
+
 struct ClaimRow: View {
     let title: String
     let systemImage: String
@@ -253,11 +298,48 @@ struct ClaimRow: View {
         }
     }
 
+    /// brewdesk#216: value styling keys off evidence (`ClaimValueStyle`), never
+    /// off hue alone — a red-green colorblind reader can't tell an "estimate"
+    /// clay-red from a "verified" green by color, and shouldn't have to.
     private var claimValue: some View {
-        Text(displayValue)
-            .font(.subheadline.bold())
-            .foregroundStyle(claim.isEstimate ? BrewDeskPalette.clayText : Color.primary)
-            .fixedSize(horizontal: false, vertical: true)
+        HStack(spacing: 4) {
+            if valueStyle == .negativeKnown {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+            }
+            Text(displayValue)
+                .font(.subheadline.bold())
+                .foregroundStyle(valueColor)
+                .fixedSize(horizontal: false, vertical: true)
+            if case .unverified(let showsEstimateTag) = valueStyle, showsEstimateTag {
+                estimateTag
+            }
+        }
+    }
+
+    private var valueStyle: ClaimValueStyle { .classify(claim) }
+
+    private var valueColor: Color {
+        switch valueStyle {
+        case .known, .negativeKnown: Color.primary
+        case .unverified: BrewDeskPalette.secondaryText
+        }
+    }
+
+    /// "estimate" — caption, secondary text, rounded fill from the existing
+    /// neutral `surfaceSecondary` token (no new palette entry needed). Only
+    /// shown for a non-"unknown" estimate; "unknown" already says so in
+    /// plain words and would be redundant with a tag next to it.
+    private var estimateTag: some View {
+        Text("estimate")
+            .font(.caption2)
+            .foregroundStyle(BrewDeskPalette.secondaryText)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(BrewDeskPalette.surfaceSecondary, in: Capsule())
+            .accessibilityHidden(true)
     }
 
     private var displayValue: String {
