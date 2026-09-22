@@ -157,8 +157,18 @@ public final class VenuesModel {
     private var activeSearchText = "" {
         didSet { scheduleServerSearch() }
     }
+    /// Internal (not `private`) so `@testable` tests can `await` it directly
+    /// instead of guessing a real-time margin for the ~200ms debounce. A
+    /// fixed `Task.sleep` in the test (the pre-fix `waitForDebounce()`)
+    /// raced the growing BrewDeskKit-Package suite's parallel test load in
+    /// CI: `SearchAsYouTypeTests` reported `venues` as still the full,
+    /// unnarrowed list even though this model had already applied the
+    /// search correctly — the scheduler simply hadn't resumed the debounce
+    /// Task within the test's fixed wait under contention. Awaiting the
+    /// real Task's completion removes the race entirely; it was never a
+    /// product regression in local search narrowing.
     @ObservationIgnored
-    private var searchDebounceTask: Task<Void, Never>?
+    var searchDebounceTask: Task<Void, Never>?
     private var requestRevision = 0
 
     // MARK: - Citywide server search (bd#200)
@@ -198,8 +208,10 @@ public final class VenuesModel {
     /// the quiet "Couldn't search beyond this area" line. Local results (if
     /// any) are untouched; this is purely advisory, never an alert.
     public private(set) var serverSearchFailed = false
+    /// Internal (not `private`) for the same reason as `searchDebounceTask`
+    /// above — lets tests await the settled citywide request deterministically.
     @ObservationIgnored
-    private var serverSearchTask: Task<Void, Never>?
+    var serverSearchTask: Task<Void, Never>?
     @ObservationIgnored
     private var serverSearchRevision = 0
 

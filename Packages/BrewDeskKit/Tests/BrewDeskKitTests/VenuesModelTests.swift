@@ -370,7 +370,12 @@ private actor ControlledVenueService: VenueListing {
     func waitForRequest(key: String) async throws {
         // Deadline, not iteration count: 1ms sleeps stretch under parallel
         // test load and a 1s budget flaked (cold-simulator baseline runs).
-        let deadline = ContinuousClock.now + .seconds(10)
+        // bd#226 CI investigation: the full BrewDeskKit-Package suite grew
+        // enough parallel @MainActor tests that even this 10s deadline was
+        // observed blown (CI log: "failed after 59.635 seconds") — the
+        // scheduler, not the production code, was the bottleneck. 30s keeps
+        // this a real safety net without masking an actual hang.
+        let deadline = ContinuousClock.now + .seconds(30)
         while ContinuousClock.now < deadline {
             if requests.contains(key) { return }
             try await Task.sleep(for: .milliseconds(1))
@@ -598,7 +603,11 @@ private actor ControlledVenueService: VenueListing {
         return model
     }
 
-    private func poll(timeout: TimeInterval = 5, _ condition: @MainActor () -> Bool) async throws {
+    // bd#226 CI investigation: 20s default, not 5s — matches the
+    // ControlledVenueService/SearchControlledService deadlines above; the
+    // full suite's parallel @MainActor load can push real scheduling delays
+    // well past a tight budget without the production code being at fault.
+    private func poll(timeout: TimeInterval = 20, _ condition: @MainActor () -> Bool) async throws {
         let deadline = ContinuousClock.now + .seconds(Int(timeout))
         while ContinuousClock.now < deadline {
             if condition() { return }
@@ -808,7 +817,9 @@ private actor SearchControlledService: VenueListing {
     }
 
     func waitForSearchRequest(_ text: String) async throws {
-        let deadline = ContinuousClock.now + .seconds(10)
+        // bd#226 CI investigation: 30s, not 10s — see ControlledVenueService
+        // .waitForRequest above for why.
+        let deadline = ContinuousClock.now + .seconds(30)
         while ContinuousClock.now < deadline {
             if pendingRequests.contains(text) { return }
             try await Task.sleep(for: .milliseconds(1))
@@ -866,7 +877,9 @@ private actor SelectionSurroundingsService: VenueListing {
     }
 
     func waitForSearchRequest(_ text: String) async throws {
-        let deadline = ContinuousClock.now + .seconds(10)
+        // bd#226 CI investigation: 30s, not 10s — see ControlledVenueService
+        // .waitForRequest above for why.
+        let deadline = ContinuousClock.now + .seconds(30)
         while ContinuousClock.now < deadline {
             if pendingSearch.contains(text) { return }
             try await Task.sleep(for: .milliseconds(1))
