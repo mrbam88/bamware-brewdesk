@@ -40,38 +40,104 @@ public struct VenueFilter: Equatable, Sendable {
         venues.filter { matches($0, now: now) }
     }
 
-    public func matches(_ venue: Venue, now: Date = Date()) -> Bool {
+    /// brewdesk#222: honest three-way outcome per venue, replacing the old
+    /// binary in/out `matches` as the source of truth (`matches` below is
+    /// now derived from this). A café with an unknown Wi-Fi claim used to be
+    /// presented in the list exactly like a confirmed "fast Wi-Fi" match —
+    /// which read to a user as "the filter does nothing / returns junk"
+    /// (TestFlight build 28, venue-engine#147's app-side half). Splitting
+    /// the outcome into three lets the UI show confirmed matches first and
+    /// unknowns separately, instead of blending them.
+    ///
+    /// - `.confirmed`: every constrained attribute is KNOWN and meets its
+    ///   floor.
+    /// - `.unknown`: nothing constrained is known to fail, but at least one
+    ///   constrained attribute's value isn't in the known vocabulary (e.g.
+    ///   `"unknown"`, or absent — no seating claim at all).
+    /// - `.excluded`: some constrained attribute is KNOWN to sit below its
+    ///   floor. This is the only case `matches`/`apply` ever drop a venue
+    ///   for — identical to the pre-#222 behavior.
+    ///
+    /// No active constraint (every filter left at its default/weakest,
+    /// venueType unset) → every venue is `.confirmed`, matching the
+    /// established "all-selected == no-filter" rule.
+    public enum FilterMatch: Equatable, Sendable {
+        case confirmed
+        case unknown
+        case excluded
+    }
+
+    public func classify(_ venue: Venue, now: Date = Date()) -> FilterMatch {
+        var sawUnknown = false
+
         if laptopFriendlyOnly {
-            let policy = venue.attributes.laptopPolicy.value
-            if policy == "discouraged" { return false }
-            if policy == "weekends_banned", Self.isWeekendInNY(now) { return false }
+            switch Self.laptopMatch(venue, now: now) {
+            case .fail: return .excluded
+            case .unknown: sawUnknown = true
+            case .pass: break
+            }
         }
-        // Weakest floors admit every option — all-selected == no-filter.
-        if let floor = minWifi, floor != .slow,
-           let tier = Self.wifiTiers[venue.attributes.wifi.value],
-           tier < Self.wifiTiers[floor.rawValue]! {
-            return false
+        // Weakest floors admit every option — all-selected == no-filter —
+        // so they never constrain the classification at all (no pass/fail/
+        // unknown outcome is even asked for).
+        if let floor = minWifi, floor != .slow {
+            switch Self.tierMatch(value: venue.attributes.wifi.value, floor: floor.rawValue, tiers: Self.wifiTiers) {
+            case .fail: return .excluded
+            case .unknown: sawUnknown = true
+            case .pass: break
+            }
         }
-        if let floor = minOutlets, floor != .scarce,
-           let tier = Self.amountTiers[venue.attributes.outlets.value],
-           tier < Self.amountTiers[floor.rawValue]! {
-            return false
+        if let floor = minOutlets, floor != .scarce {
+            switch Self.tierMatch(value: venue.attributes.outlets.value, floor: floor.rawValue, tiers: Self.amountTiers) {
+            case .fail: return .excluded
+            case .unknown: sawUnknown = true
+            case .pass: break
+            }
         }
-        if let floor = minSeating, floor != .scarce,
-           let seating = venue.attributes.seating,
-           let tier = Self.amountTiers[seating.value],
-           tier < Self.amountTiers[floor.rawValue]! {
-            return false
+        if let floor = minSeating, floor != .scarce {
+            switch Self.tierMatch(value: venue.attributes.seating?.value, floor: floor.rawValue, tiers: Self.amountTiers) {
+            case .fail: return .excluded
+            case .unknown: sawUnknown = true
+            case .pass: break
+            }
         }
+        // venueType has no "unknown" concept of its own — an absent
+        // `venue.venueType` defaults to "cafe" (matching every other read
+        // of this field), so it's always known.
         if let venueType, (venue.venueType ?? "cafe") != venueType.rawValue {
-            return false
+            return .excluded
         }
-        return true
+
+        return sawUnknown ? .unknown : .confirmed
+    }
+
+    public func matches(_ venue: Venue, now: Date = Date()) -> Bool {
+        switch classify(venue, now: now) {
+        case .confirmed, .unknown: true
+        case .excluded: false
+        }
+    }
+
+    private enum AttributeMatch { case pass, fail, unknown }
+
+    private static func laptopMatch(_ venue: Venue, now: Date) -> AttributeMatch {
+        let policy = venue.attributes.laptopPolicy.value
+        if policy == "discouraged" { return .fail }
+        if policy == "weekends_banned", isWeekendInNY(now) { return .fail }
+        if policy == "unknown" { return .unknown }
+        return .pass
+    }
+
+    private static func tierMatch(value: String?, floor: String, tiers: [String: Int]) -> AttributeMatch {
+        guard let value, let tier = tiers[value] else { return .unknown }
+        guard let floorTier = tiers[floor] else { return .pass }
+        return tier < floorTier ? .fail : .pass
     }
 
     // Tier orders mirror the engine's WIFI_ORDER / OUTLET_ORDER / SEATING_ORDER.
     // Values outside the vocabulary ("unknown", future strings) have no tier
-    // and therefore never fail a floor.
+    // — `.unknown` for classification purposes, and (per `matches`) never
+    // fail a floor either.
     private static let wifiTiers = ["slow": 1, "ok": 2, "fast": 3]
     private static let amountTiers = ["scarce": 1, "some": 2, "plenty": 3]
 

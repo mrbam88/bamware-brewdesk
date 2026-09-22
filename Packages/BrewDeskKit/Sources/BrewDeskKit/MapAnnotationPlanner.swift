@@ -369,13 +369,30 @@ public enum MapAnnotationPlanner {
     ///   to the un-culled venue list, every one a full (un-demoted) teardrop
     ///   at the "closest" diameter, rather than trusting pixel math against
     ///   a region already known to be wrong.
+    /// - Parameter forcedUnratedVenueIDs: bd#222 input classification — a
+    ///   venue in this set is treated as UNRATED for the rated/unrated split
+    ///   below regardless of its own `Venue.isRated`, i.e. it draws as a
+    ///   faint speck, never a teardrop/dot. The caller (`CafeMapScreen`)
+    ///   passes the active filter's `unknownVenues` ids here: a genuinely
+    ///   rated café (WeWork, Work Fit 48) whose Wi-Fi is UNKNOWN under a
+    ///   "fast Wi-Fi" filter must not present as a normal pin — TestFlight
+    ///   build 28's report. Empty (the default) whenever no filter is
+    ///   active, which is exactly when `unknownVenues` is itself always
+    ///   empty (`VenueFilter.classify`), so this is a no-op then — the
+    ///   ticket's own "behaviour is unchanged" requirement. Deliberately the
+    ///   ONLY thing this parameter touches: sizes, colors, and every other
+    ///   rendering decision below are untouched.
     public static func plan(
         venues: [Venue],
         region: MKCoordinateRegion?,
         mapSize: CGSize = .zero,
         selectedVenueID: String? = nil,
-        exclusionRects: [CGRect] = []
+        exclusionRects: [CGRect] = [],
+        forcedUnratedVenueIDs: Set<String> = []
     ) -> MapAnnotationPlan {
+        func isRated(_ venue: Venue) -> Bool {
+            venue.isRated && !forcedUnratedVenueIDs.contains(venue.id)
+        }
         guard let region else {
             let markers = venues.map {
                 MarkerPlacement(
@@ -383,7 +400,7 @@ public enum MapAnnotationPlanner {
                     kind: .teardrop(diameter: sizeStopsByMetersPerPoint.last!.diameter),
                     // brewdesk#213: `isRated` honors the server's explicit
                     // `scoreDisplay` over the `isObserved` heuristic.
-                    showsNumber: $0.isRated,
+                    showsNumber: isRated($0),
                     isSelected: $0.id == selectedVenueID
                 )
             }
@@ -449,7 +466,7 @@ public enum MapAnnotationPlanner {
                 MarkerPlacement(
                     venue: match,
                     kind: .teardrop(diameter: selectedDiameter),
-                    showsNumber: match.isRated,
+                    showsNumber: isRated(match),
                     isSelected: true
                 )
             )
@@ -466,7 +483,7 @@ public enum MapAnnotationPlanner {
         // `MapCircle`, never itself collision-checked, so no rated venue is
         // ever silently hidden by this pass any more.
         let rated = visible
-            .filter { $0.isRated && $0.id != selectedVenue?.id }
+            .filter { isRated($0) && $0.id != selectedVenue?.id }
             .sorted(by: byScoreDescendingThenID)
         let attemptTeardrops = ratedDiameter >= teardropShapeThreshold
         for candidate in rated {
@@ -511,7 +528,7 @@ public enum MapAnnotationPlanner {
         // collision-checked (native `MapCircle` overlays render fine
         // overlapping each other).
         if speckVisible {
-            let unratedEligible = visible.filter { !$0.isRated && $0.id != selectedVenue?.id }
+            let unratedEligible = visible.filter { !isRated($0) && $0.id != selectedVenue?.id }
             let nearest = nearestToCentre(unratedEligible, region: region, limit: unratedCandidateLimit)
             for candidate in nearest {
                 guard totalPlaced < maxAnnotations else { break }

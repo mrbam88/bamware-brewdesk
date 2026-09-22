@@ -1,6 +1,18 @@
+import Observation
 import SwiftUI
 import UIKit
 import VenueKit
+
+/// Session-scoped memory (brewdesk#222) for the filtered shelf's "Might
+/// match · details unknown" disclosure — mirrors `ShelfDetentMemory`'s
+/// "remember for the session, not persisted to `UserDefaults`" contract. A
+/// fresh launch always starts collapsed.
+@Observable
+final class FilterUnknownSectionMemory {
+    static let session = FilterUnknownSectionMemory()
+
+    var isExpanded = false
+}
 
 /// The map's bottom card, now an honest sheet (brewdesk#76): the grabber that
 /// used to be pure decoration drags through real peek / medium / full detents,
@@ -294,8 +306,13 @@ struct DiscoveryShelfCard: View {
         } else if model.venues.isEmpty {
             emptyContent
         } else if isSearchActive || detent == .full {
-            fullList
-                .transition(.opacity)
+            if model.hasActiveFilter {
+                filteredSections
+                    .transition(.opacity)
+            } else {
+                fullList
+                    .transition(.opacity)
+            }
         } else {
             horizontalRail
                 .transition(.opacity)
@@ -441,7 +458,7 @@ struct DiscoveryShelfCard: View {
     private var horizontalRail: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             LazyHStack(spacing: 12) {
-                ForEach(model.venues.prefix(12)) { venue in
+                ForEach(railVenues.prefix(12)) { venue in
                     venueButton(venue, fillsWidth: false)
                 }
             }
@@ -450,6 +467,17 @@ struct DiscoveryShelfCard: View {
         // No fixed shelf height: cards reflow vertically at
         // accessibility sizes instead of clipping (finding 7).
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// bd#222: the compact rail has no room for section headers, so while a
+    /// filter is active it shows CONFIRMED matches only — never an unknown
+    /// venue (the WeWork complaint: unknown Wi-Fi must sit only under
+    /// "Might match", not lead the shelf). An honestly empty rail (nothing
+    /// confirmed yet) is expected here; `.full` is where the unknown
+    /// section and its own empty-state copy live. A no-op (`model.venues`
+    /// itself) while no filter is active.
+    private var railVenues: [Venue] {
+        model.hasActiveFilter ? model.confirmedVenues : model.venues
     }
 
     /// `.full` earns its height: the rail becomes a scrolling vertical list
@@ -495,6 +523,128 @@ struct DiscoveryShelfCard: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .contentMargins(.bottom, keyboardBottomInset, for: .scrollContent)
+    }
+
+    // MARK: - Honest filter sections (bd#222)
+
+    /// Replaces `fullList` while a filter is active (brewdesk#222):
+    /// confirmed matches under their own accessible header/count, then a
+    /// collapsed-by-default "might match" section for filter-unknown
+    /// venues. Excluded venues never reach either — `model.confirmedVenues`/
+    /// `model.unknownVenues` are both already-filtered slices of
+    /// `model.venues` (which itself already drops anything
+    /// `VenueFilter.matches` rejects).
+    private var filteredSections: some View {
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 20) {
+                confirmedSection
+                unknownSection
+            }
+            .padding(.horizontal, 16)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .contentMargins(.bottom, keyboardBottomInset, for: .scrollContent)
+    }
+
+    @ViewBuilder
+    private var confirmedSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if model.confirmedVenues.isEmpty {
+                confirmedEmptyState
+            } else {
+                Text("Matches your filters (\(model.confirmedVenues.count))")
+                    .font(.subheadline.bold())
+                    .foregroundStyle(BrewDeskPalette.secondaryText)
+                    .accessibilityAddTraits(.isHeader)
+                ForEach(model.confirmedVenues) { venue in
+                    venueButton(venue, fillsWidth: true)
+                }
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("filter-confirmed-section")
+    }
+
+    /// "No café here is confirmed for these filters yet" (brewdesk#222):
+    /// distinct from `emptyContent`'s "No cafés here yet" — this fires only
+    /// when the confirmed HALF is empty while unknowns still exist (venues
+    /// nothing is known to fail, just not yet proven). The "Been here? Rate
+    /// it." nudge points at the same fix a real gap here needs: a rating
+    /// turns an unknown into a confirmed match or a known exclusion, either
+    /// way honest. Lives inside `confirmedSection`'s own
+    /// `filter-confirmed-section` container rather than carrying a second
+    /// identifier of its own — SwiftUI flattens an intermediate
+    /// `.accessibilityElement(children: .contain)` that has no traits/label
+    /// of its own and is its container's only child, so a second identifier
+    /// here never showed up as its own queryable node.
+    private var confirmedEmptyState: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("No café here is confirmed for these filters yet")
+                .font(.subheadline.weight(.semibold))
+            Text("Been here? Rate it.")
+                .font(.caption)
+                .foregroundStyle(BrewDeskPalette.secondaryText)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var unknownSection: some View {
+        if !model.unknownVenues.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Button {
+                    // bd#222 (supervisor follow-up, PR #226 dark-mode
+                    // review): a no-op tap when there's nothing to collapse
+                    // TO, rather than `.disabled(...)` — SwiftUI applies an
+                    // automatic reduced-opacity treatment to a disabled
+                    // control regardless of `.buttonStyle(.plain)` or an
+                    // explicit `.foregroundStyle`, which read as the whole
+                    // row being dimmed (caught by
+                    // `.performAccessibilityAudit(for: .contrast)`, added
+                    // alongside this fix). The row stays fully interactive
+                    // and fully legible; it just has nothing to do while
+                    // the confirmed section is empty.
+                    guard !model.confirmedVenues.isEmpty else { return }
+                    FilterUnknownSectionMemory.session.isExpanded.toggle()
+                } label: {
+                    HStack {
+                        Text("Might match · details unknown (\(model.unknownVenues.count))")
+                            .font(.subheadline.bold())
+                            .foregroundStyle(BrewDeskPalette.secondaryText)
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.bold())
+                            .foregroundStyle(BrewDeskPalette.secondaryText)
+                            .rotationEffect(.degrees(isUnknownSectionExpanded ? 90 : 0))
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("filter-unknown-toggle")
+                .accessibilityValue(isUnknownSectionExpanded ? "Expanded" : "Collapsed")
+
+                if isUnknownSectionExpanded {
+                    ForEach(model.unknownVenues) { venue in
+                        venueButton(venue, fillsWidth: true)
+                    }
+                }
+            }
+            .animation(reduceMotion ? nil : .snappy, value: isUnknownSectionExpanded)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("filter-unknown-section")
+        }
+    }
+
+    /// Collapsed by default, remembered for the session
+    /// (`FilterUnknownSectionMemory`) — but forced open whenever the
+    /// confirmed section is empty (brewdesk#222 spec): with nothing
+    /// confirmed to show, hiding the only venues actually on screen behind
+    /// an extra tap would be strictly worse than just showing them. The
+    /// toggle itself is disabled in that state (there's nothing to collapse
+    /// TO), and re-enables once a confirmed match exists again.
+    private var isUnknownSectionExpanded: Bool {
+        model.confirmedVenues.isEmpty || FilterUnknownSectionMemory.session.isExpanded
     }
 
     // MARK: - Recent searches (bd#223)

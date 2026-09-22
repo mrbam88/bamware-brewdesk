@@ -85,6 +85,57 @@ extension XCUIApplication {
 }
 
 extension XCUIElement {
+    /// brewdesk#222 (supervisor follow-up): XCUITest has no public API for
+    /// an element's rendered opacity — the practical proxy is "does this
+    /// element's on-screen pixels look the same a moment after it first
+    /// presented as they do once fully settled". Averages luminance over
+    /// the element's own frame (converted from POINTS to the screenshot's
+    /// native PIXEL space via the window's own frame) in a freshly taken
+    /// screenshot. A text element mid-fade (opacity < 1, still animating
+    /// toward 1) reads measurably darker against a dark background — or
+    /// lighter against a light one — than its settled value; comparing two
+    /// samples taken `settleDelay` apart catches that without needing a
+    /// theme-specific absolute brightness threshold.
+    func averageLuminance() -> Double? {
+        guard exists, !frame.isEmpty else { return nil }
+        let screenshot = XCUIScreen.main.screenshot().image
+        guard let windowFrame = XCUIApplication().windows.firstMatch.frame as CGRect?,
+              windowFrame.width > 0
+        else { return nil }
+        let scale = screenshot.size.width / windowFrame.width
+        let pixelRect = CGRect(
+            x: frame.origin.x * scale, y: frame.origin.y * scale,
+            width: frame.width * scale, height: frame.height * scale
+        )
+        guard let cgImage = screenshot.cgImage,
+              let cropped = cgImage.cropping(to: pixelRect)
+        else { return nil }
+        return Self.averageLuminance(of: cropped)
+    }
+
+    private static func averageLuminance(of cgImage: CGImage) -> Double? {
+        let width = cgImage.width
+        let height = cgImage.height
+        guard width > 0, height > 0 else { return nil }
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        guard let context = CGContext(
+            data: &pixels, width: width, height: height, bitsPerComponent: 8,
+            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+        var total = 0.0
+        let count = width * height
+        for i in 0..<count {
+            let offset = i * 4
+            let r = Double(pixels[offset]), g = Double(pixels[offset + 1]), b = Double(pixels[offset + 2])
+            total += (0.299 * r + 0.587 * g + 0.114 * b)
+        }
+        return total / Double(count)
+    }
+}
+
+extension XCUIElement {
     /// `.exists` can be true while a sheet-dismiss animation is still
     /// settling underneath (brewdesk#117: venue detail is a sheet over
     /// Spots now) — the element is in the hierarchy but its frame hasn't
