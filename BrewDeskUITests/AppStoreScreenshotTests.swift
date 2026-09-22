@@ -141,23 +141,20 @@ final class AppStoreScreenshotTests: XCTestCase {
         let search = app.textFields[locale.searchField]
         search.tap()
         search.typeText("Housing Works\n")
-        // UI3 (#118): focused search shows a vertical result list above the
-        // keyboard, and the count line narrows to "1 of M". Open the detail
-        // from the result row — the map is behind the list now.
-        let narrowed = app.descendants(matching: .any).matching(
-            NSPredicate(
-                format: "identifier == %@ AND label BEGINSWITH %@",
-                "map-count-line",
-                locale.oneWorkCafe
-            )
-        ).firstMatch
-        XCTAssertTrue(narrowed.waitForExistence(timeout: 15))
-
-        let housingWorks = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Housing Works")
-        ).firstMatch
-        XCTAssertTrue(housingWorks.waitForExistence(timeout: 5))
-        housingWorks.tap()
+        // Since brewdesk#219/#223 a submitted search that resolves to exactly
+        // one café SELECTS it: the field commits to the café's name, the
+        // detail sheet opens at the medium detent and the map reloads that
+        // café's surroundings — so the count line no longer narrows to "1".
+        // If the sheet did not open on its own (e.g. more than one match),
+        // fall back to tapping the result row.
+        let heading = app.staticTexts["venue-detail-heading"]
+        if !heading.waitForExistence(timeout: 12) {
+            let housingWorks = app.buttons.matching(
+                NSPredicate(format: "label BEGINSWITH %@", "Housing Works")
+            ).firstMatch
+            XCTAssertTrue(housingWorks.waitForExistence(timeout: 5))
+            housingWorks.tap()
+        }
         // brewdesk#119: the nav title is now the venue's own name (not a
         // localized "Details"/"Detalles" constant), so this keys off the
         // detail root's identifier instead — locale-independent.
