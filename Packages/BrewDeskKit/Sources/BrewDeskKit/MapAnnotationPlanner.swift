@@ -175,9 +175,15 @@ public enum MapAnnotationPlanner {
         //
         // bd#221 (Bilal's round-2 pin selection, "microscopical bigger"):
         // +1pt at every NUMBERED stop — the 9.0→4 "no number" floor is
-        // unchanged. Matches the design-review page's `size:"microplus"`
-        // selection exactly (`SIZES.microplus` in the prototype).
-        (9.0, 4), (5.4, 12.5), (3.6, 13.5), (1.8, 18), (0.9, 21),
+        // unchanged. Matched the design-review page's `size:"microplus"`
+        // selection (`SIZES.microplus` in the prototype).
+        //
+        // bd#241 (Bilal's round-3 pin selection, `size:"tiny"` — one step up
+        // from "microplus"): every numbered stop grows again — matches the
+        // design-review page's `SIZES.tiny` exactly. The 9.0→4 "no number"
+        // floor is STILL unchanged (that stop draws no number at any size
+        // selection, so it was never part of any of these "bump" rounds).
+        (9.0, 4), (5.4, 14), (3.6, 15), (1.8, 20), (0.9, 23),
     ]
     /// Beyond this many metres/point an unrated speck draws nothing at all
     /// (too zoomed out to mean anything).

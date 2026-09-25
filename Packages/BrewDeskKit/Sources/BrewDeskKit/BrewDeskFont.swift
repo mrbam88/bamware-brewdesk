@@ -41,17 +41,20 @@ public enum BrewDeskFont {
     /// calls for (a "1" and a "9" occupy the same width, so a marker's
     /// number never visibly reflows the shape around it).
     ///
-    /// bd#221 (Bilal's round-2 pin selection, TestFlight build 28
-    /// feedback — "the font be bolder and brighter"): REGULAR (400) at
-    /// every head size now, replacing bd#217's LIGHT default plus its
-    /// `headDiameter < 15` special-cased bump to Regular for the two
-    /// smallest numbered heads — Bilal's saved selection on the
-    /// design-review page was `weight: 400` outright, no per-size branch.
+    /// bd#241 (Bilal's round-3 pin selection, `weight: 600`): SEMIBOLD at
+    /// every head size now, replacing bd#221's flat REGULAR (400) — the
+    /// bundled `HankenGrotesk[wght].ttf` is a variable font whose `wght`
+    /// axis spans 100–900 with a real named "SemiBold" instance at 600
+    /// (verified against the font's own `fvar` table), so `.weight(.semibold)`
+    /// asks for a weight the face actually has rather than synthesizing one
+    /// it doesn't — unlike the DIFFERENT bug `markerLabel` hit below
+    /// (`.custom(_:fixedSize:).weight(...)` malforming a weight the static
+    /// "-Regular" instance had to fake).
     public static func markerNumber(size: CGFloat) -> Font {
         let base: Font = hankenGroteskLoaded
             ? .custom("HankenGrotesk-Regular", fixedSize: size)
             : .system(size: size, design: .default)
-        return base.weight(.regular).monospacedDigit()
+        return base.weight(.semibold).monospacedDigit()
     }
 
     /// bd#221 "names on": the café-name label drawn beside a top pin's

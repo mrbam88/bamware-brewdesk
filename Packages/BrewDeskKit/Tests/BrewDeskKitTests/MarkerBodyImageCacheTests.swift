@@ -29,7 +29,7 @@ struct MarkerBodyImageCacheTests {
     /// raster must be fully transparent, at every real numbered-tier size
     /// stop, both appearances.
     @Test func cachedRasterCornersAreFullyTransparent() {
-        let diameters: [CGFloat] = [12.5, 13.5, 18, 21, MapAnnotationPlanner.selectedDiameter]
+        let diameters: [CGFloat] = [14, 15, 20, 23, MapAnnotationPlanner.selectedDiameter]
         for diameter in diameters {
             for isDark in [true, false] {
                 let image = MarkerBodyImageCache.image(score: 75, diameter: diameter, isDark: isDark)
@@ -54,7 +54,7 @@ struct MarkerBodyImageCacheTests {
     /// against someone "fixing" the box by shrinking the drawn shape
     /// instead of padding the canvas (which would violate "keep sizes").
     @Test func cachedRasterCanvasIsPaddedBeyondTheLogicalPinSlot() {
-        let diameter: CGFloat = 18
+        let diameter: CGFloat = 20
         let frameHeight = diameter * MapAnnotationPlanner.tailHeightFactor
         let image = MarkerBodyImageCache.image(score: 75, diameter: diameter, isDark: true)
         guard let cgImage = image.cgImage else {
@@ -73,7 +73,7 @@ struct MarkerBodyImageCacheTests {
     /// fill (52% stop) — must read close to `BrewDeskPalette`'s dark-map
     /// ramp value, not the light-map ramp.
     @Test func darkMapRasterHeadCentreMatchesTheDarkRampNotTheLightRamp() {
-        let diameter: CGFloat = 21
+        let diameter: CGFloat = 23
         let score = 85 // top tier
         let image = MarkerBodyImageCache.image(score: score, diameter: diameter, isDark: true)
         guard let cgImage = image.cgImage else {
@@ -105,7 +105,7 @@ struct MarkerBodyImageCacheTests {
     /// Companion sanity check in the OTHER direction — a light-map render
     /// must land near the light ramp, not the dark one.
     @Test func lightMapRasterHeadCentreMatchesTheLightRampNotTheDarkRamp() {
-        let diameter: CGFloat = 21
+        let diameter: CGFloat = 23
         let score = 85
         let image = MarkerBodyImageCache.image(score: score, diameter: diameter, isDark: false)
         guard let cgImage = image.cgImage else {

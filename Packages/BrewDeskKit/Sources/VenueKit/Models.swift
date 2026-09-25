@@ -163,6 +163,15 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
     /// existing call site (fixtures, tests, older-server payloads) keeps
     /// today's `isObserved`-driven behavior without passing this explicitly.
     public let scoreDisplay: ScoreDisplay
+    /// What `workScore`/`scoreDisplay` rests on (Work Fit v2, ve#144/#148,
+    /// brewdesk#240) — "based on 3 of 5" is exactly this. Additive, NYC
+    /// only; absent everywhere else (non-NYC metros, older servers).
+    public let scoreCoverage: ScoreCoverage?
+    /// How much to trust `scoreDisplay` (Work Fit v2) — served for unrated
+    /// pins too, so the UI can explain *why* there's no number (brewdesk#240
+    /// item 5: "low" confidence keeps the "Been here? Rate it." nudge).
+    /// Additive, NYC only.
+    public let scoreConfidence: ScoreConfidence?
 
     public init(
         id: String,
@@ -185,7 +194,9 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         email: String? = nil,
         tier: String? = nil,
         news: [NewsLink]? = nil,
-        scoreDisplay: ScoreDisplay = .notProvided
+        scoreDisplay: ScoreDisplay = .notProvided,
+        scoreCoverage: ScoreCoverage? = nil,
+        scoreConfidence: ScoreConfidence? = nil
     ) {
         self.id = id
         self.name = name
@@ -208,12 +219,14 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         self.tier = tier
         self.news = news
         self.scoreDisplay = scoreDisplay
+        self.scoreCoverage = scoreCoverage
+        self.scoreConfidence = scoreConfidence
     }
 
     enum CodingKeys: String, CodingKey {
         case id, name, lat, lng, address, neighborhood, borough, hoursRaw,
              vertical, attributes, vibeTags, workScore, lastVerified, venueType,
-             website, phone, email, tier, news, scoreDisplay
+             website, phone, email, tier, news, scoreDisplay, scoreCoverage, scoreConfidence
         case distanceM = "distance_m"
     }
 
@@ -248,6 +261,8 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         email = try container.decodeIfPresent(String.self, forKey: .email)
         tier = try container.decodeIfPresent(String.self, forKey: .tier)
         news = try container.decodeIfPresent([NewsLink].self, forKey: .news)
+        scoreCoverage = try container.decodeIfPresent(ScoreCoverage.self, forKey: .scoreCoverage)
+        scoreConfidence = try container.decodeIfPresent(ScoreConfidence.self, forKey: .scoreConfidence)
 
         if container.contains(.scoreDisplay) {
             if try container.decodeNil(forKey: .scoreDisplay) {
@@ -288,6 +303,8 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         try container.encodeIfPresent(email, forKey: .email)
         try container.encodeIfPresent(tier, forKey: .tier)
         try container.encodeIfPresent(news, forKey: .news)
+        try container.encodeIfPresent(scoreCoverage, forKey: .scoreCoverage)
+        try container.encodeIfPresent(scoreConfidence, forKey: .scoreConfidence)
 
         switch scoreDisplay {
         case .notProvided:
@@ -300,6 +317,11 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
     }
 
     public var scoreTier: ScoreTier { ScoreTier(score: workScore) }
+
+    /// The badge/filter-facing venue type (brewdesk#240) — `VenueTypeBadge`'s
+    /// own doc comment has the full contract; in short, never defaults an
+    /// absent/unrecognized `venueType` to `.cafe`.
+    public var typeBadge: VenueTypeBadge { VenueTypeBadge(serverValue: venueType) }
 
     /// True when this venue's own claims come from the OSM tier-0 baseline
     /// rather than curated/researched sources (ve#46). Drives the
@@ -386,6 +408,104 @@ public enum ScoreDisplay: Hashable, Sendable {
     case notProvided
     case notRated
     case rated(Int)
+}
+
+/// Work Fit v2's "what the number rests on" (ve#144/#148, brewdesk#240):
+/// `known` of `of` (currently always 5) core attributes carry a voting
+/// claim, `weight` is the renormalized weight those claims cover (0...1),
+/// and `attributes` names them (engine vocabulary, e.g. `"wifi"`,
+/// `"outlets"`). Drives "Based on 3 of 5 details" on both the detail badge
+/// and, room permitting, the shelf/list card caption. Additive, NYC only —
+/// absent everywhere else.
+public struct ScoreCoverage: Codable, Hashable, Sendable {
+    public let known: Int
+    public let of: Int
+    public let weight: Double
+    public let attributes: [String]
+
+    public init(known: Int, of: Int, weight: Double, attributes: [String]) {
+        self.known = known
+        self.of = of
+        self.weight = weight
+        self.attributes = attributes
+    }
+}
+
+/// How much to trust `scoreDisplay` (ve#144, brewdesk#240) — served for
+/// unrated pins too, so the client can explain *why* a pin reads "Not rated
+/// yet" instead of just saying so. `"low"` keeps the shelf/detail nudge at
+/// "Been here? Rate it." rather than implying the venue was thoroughly
+/// checked and simply came up empty.
+public enum ScoreConfidence: String, Codable, Hashable, Sendable {
+    case high, medium, low
+}
+
+/// The badge/filter-facing venue type (brewdesk#240) — a closed, client-only
+/// set distinct from the raw wire string `Venue.venueType` (which stays an
+/// optional `String` in `Venue` so a future server value, or a legacy/older
+/// payload missing the field entirely, never fails to decode).
+///
+/// **Never defaults an absent or unrecognized wire value to `.cafe`.** The
+/// TestFlight build 28 bug (ve#147/brewdesk#240) was exactly that default —
+/// `venue.venueType ?? "cafe"` — leaking a WeWork (`"other"` on the wire)
+/// into "cafe" everywhere that expression was written. `.unknown` is its
+/// own honest case, not a synonym for café.
+public enum VenueTypeBadge: String, CaseIterable, Codable, Hashable, Sendable {
+    case cafe
+    case library
+    case park
+    case coworking
+    case unknown
+
+    /// `nil`/absent, `"cafe"`, `"library"`, `"park"`, `"other"` (the
+    /// server's own wire spelling for a coworking space like WeWork,
+    /// ve#147), or anything else the client doesn't recognize → `.unknown`.
+    public init(serverValue: String?) {
+        switch serverValue {
+        case "cafe": self = .cafe
+        case "library": self = .library
+        case "park": self = .park
+        case "other": self = .coworking
+        default: self = .unknown
+        }
+    }
+
+    /// The four chips `WorkFitFilterMenu`'s "Place type" row offers.
+    /// `.unknown` is deliberately not one of them — there's no server-
+    /// confirmed data to filter on (see `VenueFilter.classify`'s own doc
+    /// comment for how an `.unknown`-typed venue behaves under a narrowed
+    /// selection).
+    public static let filterableCases: [VenueTypeBadge] = [.cafe, .library, .park, .coworking]
+
+    public var displayName: String {
+        switch self {
+        case .cafe: String(localized: "Café")
+        case .library: String(localized: "Library")
+        case .park: String(localized: "Park")
+        case .coworking: String(localized: "Coworking")
+        case .unknown: String(localized: "Place")
+        }
+    }
+
+    public var symbolName: String {
+        switch self {
+        case .cafe: "cup.and.saucer"
+        case .library: "books.vertical"
+        case .park: "tree"
+        case .coworking: "building.2"
+        case .unknown: "mappin"
+        }
+    }
+
+    /// Cafés are BrewDesk's default, assumed type — every card and pin
+    /// already reads as "a café" without a badge, so adding one would be
+    /// pure noise (brewdesk#240: "Cafés get no badge"). `.unknown` also
+    /// shows nothing: badging it would assert a type this app has no real
+    /// evidence for, which is exactly the honesty rule this feature exists
+    /// to enforce.
+    public var showsBadge: Bool {
+        self != .cafe && self != .unknown
+    }
 }
 
 /// A response's coverage for the queried viewport (ve#46, bd#108):

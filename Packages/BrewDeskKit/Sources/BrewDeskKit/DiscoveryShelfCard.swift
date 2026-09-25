@@ -745,6 +745,7 @@ struct DiscoveryShelfCard: View {
         .buttonStyle(.plain)
         .accessibilityLabel(
             "\(venue.name), \(venue.displayScore.map { "Work Fit \($0)" } ?? "not rated yet"), \(venue.neighborhood)"
+            + accessibilityTypeSuffix(venue.typeBadge)
         )
     }
 
@@ -819,9 +820,15 @@ struct DiscoveryShelfCard: View {
                 // same root cause bd#216 already fixed for the Workability
                 // stamp, same fix: the contrast-verified
                 // `BrewDeskPalette.secondaryText` token.
-                Text(venue.neighborhood)
-                    .font(.caption)
-                    .foregroundStyle(BrewDeskPalette.secondaryText)
+                HStack(spacing: 6) {
+                    Text(venue.neighborhood)
+                        .font(.caption)
+                        .foregroundStyle(BrewDeskPalette.secondaryText)
+                    // brewdesk#240: the type badge sits right next to the
+                    // neighborhood line — renders nothing for a café
+                    // (`VenueTypeBadge.showsBadge`).
+                    VenueTypeBadgeView(type: venue.typeBadge)
+                }
                 // brewdesk#170: same `.secondary`-on-`surface` contrast
                 // issue as the neighborhood line above ("Unknown"/"Fast"
                 // wifi labels both measured "nearly passed") — same fix.
@@ -831,6 +838,15 @@ struct DiscoveryShelfCard: View {
                 }
                 .font(.caption2)
                 .foregroundStyle(BrewDeskPalette.secondaryText)
+                // brewdesk#240 item 5: "Not rated yet" gets a reason, room
+                // permitting — this card's info column has it, unlike the
+                // narrow score tile itself.
+                if venue.displayScore == nil, let caption = scoreCoverageCaption(venue.scoreCoverage) {
+                    Text(caption)
+                        .font(.caption2)
+                        .foregroundStyle(BrewDeskPalette.secondaryText)
+                        .accessibilityIdentifier("shelf-score-coverage-caption")
+                }
                 ProvenanceStamp(attributes: venue.attributes, tier: venue.tier)
             }
 

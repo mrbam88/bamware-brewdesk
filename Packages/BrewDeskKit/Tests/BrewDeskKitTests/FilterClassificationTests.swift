@@ -142,25 +142,29 @@ import VenueKit
         #expect(filter.classify(v, now: tuesday) == .confirmed)
     }
 
-    // MARK: - Venue type (no "unknown" outcome of its own)
+    // MARK: - Venue type (brewdesk#240)
 
     @Test func venueTypeKnownPass() {
-        let filter = VenueFilter(venueType: .cafe)
+        let filter = VenueFilter(selectedVenueTypes: [.cafe])
         let v = Self.venue(wifi: "fast", outlets: "plenty", seating: "plenty", laptopPolicy: "unrestricted", venueType: "cafe")
         #expect(filter.classify(v) == .confirmed)
     }
 
     @Test func venueTypeKnownFail() {
-        let filter = VenueFilter(venueType: .library)
+        let filter = VenueFilter(selectedVenueTypes: [.library])
         let v = Self.venue(wifi: "fast", outlets: "plenty", seating: "plenty", laptopPolicy: "unrestricted", venueType: "cafe")
         #expect(filter.classify(v) == .excluded)
     }
 
-    /// An absent `venueType` always defaults to "cafe" — never unknown.
-    @Test func venueTypeAbsentDefaultsToCafeKnown() {
-        let filter = VenueFilter(venueType: .cafe)
+    /// brewdesk#240: an absent/unrecognized `venueType` is `.unknown` — it
+    /// is NEVER excluded by a narrowed type selection (the old `?? "cafe"`
+    /// default is gone), but it's also never a confirmed match: exactly the
+    /// same "unknown is not evidence against a venue, but isn't proof for
+    /// it either" rule every other dimension in this file already follows.
+    @Test func venueTypeAbsentIsUnknownNeverExcludedNeverDefaultedToCafe() {
+        let filter = VenueFilter(selectedVenueTypes: [.cafe])
         let v = Self.venue(wifi: "fast", outlets: "plenty", seating: "plenty", laptopPolicy: "unrestricted", venueType: nil)
-        #expect(filter.classify(v) == .confirmed)
+        #expect(filter.classify(v) == .unknown)
     }
 
     // MARK: - Combinations
@@ -187,7 +191,7 @@ import VenueKit
     @Test func everyDimensionKnownAndPassingIsConfirmed() {
         let filter = VenueFilter(
             laptopFriendlyOnly: true, minWifi: .fast, minOutlets: .plenty,
-            minSeating: .some, venueType: .cafe
+            minSeating: .some, selectedVenueTypes: [.cafe]
         )
         let v = Self.venue(wifi: "fast", outlets: "plenty", seating: "plenty", laptopPolicy: "unrestricted", venueType: "cafe")
         #expect(filter.classify(v) == .confirmed)

@@ -102,14 +102,14 @@ struct MarkerPaletteTests {
         }
     }
 
-    /// bd#221 `numColor:"auto"` against the new all-bright dark-map ramp
-    /// (spec: "DARK map → near-black #08140F on the bright fills"): every
-    /// tier's dark-map fill is now bright enough that `auto` never needs
-    /// bd#212's old "darkest fill gets a light number" exception.
+    /// bd#241 `numColor:"auto"` against the lime dark-map ramp (spec:
+    /// "Numbers near-black (#06120D) on all four"): every tier's dark-map
+    /// fill is bright enough that `auto` never needs bd#212's old "darkest
+    /// fill gets a light number" exception.
     @Test func darkMapMarkerNumberIsAlwaysNearBlack() {
         for score in tierScores {
             let resolved = rgb(BrewDeskPalette.markerNumberColor(score: score), style: .dark)
-            #expect(resolved.r < 0.06 && resolved.g < 0.10 && resolved.b < 0.08, "score \(score) dark-map number must be near-black #08140F, got \(resolved)")
+            #expect(resolved.r < 0.06 && resolved.g < 0.10 && resolved.b < 0.08, "score \(score) dark-map number must be near-black #06120D, got \(resolved)")
         }
     }
 
@@ -126,11 +126,12 @@ struct MarkerPaletteTests {
         }
     }
 
-    /// bd#221 rim `"tone"` (Bilal's round-2 selection, "lighter border
-    /// maybe"): replaces bd#217's fixed dark/white hairline outright — the
-    /// rim is now a lighter TINT OF THE MARKER'S OWN FILL in both
-    /// appearances, so it must be strictly brighter than the fill it rides
-    /// on at every tier, not a fixed color.
+    /// bd#241 rim `"light"` (Bilal's round-3 selection): replaces bd#221's
+    /// per-tier "tint of the marker's own fill" outright with a single flat
+    /// WHITE rim on BOTH maps — still strictly brighter than every tier's
+    /// fill (white is lighter than any fill this ramp can produce), so this
+    /// invariant stays meaningful even though the rim itself is no longer
+    /// tier-dependent.
     @Test func markerRimIsLighterThanItsOwnFillInBothAppearances() {
         for style in [UIUserInterfaceStyle.light, .dark] {
             for score in tierScores {
@@ -149,19 +150,34 @@ struct MarkerPaletteTests {
         }
     }
 
-    /// bd#227 (TestFlight build 29 — "in dark mode we have to change the
-    /// color... it's not bright enough, hard to see"): Bilal's explicit ask
-    /// was to go BRIGHTER than the approved mock (`#B4F5D6/#9BE8C4/
-    /// #86D9B3/#74C9A3`, this ramp's previous, byte-identical-to-mock
-    /// values), not merely match it. Pins the exact new per-tier hex so a
-    /// future edit can't silently drift back toward the dimmer mock values.
-    @Test func darkMapMarkerFillMatchesTheBrighterThanMockRampExactly() {
+    /// bd#241: the rim is now a FIXED white at 92% opacity, identical on
+    /// both maps and every tier — pins the exact value (`rgba(255,255,255,
+    /// 0.92)`) so a future edit can't silently drift it back toward a
+    /// per-tier tint.
+    @Test func markerRimIsFlatWhiteNinetyTwoPercentOpacityOnBothMaps() {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            for score in tierScores {
+                let resolved = UIColor(BrewDeskPalette.markerRim(score: score)).resolvedColor(with: UITraitCollection(userInterfaceStyle: style))
+                var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+                resolved.getRed(&r, green: &g, blue: &b, alpha: &a)
+                #expect(r > 0.99 && g > 0.99 && b > 0.99, "\(style == .light ? "light" : "dark") map score \(score) rim RGB \((r, g, b)) is not pure white")
+                #expect(abs(a - 0.92) < 0.01, "\(style == .light ? "light" : "dark") map score \(score) rim alpha \(a) is not 0.92")
+            }
+        }
+    }
+
+    /// bd#241 (Bilal's round-3 pin selection, `fill:"lime"`): the sage/mint
+    /// dark-map ramp (`#86D6B0/#98E4C0/#ADF0D0/#C7F8E0`, bd#227's
+    /// brighter-than-mock values) is replaced outright by a single-hue LIME
+    /// ramp, matching the design-review page's `FILLS.lime` exactly. Pins
+    /// the exact new per-tier hex so a future edit can't silently drift.
+    @Test func darkMapMarkerFillMatchesTheLimeRampExactly() {
         // (score, expected 0xRRGGBB)
         let expected: [(Int, UInt32)] = [
-            (40, 0x86D6B0), // <60
-            (65, 0x98E4C0), // 60-69
-            (75, 0xADF0D0), // 70-79
-            (90, 0xC7F8E0), // >=80
+            (40, 0x8FD214), // <60
+            (65, 0xA3E61F), // 60-69
+            (75, 0xB6F52A), // 70-79
+            (90, 0xC9FF3D), // >=80
         ]
         for (score, want) in expected {
             let resolved = UIColor(BrewDeskPalette.markerFill(score: score)).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
@@ -173,6 +189,25 @@ struct MarkerPaletteTests {
             #expect(abs(Double(r) - wr) < 0.004 && abs(Double(g) - wg) < 0.004 && abs(Double(b) - wb) < 0.004,
                     "score \(score) dark-map fill \((r, g, b)) does not match #\(String(format: "%06X", want))")
         }
+    }
+
+    /// bd#241 (spec: "labels match the pins" — the dark map's café-name
+    /// label now uses the >=80 lime tint, `markerFillDarkMap[3]`, exactly).
+    /// Light map is unchanged.
+    @Test func markerLabelTextMatchesTheTopDarkMapTierAndTheOriginalLightValue() {
+        let darkResolved = UIColor(BrewDeskPalette.markerLabelText).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
+        var dr: CGFloat = 0, dg: CGFloat = 0, db: CGFloat = 0, da: CGFloat = 0
+        darkResolved.getRed(&dr, green: &dg, blue: &db, alpha: &da)
+        // #C9FF3D
+        #expect(abs(Double(dr) - 201.0 / 255) < 0.004 && abs(Double(dg) - 1.0) < 0.004 && abs(Double(db) - 61.0 / 255) < 0.004,
+                "dark map label \((dr, dg, db)) does not match the >=80 lime tier #C9FF3D")
+
+        let lightResolved = UIColor(BrewDeskPalette.markerLabelText).resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
+        var lr: CGFloat = 0, lg: CGFloat = 0, lb: CGFloat = 0, la: CGFloat = 0
+        lightResolved.getRed(&lr, green: &lg, blue: &lb, alpha: &la)
+        // #1C5243, unchanged from bd#221
+        #expect(abs(Double(lr) - 28.0 / 255) < 0.004 && abs(Double(lg) - 82.0 / 255) < 0.004 && abs(Double(lb) - 67.0 / 255) < 0.004,
+                "light map label \((lr, lg, lb)) does not match #1C5243")
     }
 
     @Test func speckFillIsNeutralNeverTierColored() {

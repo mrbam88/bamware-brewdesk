@@ -148,6 +148,9 @@ struct VenueRow: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    // brewdesk#240: type badge on every list row — renders
+                    // nothing for a café.
+                    VenueTypeBadgeView(type: venue.typeBadge)
                 }
                 HStack(spacing: 12) {
                     AttributeGlyph(
@@ -175,7 +178,8 @@ struct VenueRow: View {
         .accessibilityLabel(
             "\(venue.name), \(scoreAccessibilityPhrase), \(venue.neighborhood), " +
             "Wi-Fi \(localizedAttributeValue(venue.attributes.wifi.value)), " +
-            "outlets \(localizedAttributeValue(venue.attributes.outlets.value))"
+            "outlets \(localizedAttributeValue(venue.attributes.outlets.value))" +
+            accessibilityTypeSuffix(venue.typeBadge)
         )
     }
 

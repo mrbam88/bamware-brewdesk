@@ -195,7 +195,8 @@ struct TeardropMarkerView: View, Equatable {
         HaloText(
             text: placement.venue.name,
             color: BrewDeskPalette.markerLabelText,
-            halo: BrewDeskPalette.markerLabelHalo
+            halo: BrewDeskPalette.markerLabelHalo,
+            symbolName: placement.venue.typeBadge.showsBadge ? placement.venue.typeBadge.symbolName : nil
         )
         .lineLimit(1)
         .truncationMode(.tail)
@@ -263,11 +264,12 @@ private struct MarkerBodyShape: View {
     /// now calls instead.
     let isDark: Bool
 
-    /// bd#221 rim `"tone"`: 1pt in BOTH appearances — Bilal's saved
-    /// design-review selection has no per-appearance width split (that was
-    /// bd#217's fixed-hairline-color era; the rim COLOR now carries the
-    /// per-appearance difference instead, via `BrewDeskPalette
-    /// .markerRim(score:isDark:)`).
+    /// bd#241 rim `"light"`: 1pt in BOTH appearances — Bilal's saved
+    /// design-review selection has no per-appearance width split. The rim
+    /// COLOR is now a single flat white (`BrewDeskPalette
+    /// .markerRim(score:isDark:)`, both maps), not per-appearance either —
+    /// only this WIDTH stays a shared constant now, for the same reason it
+    /// already was since bd#221.
     private let hairlineWidth: CGFloat = 1.0
 
     var body: some View {
@@ -361,7 +363,21 @@ enum MarkerBodyImageCache {
         let tierIndex: Int
         let sizeBucket: Int
         let isDark: Bool
+        /// bd#241: bumped whenever `BrewDeskPalette`'s marker ramp/rim/
+        /// finish changes shape in a way that isn't already captured by
+        /// `tierIndex`/`isDark` alone (e.g. this ticket's dark-map fill
+        /// ramp hue swap and flat-white rim) — belt-and-suspenders against
+        /// this `static var` dictionary ever handing back a raster built
+        /// from a stale palette within one process's lifetime (there is no
+        /// PERSISTED cache across launches; a fresh process always reads
+        /// the current build's colors, so this mainly documents intent and
+        /// guards a future in-process palette toggle, not a live bug today).
+        let paletteVersion: Int
     }
+
+    /// Bump alongside any `BrewDeskPalette` marker fill/rim/gradient/number
+    /// change — see `Key.paletteVersion`'s own doc comment.
+    private static let paletteVersion = 2
 
     private static var cache: [Key: UIImage] = [:]
 
@@ -374,7 +390,10 @@ enum MarkerBodyImageCache {
     private static func sizeBucket(_ diameter: CGFloat) -> Int { Int((diameter * 2).rounded()) }
 
     static func image(score: Int, diameter: CGFloat, isDark: Bool) -> UIImage {
-        let key = Key(tierIndex: BrewDeskPalette.markerTierIndex(score: score), sizeBucket: sizeBucket(diameter), isDark: isDark)
+        let key = Key(
+            tierIndex: BrewDeskPalette.markerTierIndex(score: score), sizeBucket: sizeBucket(diameter),
+            isDark: isDark, paletteVersion: paletteVersion
+        )
         if let cached = cache[key] { return cached }
         let frameHeight = diameter * MapAnnotationPlanner.tailHeightFactor
         // bd#227: pad EVERY side by the same amount (`bodyRasterPadding`,
@@ -427,6 +446,12 @@ private struct HaloText: View {
     let text: String
     let color: Color
     let halo: Color
+    /// brewdesk#240 (owned by VenueFilter/badges, not pin rendering — a
+    /// one-line addition per that ticket's fence): an SF Symbol shown
+    /// before the name for a non-café venue, `nil` for a café. One-line
+    /// change at the call site (`labelSlot` below); expect a rebase against
+    /// the concurrent pin-rendering work.
+    var symbolName: String? = nil
 
     /// Only crosses out of the fixed 11pt at a genuine ACCESSIBILITY text
     /// size (not every step of Dynamic Type) — see `BrewDeskFont
@@ -434,11 +459,16 @@ private struct HaloText: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        Text(verbatim: text)
+        symbolPrefixedText
             .font(BrewDeskFont.markerLabel(accessibilityBump: dynamicTypeSize.isAccessibilitySize))
             .foregroundStyle(color)
             .shadow(color: halo, radius: 2)
             .shadow(color: halo, radius: 2)
+    }
+
+    private var symbolPrefixedText: Text {
+        guard let symbolName else { return Text(verbatim: text) }
+        return Text(Image(systemName: symbolName)) + Text(verbatim: " " + text)
     }
 }
 

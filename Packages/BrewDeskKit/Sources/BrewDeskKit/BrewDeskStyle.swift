@@ -237,8 +237,17 @@ public enum BrewDeskPalette {
     /// against whatever trait collection the OFFSCREEN renderer happened to
     /// have (unset, effectively undefined/light), not the `isDark` the
     /// cache was asked to render. Fixed alongside this ramp change.
+    ///
+    /// bd#241 (Bilal's round-3 pin selection, `fill:"lime"`): the sage/mint
+    /// hue is OUT — dark map fill moves to a single lime hue, still
+    /// lightness-only tiered (index 3 brightest = best score, matching the
+    /// design-review page's `FILLS.lime` exactly). Verified contrast
+    /// against the paired near-black number below (WCAG relative
+    /// luminance): `#8FD214`≈10.4:1, `#A3E61F`≈12.6:1, `#B6F52A`≈14.6:1,
+    /// `#C9FF3D`≈16.2:1 — all clear 4.5:1 with room to spare (see
+    /// `MarkerPaletteTests.darkMapMarkerFillMatchesTheLimeRampExactly`).
     private static let markerFillDarkMap: [Color] = [
-        hex("#86D6B0"), hex("#98E4C0"), hex("#ADF0D0"), hex("#C7F8E0"),
+        hex("#8FD214"), hex("#A3E61F"), hex("#B6F52A"), hex("#C9FF3D"),
     ]
     private static let markerFillLightMap: [Color] = [
         hex("#3D8069"), hex("#3D8069"), hex("#2C6B58"), hex("#1C5243"),
@@ -247,28 +256,24 @@ public enum BrewDeskPalette {
     /// appearance so every step clears >=4.5:1 against its own fill —
     /// verified in `MarkerPaletteTests.markerNumberColorClearsContrastAgainstItsFill`.
     ///
-    /// bd#221 (`numColor:"auto"` against the new all-bright dark-map
-    /// ramp): every dark-map fill is now bright enough that `auto` always
-    /// resolves to the SAME near-black — there is no more "darkest fill
-    /// needs a light number" exception (that was bd#212's darkest-tier
-    /// dark-mint fill, which `markerFillDarkMap` no longer has). Light map:
-    /// bd#217 makes every tier WHITE — see `markerFillLightMap`'s doc
-    /// comment for why.
-    private static let markerNumberDarkMap: [Color] = Array(repeating: hex("#08140F"), count: 4)
+    /// bd#241 (`numColor:"auto"` against the new lime dark-map ramp):
+    /// near-black `#06120D` on every dark-map tier — every lime fill above
+    /// clears >=4.5:1 against it (see that array's own doc comment for the
+    /// per-tier numbers). Light map: bd#217 makes every tier WHITE — see
+    /// `markerFillLightMap`'s doc comment for why.
+    private static let markerNumberDarkMap: [Color] = Array(repeating: hex("#06120D"), count: 4)
     private static let markerNumberLightMap: [Color] = Array(repeating: hex("#FFFFFF"), count: 4)
-    /// bd#221 rim `"tone"`: a 1pt rim in a LIGHTER TINT OF THE PIN'S OWN
-    /// FILL — replaces bd#212's fixed dark hairline (dark map) and bd#217's
-    /// fixed white edge (light map) outright. Mixed toward white 60% on
-    /// the dark map (its fills are already bright, so the rim still reads
-    /// as a visible lighter ring rather than disappearing into the fill)
-    /// and 45% on the light map (its fills are dark, so less mix is needed
-    /// to clear a visible step) — the design-review mock's own `mix(base,
-    /// '#ffffff', light?.45:.6)`. Precomputed per tier at file-load time
-    /// (not `mix(markerFill(score:), …)`, which returns an ADAPTIVE color
-    /// that can't be re-mixed) from the same raw per-appearance fill
-    /// arrays the fill/gradient functions use.
-    private static let markerRimDarkMap: [Color] = markerFillDarkMap.map { mix($0, .white, 0.60) }
-    private static let markerRimLightMap: [Color] = markerFillLightMap.map { mix($0, .white, 0.45) }
+    /// bd#241 rim `"light"` (Bilal's round-3 selection): a flat 1pt WHITE
+    /// rim at 92% opacity on BOTH maps — replaces bd#221's per-tier "tint
+    /// of the pin's own fill" outright (the light map already rendered a
+    /// white-ish edge; this now matches it exactly and applies the SAME
+    /// fixed value to the dark map too, rather than a tone mixed from the
+    /// new lime fill). No longer tier- or appearance-dependent, so this is
+    /// a single constant, not a per-tier/per-map array — `markerRim(score:)`
+    /// /`markerRim(score:isDark:)` below both just return it, keeping their
+    /// existing signatures (and the tier/rim "lighter than its own fill"
+    /// invariant `MarkerPaletteTests` checks) for every caller.
+    private static let markerRimColor = Color.white.opacity(0.92)
     /// bd#221 finish `"depth"`: the teardrop's fill becomes a vertical
     /// gradient — lightened 28% at the top, the plain tier fill at ~52%,
     /// darkened 20% at the bottom (design-review mock's own `linear-
@@ -306,16 +311,17 @@ public enum BrewDeskPalette {
         return adaptive(light: markerNumberLightMap[index], dark: markerNumberDarkMap[index])
     }
 
-    /// bd#221 rim `"tone"`: replaces bd#212's fixed dark hairline (dark
-    /// map) and bd#217's fixed white edge (light map) outright — the rim
-    /// is now a lighter TINT OF THE MARKER'S OWN FILL, not a fixed color,
-    /// so it must be looked up per score/tier like the fill itself. Always
-    /// 1pt in both appearances (Bilal's own note carried over from bd#217:
-    /// wider reads as a bigger pin, not just a different-colored edge —
-    /// see `TeardropMarkerView.hairlineWidth`).
+    /// bd#241 rim `"light"`: a flat white rim, same value on both maps —
+    /// see `markerRimColor`'s own doc comment. `score` is kept in the
+    /// signature (unused) so every existing call site — which still passes
+    /// its own score/tier, matching `markerFill(score:)`'s shape — needs no
+    /// change, and so a future rim design that goes back to being tier- or
+    /// appearance-dependent doesn't need to touch every caller either.
+    /// Always 1pt in both appearances (Bilal's own note carried over from
+    /// bd#217: wider reads as a bigger pin, not just a different-colored
+    /// edge — see `TeardropMarkerView.hairlineWidth`).
     public static func markerRim(score: Int) -> Color {
-        let index = markerTierIndex(score: score)
-        return adaptive(light: markerRimLightMap[index], dark: markerRimDarkMap[index])
+        markerRimColor
     }
 
     /// bd#221 finish `"depth"`: top-of-gradient color (fill lightened 28%)
@@ -371,8 +377,7 @@ public enum BrewDeskPalette {
     }
 
     static func markerRim(score: Int, isDark: Bool) -> Color {
-        let index = markerTierIndex(score: score)
-        return isDark ? markerRimDarkMap[index] : markerRimLightMap[index]
+        markerRimColor
     }
 
     static func markerHighlight(isDark: Bool) -> Color {
@@ -402,14 +407,19 @@ public enum BrewDeskPalette {
     )
 
     /// bd#221 "names on": café-name label text beside a top pin's head —
-    /// mint on the dark map (mock's own `#9BEBC6`, close kin to the
-    /// brightest fill tier but distinct enough to read as UI chrome, not a
-    /// pin), the darkest fill tier's own tone on the light map (mock's own
+    /// the darkest fill tier's own tone on the light map (mock's own
     /// `#1C5243`, matching `markerFillLightMap[3]` exactly so the label
     /// reads as the same "ink" the best pins already use).
+    ///
+    /// bd#241 (Bilal's round-3 pin selection — "label colour on the DARK
+    /// map becomes the lime >=80 tint... so labels match the pins"):
+    /// replaces bd#221's mint (`#9BEBC6`, deliberately distinct from every
+    /// pin tier) with `markerFillDarkMap[3]` itself (`#C9FF3D`, the >=80
+    /// lime tier) — labels now read as the SAME family as the best pins,
+    /// not a separate chrome color. Light map unchanged.
     public static let markerLabelText = adaptive(
         light: hex("#1C5243"),
-        dark: hex("#9BEBC6")
+        dark: hex("#C9FF3D")
     )
 
     /// bd#221 "names on": the label's halo — a dark halo on the dark map,

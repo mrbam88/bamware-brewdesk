@@ -23,7 +23,11 @@ import VenueKit
 /// union against.
 @Suite @MainActor struct SearchAsYouTypeTests {
     private static let roasters = searchFixtureVenue(name: "Café Añejo Roasters", neighborhood: "Union Square")
-    private static let readingRoom = searchFixtureVenue(name: "Reading Room", neighborhood: "Greenwich Village")
+    // brewdesk#240: explicitly typed "library" — the old `?? "cafe"` default
+    // used to make an absent `venueType` behave as a café under a filter;
+    // that's gone, so this fixture needs a real type to exercise
+    // `searchStacksWithCategoryFilters` below.
+    private static let readingRoom = searchFixtureVenue(name: "Reading Room", neighborhood: "Greenwich Village", venueType: "library")
     private static let bottleHouse = searchFixtureVenue(name: "Bottle House", neighborhood: "Flatiron")
     private static let blueBottle = searchFixtureVenue(name: "Blue Bottle", neighborhood: "NoHo")
     private static let all = [roasters, readingRoom, bottleHouse, blueBottle]
@@ -171,12 +175,12 @@ import VenueKit
     @Test func searchStacksWithCategoryFilters() async {
         let model = await loadedModel(CountingVenueService(venues: Self.all))
 
-        model.venueType = .cafe                          // all fixtures default to cafe
+        model.selectedVenueTypes = [.cafe]                // bottleHouse/blueBottle are real cafés
         model.searchQuery = "bottle"
         model.submitSearch()
         #expect(names(model) == ["Bottle House", "Blue Bottle"])
 
-        model.venueType = .library
+        model.selectedVenueTypes = [.library]
         #expect(model.venues.isEmpty)
     }
 }
@@ -208,7 +212,7 @@ private actor CountingVenueService: VenueListing {
     }
 }
 
-private func searchFixtureVenue(name: String, neighborhood: String) -> Venue {
+private func searchFixtureVenue(name: String, neighborhood: String, venueType: String? = "cafe") -> Venue {
     let observedAt = "2026-08-01T00:00:00Z"
     func claim(_ value: String) -> Claim {
         Claim(value: value, source: "curated", confidence: 0.8, observedAt: observedAt)
@@ -232,6 +236,7 @@ private func searchFixtureVenue(name: String, neighborhood: String) -> Venue {
         vibeTags: [],
         workScore: 70,
         lastVerified: nil,
-        distanceM: nil
+        distanceM: nil,
+        venueType: venueType
     )
 }

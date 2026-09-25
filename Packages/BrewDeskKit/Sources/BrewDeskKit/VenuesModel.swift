@@ -77,20 +77,30 @@ public final class VenuesModel {
             minWifi: minWifi,
             minOutlets: minOutlets,
             minSeating: minSeating,
-            venueType: venueType
+            selectedVenueTypes: selectedVenueTypes
         )
+    }
+
+    /// brewdesk#240: true while the "Place type" chips have narrowed the
+    /// list — every other type-driven call site (café-first default
+    /// ordering, the honest confirmed/unknown split) derives from this
+    /// single check instead of repeating the comparison.
+    private var isVenueTypeFiltered: Bool {
+        selectedVenueTypes != Set(VenueTypeBadge.filterableCases)
     }
 
     // MARK: - Honest filter sections (brewdesk#222)
 
-    /// True while any of the four filter-menu dimensions constrain the
+    /// True while any of the five filter-menu dimensions constrain the
     /// list — the same set `WorkFitFilterMenu.activeFilterCount` badges.
-    /// `venueType` is deliberately excluded: it has no "unknown" outcome of
-    /// its own (see `VenueFilter.classify`), so it never produces an
-    /// `unknownVenues` entry and doesn't change whether the shelf/map show
-    /// the confirmed/unknown split.
+    /// brewdesk#240: the "Place type" chips are now INCLUDED — narrowing
+    /// them can legitimately produce an `.unknown` classification (an
+    /// untyped venue under a narrowed selection; see `VenueFilter.classify`),
+    /// so a type-only filter must switch the shelf/map to the honest
+    /// confirmed/unknown split exactly like every other dimension already
+    /// does.
     public var hasActiveFilter: Bool {
-        laptopFriendlyOnly || minWifi != nil || minOutlets != nil || minSeating != nil
+        laptopFriendlyOnly || minWifi != nil || minOutlets != nil || minSeating != nil || isVenueTypeFiltered
     }
 
     /// `venues`, split by `VenueFilter.classify`: every constrained
@@ -102,7 +112,7 @@ public final class VenuesModel {
     public var confirmedVenues: [Venue] {
         VenueOrdering.cafeDefaultFirst(
             venues.filter { filter.classify($0) == .confirmed },
-            venueTypeChosen: venueType != nil
+            venueTypeChosen: isVenueTypeFiltered
         )
     }
 
@@ -114,7 +124,7 @@ public final class VenuesModel {
     public var unknownVenues: [Venue] {
         VenueOrdering.cafeDefaultFirst(
             venues.filter { filter.classify($0) == .unknown },
-            venueTypeChosen: venueType != nil
+            venueTypeChosen: isVenueTypeFiltered
         )
     }
 
@@ -140,13 +150,11 @@ public final class VenuesModel {
     public var minWifi: WifiMinimum?
     public var minOutlets: OutletMinimum?
     public var minSeating: SeatingMinimum?
-    public var venueType: VenueTypeFilter?
+    /// brewdesk#240: the "Place type" chips — Cafés/Libraries/Parks/
+    /// Coworking, all four on by default (== no filter). A user narrows this
+    /// by deselecting a chip; `WorkFitFilterMenu` is the only writer.
+    public var selectedVenueTypes: Set<VenueTypeBadge> = Set(VenueTypeBadge.filterableCases)
 
-    /// Show venueType chips only when the dataset actually has more than one
-    /// type (or a type filter is active) — all-cafe data keeps the UI as-is.
-    public var venueTypesAvailable: Bool {
-        venueType != nil || Set(loadedVenues.compactMap(\.venueType)).count > 1
-    }
     /// Bound to the search fields. Typing filters the loaded list ~200ms
     /// after the last keystroke (brewdesk#78) — no submit, no network.
     public var searchQuery = "" {

@@ -934,7 +934,7 @@ private actor SelectionSurroundingsService: VenueListing {
         // fails unknown values and emptied the list.
         let model = VenuesModel(api: ControlledVenueService())
         model.minSeating = .plenty
-        model.venueType = .library
+        model.selectedVenueTypes = [.library]
         model.minWifi = .fast
         model.minOutlets = .plenty
         model.laptopFriendlyOnly = true
@@ -1040,7 +1040,10 @@ private actor SelectionSurroundingsService: VenueListing {
     /// filter still exposes it when chosen.
     @Test func confirmedSectionRanksCafesAboveOtherTypesByDefault() async {
         let venues = [
-            Self.venue(id: "wework", wifi: "fast", workScore: 90, venueType: "coworking"),
+            // brewdesk#240: "other" is the real wire spelling for a
+            // coworking space (WeWork) — `VenueTypeBadge` maps it to
+            // `.coworking`.
+            Self.venue(id: "wework", wifi: "fast", workScore: 90, venueType: "other"),
             Self.venue(id: "cafe", wifi: "fast", workScore: 40, venueType: "cafe"),
         ]
         let model = await loadedModel(venues)
@@ -1048,7 +1051,7 @@ private actor SelectionSurroundingsService: VenueListing {
 
         #expect(model.confirmedVenues.map(\.id) == ["cafe", "wework"])
 
-        model.venueType = .cafe
+        model.selectedVenueTypes = [.cafe]
         // Choosing a type is a no-op for the ranking rule itself; it also
         // narrows `venues` to that type via `VenueFilter`, so the coworking
         // space drops out entirely here (a separate, existing mechanism).
