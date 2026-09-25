@@ -64,6 +64,11 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         /// unreachable on `origin/main` (no server search existed) and
         /// reachable once bd#200's citywide search ships.
         case cityWideSearch
+        /// brewdesk#240 — one venue of EACH type (cafe/library/park/
+        /// coworking), otherwise identical strong attributes: pins badges
+        /// visible per type, the "Place type" filter narrowing to Parks,
+        /// and the header count updating. See `venueTypesVenues`.
+        case venueTypes
     }
 
     public let scenario: Scenario
@@ -212,6 +217,59 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             lastVerified: observedAt,
             distanceM: 150,
             venueType: "cafe"
+        )
+    }
+
+    /// brewdesk#240 — one venue of each type, clustered near Union Square
+    /// like every other fixture. All strong/identical attributes (fast
+    /// Wi-Fi, plenty outlets, unrestricted laptops) so only `venueType`
+    /// distinguishes them — badges, the "Place type" filter, and the header
+    /// count are what this fixture exists to exercise, not attribute
+    /// filtering (that's `filterHonestyVenues`' job). One venue
+    /// (`fixture-types-unrated`) carries `scoreDisplay: .notRated` +
+    /// `scoreCoverage` (1 of 5) so "Based on N of 5 details" has something
+    /// real to assert against too.
+    public static let venueTypesVenues: [Venue] = [
+        venueTypeVenue(id: "fixture-types-cafe", name: "Fixture Types Cafe", lat: 40.7357, lng: -73.9905, venueType: "cafe", workScore: 78),
+        venueTypeVenue(id: "fixture-types-library", name: "Fixture Types Library", lat: 40.7364, lng: -73.9895, venueType: "library", workScore: 82),
+        venueTypeVenue(id: "fixture-types-park", name: "Fixture Types Park", lat: 40.7349, lng: -73.9918, venueType: "park", workScore: 74),
+        venueTypeVenue(id: "fixture-types-coworking", name: "Fixture Types Coworking", lat: 40.7371, lng: -73.9930, venueType: "other", workScore: 88),
+        venueTypeVenue(
+            id: "fixture-types-unrated", name: "Fixture Types Unrated Cafe", lat: 40.7345, lng: -73.9890,
+            venueType: "cafe", workScore: 52, scoreDisplay: .notRated,
+            scoreCoverage: ScoreCoverage(known: 1, of: 5, weight: 0.2, attributes: ["wifi"])
+        ),
+    ]
+
+    private static func venueTypeVenue(
+        id: String, name: String, lat: Double, lng: Double, venueType: String, workScore: Int,
+        scoreDisplay: ScoreDisplay = .notProvided, scoreCoverage: ScoreCoverage? = nil
+    ) -> Venue {
+        let observedAt = "2026-08-01T00:00:00Z"
+        return Venue(
+            id: id,
+            name: name,
+            lat: lat,
+            lng: lng,
+            address: "1 Fixture Place",
+            neighborhood: "Union Square",
+            borough: "Manhattan",
+            hoursRaw: nil,
+            vertical: "cafe",
+            attributes: VenueAttributes(
+                wifi: Claim(value: "fast", source: "curated", confidence: 0.85, observedAt: observedAt),
+                outlets: Claim(value: "plenty", source: "curated", confidence: 0.85, observedAt: observedAt),
+                laptopPolicy: Claim(value: "unrestricted", source: "curated", confidence: 0.85, observedAt: observedAt),
+                noise: Claim(value: "moderate", source: "curated", confidence: 0.85, observedAt: observedAt),
+                seating: Claim(value: "some", source: "curated", confidence: 0.85, observedAt: observedAt)
+            ),
+            vibeTags: ["fixture"],
+            workScore: workScore,
+            lastVerified: observedAt,
+            distanceM: 150,
+            venueType: venueType,
+            scoreDisplay: scoreDisplay,
+            scoreCoverage: scoreCoverage
         )
     }
 
@@ -415,6 +473,8 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             return Self.fixtureVenues
         case .filterHonesty:
             return Self.filterHonestyVenues
+        case .venueTypes:
+            return Self.venueTypesVenues
         case .baselineCity:
             return Self.baselineVenues
         case .noCoverage:
@@ -539,6 +599,11 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
                 throw VenueAPIError.http(statusCode: 404)
             }
             return venue
+        case .venueTypes:
+            guard let venue = Self.venueTypesVenues.first(where: { $0.id == id }) else {
+                throw VenueAPIError.http(statusCode: 404)
+            }
+            return venue
         default:
             guard let venue = Self.fixtureVenues.first(where: { $0.id == id }) else {
                 throw VenueAPIError.http(statusCode: 404)
@@ -553,7 +618,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         switch scenario {
         case .engineDown, .photosFail: throw Self.serverError
         case .offline: throw Self.offlineError
-        case .emptyVenues, .photosEmpty, .manyVenues, .baselineCity, .noCoverage, .cityWideSearch, .filterHonesty: return []
+        case .emptyVenues, .photosEmpty, .manyVenues, .baselineCity, .noCoverage, .cityWideSearch, .filterHonesty, .venueTypes: return []
         case .fixtureOK, .slow, .offlineThenRecovers:
             return blockStore.filteringBlocked(Self.fixturePhotos)
         case .communityPhotos:
@@ -582,7 +647,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             if observationAttempts.next() == 1 { throw Self.offlineError }
             return Self.observedVenue(id: venueId)
         case .fixtureOK, .emptyVenues, .photosEmpty, .photosFail, .manyVenues, .communityPhotos,
-             .baselineCity, .noCoverage, .cityWideSearch, .filterHonesty:
+             .baselineCity, .noCoverage, .cityWideSearch, .filterHonesty, .venueTypes:
             return Self.observedVenue(id: venueId)
         }
     }

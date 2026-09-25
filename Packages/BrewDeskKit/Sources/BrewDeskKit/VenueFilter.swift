@@ -20,20 +20,24 @@ public struct VenueFilter: Equatable, Sendable {
     public var minWifi: WifiMinimum?
     public var minOutlets: OutletMinimum?
     public var minSeating: SeatingMinimum?
-    public var venueType: VenueTypeFilter?
+    /// brewdesk#240: the "Place type" chips — Cafés/Libraries/Parks/
+    /// Coworking, multi-select, all four on by default. Matching every
+    /// `filterableCase` (the default) is "no filter" — identical to every
+    /// other dimension's "weakest floor admits everything" rule.
+    public var selectedVenueTypes: Set<VenueTypeBadge>
 
     public init(
         laptopFriendlyOnly: Bool = false,
         minWifi: WifiMinimum? = nil,
         minOutlets: OutletMinimum? = nil,
         minSeating: SeatingMinimum? = nil,
-        venueType: VenueTypeFilter? = nil
+        selectedVenueTypes: Set<VenueTypeBadge> = Set(VenueTypeBadge.filterableCases)
     ) {
         self.laptopFriendlyOnly = laptopFriendlyOnly
         self.minWifi = minWifi
         self.minOutlets = minOutlets
         self.minSeating = minSeating
-        self.venueType = venueType
+        self.selectedVenueTypes = selectedVenueTypes
     }
 
     public func apply(to venues: [Venue], now: Date = Date()) -> [Venue] {
@@ -101,11 +105,25 @@ public struct VenueFilter: Equatable, Sendable {
             case .pass: break
             }
         }
-        // venueType has no "unknown" concept of its own — an absent
-        // `venue.venueType` defaults to "cafe" (matching every other read
-        // of this field), so it's always known.
-        if let venueType, (venue.venueType ?? "cafe") != venueType.rawValue {
-            return .excluded
+        // brewdesk#240: `selectedVenueTypes` equal to every filterable case
+        // is the weakest floor — no constraint at all, matching every other
+        // dimension's "all-selected == no-filter" rule. A narrowed
+        // selection excludes only a venue whose type is KNOWN and not
+        // selected; an `.unknown`-typed venue (no venueType on the wire —
+        // never expected in production, see `VenueTypeBadge`) is treated
+        // exactly like every other dimension's unknown value: not evidence
+        // against the venue, so it contributes to `sawUnknown` instead of
+        // being excluded. This is the fix for the "stop defaulting
+        // venueType to cafe" bug — the old code's `?? "cafe"` used to make
+        // an untyped venue KNOWN-pass a "cafés only" filter and KNOWN-fail
+        // every other one; now it's honestly unknown either way.
+        if selectedVenueTypes != Self.allVenueTypes {
+            let badge = venue.typeBadge
+            if badge == .unknown {
+                sawUnknown = true
+            } else if !selectedVenueTypes.contains(badge) {
+                return .excluded
+            }
         }
 
         return sawUnknown ? .unknown : .confirmed
@@ -140,6 +158,10 @@ public struct VenueFilter: Equatable, Sendable {
     // fail a floor either.
     private static let wifiTiers = ["slow": 1, "ok": 2, "fast": 3]
     private static let amountTiers = ["scarce": 1, "some": 2, "plenty": 3]
+    /// brewdesk#240: the "every chip on" state — computed once rather than
+    /// rebuilding `Set(VenueTypeBadge.filterableCases)` on every `classify`
+    /// call.
+    private static let allVenueTypes = Set(VenueTypeBadge.filterableCases)
 
     /// Engine parity for `laptops=friendly`: weekend-banned venues drop out
     /// only on New York weekends (`store.ts` `isWeekendInNY`).

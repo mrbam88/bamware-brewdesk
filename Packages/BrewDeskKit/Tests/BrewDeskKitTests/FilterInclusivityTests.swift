@@ -146,14 +146,19 @@ import VenueKit
         #expect(ids(model) == ["known-good", "mid", "all-unknown"])
     }
 
-    @Test func venueTypeMatchesWithCafeDefaultForUntypedVenues() async {
+    /// brewdesk#240: `all-unknown` (no `venueType` on the wire) is never
+    /// excluded by a narrowed type selection — it's honestly `.unknown`,
+    /// same as every other dimension's absent/unrecognized value — so it
+    /// keeps appearing under EVERY type selection, not just "cafe" (the old,
+    /// now-removed `?? "cafe"` default).
+    @Test func venueTypeFilterNeverDefaultsUntypedVenuesToCafe() async {
         let model = await loadedModel(EngineLikeVenueService(venues: Self.all))
 
-        model.venueType = .cafe
+        model.selectedVenueTypes = [.cafe]
         #expect(ids(model) == ["known-good", "mid", "all-unknown"])
 
-        model.venueType = .library
-        #expect(ids(model) == ["known-weak"])
+        model.selectedVenueTypes = [.library]
+        #expect(ids(model) == ["known-weak", "all-unknown"])
     }
 
     // MARK: - Combination coverage across categories (AND of constraints)
@@ -170,7 +175,7 @@ import VenueKit
 
         model.laptopFriendlyOnly = true
         model.minSeating = .some
-        model.venueType = .cafe
+        model.selectedVenueTypes = [.cafe]
         #expect(ids(model) == ["known-good", "all-unknown"])
     }
 
@@ -213,7 +218,7 @@ import VenueKit
     @Test func matchesClassifyAgreesWithTheLegacyBooleanOnEveryFixture() {
         let filter = VenueFilter(
             laptopFriendlyOnly: true, minWifi: .fast, minOutlets: .plenty,
-            minSeating: .plenty, venueType: .cafe
+            minSeating: .plenty, selectedVenueTypes: [.cafe]
         )
         for venue in Self.all {
             #expect(filter.matches(venue) == (filter.classify(venue) != .excluded), "disagreement for \(venue.id)")

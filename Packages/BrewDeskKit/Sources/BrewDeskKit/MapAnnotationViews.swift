@@ -195,7 +195,8 @@ struct TeardropMarkerView: View, Equatable {
         HaloText(
             text: placement.venue.name,
             color: BrewDeskPalette.markerLabelText,
-            halo: BrewDeskPalette.markerLabelHalo
+            halo: BrewDeskPalette.markerLabelHalo,
+            symbolName: placement.venue.typeBadge.showsBadge ? placement.venue.typeBadge.symbolName : nil
         )
         .lineLimit(1)
         .truncationMode(.tail)
@@ -445,6 +446,12 @@ private struct HaloText: View {
     let text: String
     let color: Color
     let halo: Color
+    /// brewdesk#240 (owned by VenueFilter/badges, not pin rendering — a
+    /// one-line addition per that ticket's fence): an SF Symbol shown
+    /// before the name for a non-café venue, `nil` for a café. One-line
+    /// change at the call site (`labelSlot` below); expect a rebase against
+    /// the concurrent pin-rendering work.
+    var symbolName: String? = nil
 
     /// Only crosses out of the fixed 11pt at a genuine ACCESSIBILITY text
     /// size (not every step of Dynamic Type) — see `BrewDeskFont
@@ -452,11 +459,16 @@ private struct HaloText: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        Text(verbatim: text)
+        symbolPrefixedText
             .font(BrewDeskFont.markerLabel(accessibilityBump: dynamicTypeSize.isAccessibilitySize))
             .foregroundStyle(color)
             .shadow(color: halo, radius: 2)
             .shadow(color: halo, radius: 2)
+    }
+
+    private var symbolPrefixedText: Text {
+        guard let symbolName else { return Text(verbatim: text) }
+        return Text(Image(systemName: symbolName)) + Text(verbatim: " " + text)
     }
 }
 
