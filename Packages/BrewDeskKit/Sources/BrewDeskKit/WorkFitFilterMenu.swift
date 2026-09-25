@@ -180,32 +180,38 @@ struct WorkFitFilterMenu: View {
         }
     }
 
-    /// "What the numbers mean" — the same four tiers and colors as
-    /// `ScoreBadge`/`TeardropMarkerView`, spelled out once here since the score
-    /// itself no longer carries an inline legend anywhere on Spots.
+    /// "What the numbers mean" — bd#241 (spec: "the filter-menu legend
+    /// follow[s] the same ramp" as the map pins): swatches now come from
+    /// `BrewDeskPalette.markerFill(score:)` — the SAME single-hue,
+    /// lightness-only pin ramp `TeardropMarkerView`/demoted dots use —
+    /// rather than `ScoreTier.color`'s four DIFFERENT hues (used elsewhere,
+    /// e.g. `ScoreBadge`). Each row picks a representative score inside its
+    /// own range for the swatch: `markerFill`'s own tiers (`<60`, `60-69`,
+    /// `70-79`, `>=80`) don't align 1:1 with these four ranges (`75+`,
+    /// `60-74`, `45-59`, `0-44`), so "mixed" (45-59) and "weak" (0-44) both
+    /// land in the pin ramp's shared `<60` bucket and render the SAME
+    /// swatch color — an accurate reflection of the map (a 50 and a 20
+    /// pin already render identically), not a bug in this legend.
     private var scoreLegend: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("What the numbers mean")
                 .font(.caption.bold())
                 .foregroundStyle(.secondary)
-            legendRow(tier: .great, range: "75+", label: "great")
-            legendRow(tier: .good, range: "60–74", label: "good")
-            legendRow(tier: .mixed, range: "45–59", label: "mixed")
-            legendRow(tier: .weak, range: "0–44", label: "weak")
+            legendRow(swatchScore: 90, range: "75+", label: "great")
+            legendRow(swatchScore: 65, range: "60–74", label: "good")
+            legendRow(swatchScore: 50, range: "45–59", label: "mixed")
+            legendRow(swatchScore: 20, range: "0–44", label: "weak")
         }
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("filter-score-legend")
     }
 
-    /// Number + word lead (bd#211/#216: `clay`, the current "weak" fill,
-    /// still reads as warm/red-adjacent to ordinary vision even though a
-    /// colorblind simulation cleared it of green-confusion risk) — the dot
-    /// moved from leading to trailing and shrank so it reads as a
-    /// redundant, secondary accent rather than the row's primary
-    /// differentiator. `.accessibilityHidden` since the range + word
-    /// already say everything the dot does; VoiceOver would otherwise
-    /// announce the color twice.
-    private func legendRow(tier: ScoreTier, range: String, label: LocalizedStringKey) -> some View {
+    /// Number + word lead — the dot is a redundant, secondary accent (not
+    /// the row's primary differentiator, which is the range + word text)
+    /// and `.accessibilityHidden` since VoiceOver already gets everything
+    /// the dot conveys from those. `swatchScore` picks which pin-ramp tier
+    /// this row's dot renders as — see `scoreLegend`'s own doc comment.
+    private func legendRow(swatchScore: Int, range: String, label: LocalizedStringKey) -> some View {
         HStack(spacing: 8) {
             Text(range)
                 .font(BrewDeskFont.label(.caption2))
@@ -214,7 +220,7 @@ struct WorkFitFilterMenu: View {
                 .font(.caption)
             Spacer(minLength: 0)
             Circle()
-                .fill(tier.color)
+                .fill(BrewDeskPalette.markerFill(score: swatchScore))
                 .frame(width: 8, height: 8)
                 .accessibilityHidden(true)
         }

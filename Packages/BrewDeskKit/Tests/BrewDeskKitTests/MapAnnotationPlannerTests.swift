@@ -165,20 +165,21 @@ struct MapAnnotationPlannerTests {
     // MARK: - bd#212 (supervisor revision): metres-per-point sizing
 
     @Test func headDiameterClampsAtBothEndsAndInterpolatesBetweenStops() {
-        // bd#221 (Bilal's round-2 selection, `size:"microplus"`): +1pt at
-        // every NUMBERED stop; the 9.0→4 "no number" floor is unchanged.
+        // bd#241 (Bilal's round-3 selection, `size:"tiny"` — one step up
+        // from "microplus"): every NUMBERED stop grows again; the 9.0→4
+        // "no number" floor is unchanged.
         #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 20) == 4, "zoomed out clamps at the 4pt floor")
         #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 9.0) == 4)
-        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 5.4) == 12.5, "numbers (>= 11 pt) hold through a normal neighborhood view")
-        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 3.6) == 13.5)
-        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 1.8) == 18)
-        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 0.9) == 21)
-        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 0.1) == 21, "closer than the closest stop clamps at the 21pt ceiling")
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 5.4) == 14, "numbers (>= 11 pt) hold through a normal neighborhood view")
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 3.6) == 15)
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 1.8) == 20)
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 0.9) == 23)
+        #expect(MapAnnotationPlanner.headDiameter(forMetersPerPoint: 0.1) == 23, "closer than the closest stop clamps at the 23pt ceiling")
         // Midpoint (on the LOG scale) between two stops lands strictly
         // between their diameters.
         let midMPP = (9.0 * 5.4).squareRoot()
         let mid = MapAnnotationPlanner.headDiameter(forMetersPerPoint: midMPP)
-        #expect(mid > 4 && mid < 12.5)
+        #expect(mid > 4 && mid < 14)
     }
 
     @Test func headDiameterIsMonotonicAsMetersPerPointShrinks() {
@@ -209,8 +210,9 @@ struct MapAnnotationPlannerTests {
     // MARK: - bd#212: collision-free teardrop placement
 
     @Test func wellSeparatedRatedVenuesAllRenderAsFullTeardropsWithNumbers() {
-        // 1.8 m/pt ⇒ 18pt heads, well above both the shape and number
-        // thresholds; a generous step keeps every footprint collision-free.
+        // 1.8 m/pt ⇒ 20pt heads (bd#241 "tiny" size), well above both the
+        // shape and number thresholds; a generous step keeps every
+        // footprint collision-free.
         let venues = wellSeparatedGrid(count: 30, step: 0.0015)
         let testRegion = region(forMetersPerPoint: 1.8, mapWidth: wideMapSize.width)
         let plan = MapAnnotationPlanner.plan(venues: venues, region: testRegion, mapSize: wideMapSize)
@@ -218,16 +220,16 @@ struct MapAnnotationPlannerTests {
         #expect(plan.teardrops.count == 30)
         #expect(plan.dots.isEmpty)
         for marker in plan.teardrops {
-            #expect(marker.showsNumber, "an 18pt un-demoted teardrop must show its number")
+            #expect(marker.showsNumber, "a 20pt un-demoted teardrop must show its number")
         }
         assertNoOverlaps(teardropFootprints(for: plan, region: testRegion, mapSize: wideMapSize))
     }
 
     @Test func denselyPackedCandidatesDemoteToDotsInsteadOfOverlapping() {
         // Two observed venues close enough that their TEARDROP footprints
-        // (18+1=19pt side, half 9.5) collide, but the tight "head diameter +
-        // 1pt, tail excluded" box means only genuinely overlapping heads
-        // ever demote.
+        // (bd#241 "tiny" size: 20+1=21pt side, half 10.5) collide, but the
+        // tight "head diameter + 1pt, tail excluded" box means only
+        // genuinely overlapping heads ever demote.
         let testRegion = region(forMetersPerPoint: 1.8, mapWidth: mapSize.width)
         let a = venue(id: "a", lat: 40.7335, lng: -74.0027, score: 90)
         let b = venue(id: "b", lat: 40.7335 + 0.00006, lng: -74.0027, score: 88)
@@ -242,11 +244,11 @@ struct MapAnnotationPlannerTests {
 
     @Test func wellSeparatedVenuesNeverDemoteEvenAtRealisticCafeDensity() {
         // Regression for the supervisor's hood-zoom finding: at 3.6 m/pt a
-        // 13.5pt head's footprint (13.5+1=14.5pt side) needs >14.5·3.6≈52.2m of
-        // real-world clearance on at least one axis to stay collision-free.
-        // 70m apart clears that with margin on both lat AND lng (using the
-        // LONGITUDE metres-per-degree, the smaller of the two at this
-        // latitude, so the same degree-step is >=70m on both axes).
+        // 15pt head's footprint (bd#241 "tiny" size: 15+1=16pt side) needs
+        // >16·3.6=57.6m of real-world clearance on at least one axis to stay
+        // collision-free. 70m apart clears that with margin on both lat AND
+        // lng (using the LONGITUDE metres-per-degree, the smaller of the two
+        // at this latitude, so the same degree-step is >=70m on both axes).
         let lat = 40.7335
         let metersApart = 70.0
         let metersPerDegreeLng = 111_320.0 * cos(lat * .pi / 180)
@@ -448,24 +450,38 @@ struct MapAnnotationPlannerTests {
 
     /// Regression for "'Joe Coffee Company' and 'Starbucks' are drawn on
     /// top of each other": two independently-placed teardrops (neither
-    /// demotes — their PIN footprints don't collide) spaced JUST above the
-    /// smallest numbered size's footprint threshold (diameter 12.5pt ⇒
-    /// footprint side 13.5pt) but under `labelBoxHeight` (14pt) plus the
-    /// new `labelCollisionMargin` (3pt) — a gap real enough that the OLD,
-    /// unpadded `grid` check (bare AABB, no margin) would have called it
-    /// "clear" while the two label boxes sat under a point apart, close
-    /// enough to visually read as touching once real font ascenders and
-    /// `HaloText`'s own 2pt-radius blur (applied twice) are drawn on top.
+    /// demotes — their PIN footprints don't collide) spaced JUST above a
+    /// numbered size's footprint threshold but under `labelBoxHeight`
+    /// (14pt) plus the `labelCollisionMargin` (3pt) — a gap real enough
+    /// that the OLD, unpadded `grid` check (bare AABB, no margin) would
+    /// have called it "clear" while the two label boxes sat under a point
+    /// apart, close enough to visually read as touching once real font
+    /// ascenders and `HaloText`'s own 2pt-radius blur (applied twice) are
+    /// drawn on top.
+    ///
+    /// bd#241: the smallest NUMBERED stop grew from 12.5pt to 14pt, whose
+    /// own footprint (14+1=15pt) is no longer UNDER `labelBoxHeight`
+    /// (14pt) — the original regression's exact stop doesn't reproduce the
+    /// near-miss any more. A slightly-more-zoomed-out mpp (between the
+    /// 9.0→4 and 5.4→14 stops) still interpolates to a smaller, still-
+    /// numbered diameter whose footprint IS under `labelBoxHeight`, so the
+    /// same scenario is reconstructed generically (derived from the live
+    /// planner constants) instead of re-pinning a stale magic diameter.
     @Test func closelySpacedIndependentPinsGetVisiblyClearNonOverlappingLabels() {
-        let testRegion = region(forMetersPerPoint: 5.4, mapWidth: mapSize.width, lat: 40.7335, lng: -74.0027)
+        let testRegion = region(forMetersPerPoint: 6.0, mapWidth: mapSize.width, lat: 40.7335, lng: -74.0027)
         let mpp = MapAnnotationPlanner.metersPerPoint(region: testRegion, mapWidth: mapSize.width)
         let diameter = MapAnnotationPlanner.headDiameter(forMetersPerPoint: mpp)
-        #expect(diameter == 12.5, "test setup: must land on the smallest numbered stop, where footprint (13.5) < labelBoxHeight (14)")
-        // 14.2pt of screen separation: clears the 13.5pt pin-footprint
-        // threshold (so BOTH venues win a real teardrop, matching the
-        // screenshot showing two distinct numbered pins) but leaves only
-        // 0.2pt of raw AABB clearance between two 14pt-tall label boxes.
-        let screenGap: CGFloat = 14.2
+        #expect(diameter >= MapAnnotationPlanner.numberThreshold, "test setup: must still be a numbered teardrop")
+        let footprintSide = diameter + MapAnnotationPlanner.footprintPadding * 2
+        #expect(
+            footprintSide < MapAnnotationPlanner.labelBoxHeight,
+            "test setup: footprint (\(footprintSide)) must be under labelBoxHeight (\(MapAnnotationPlanner.labelBoxHeight)) for this regression to reproduce"
+        )
+        // Screen separation just above the footprint threshold: clears it
+        // (so BOTH venues win a real teardrop, matching the screenshot
+        // showing two distinct numbered pins) but leaves only a hair of raw
+        // AABB clearance between two `labelBoxHeight`-tall label boxes.
+        let screenGap = footprintSide + 0.7
         let latPerPoint = testRegion.span.latitudeDelta / mapSize.height
         let latDelta = Double(screenGap) * latPerPoint
         let joeCoffeeCompany = venue(id: "joe-coffee-company", lat: 40.7335 + latDelta / 2, lng: -74.0027, score: 52)
