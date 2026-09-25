@@ -497,3 +497,142 @@ import Testing
         #expect(try JSONDecoder().decode(VenuePhoto.self, from: data) == photo)
     }
 }
+
+// MARK: - VenueTypeBadge (brewdesk#240)
+
+/// Enum-decode matrix: all four server values the contract documents
+/// (`"cafe"`, `"library"`, `"park"`, `"other"`), plus absent/unrecognized →
+/// `.unknown`. Never `.cafe` as a fallback — the exact bug (`?? "cafe"`)
+/// this ticket removes.
+@Suite struct VenueTypeBadgeTests {
+    @Test func decodesEveryServerValue() {
+        #expect(VenueTypeBadge(serverValue: "cafe") == .cafe)
+        #expect(VenueTypeBadge(serverValue: "library") == .library)
+        #expect(VenueTypeBadge(serverValue: "park") == .park)
+        #expect(VenueTypeBadge(serverValue: "other") == .coworking) // ve#147 wire spelling for WeWork et al.
+    }
+
+    @Test func absentOrUnrecognizedIsUnknownNeverCafe() {
+        #expect(VenueTypeBadge(serverValue: nil) == .unknown)
+        #expect(VenueTypeBadge(serverValue: "") == .unknown)
+        #expect(VenueTypeBadge(serverValue: "mall") == .unknown) // legacy VenueTypeFilter case, no longer served
+        #expect(VenueTypeBadge(serverValue: "spaceship") == .unknown)
+    }
+
+    @Test func venueTypeBadgeMirrorsVenueVenueType() {
+        func venue(_ venueType: String?) -> Venue {
+            Venue(
+                id: "v", name: "v", lat: 0, lng: 0, address: nil,
+                neighborhood: "n", borough: "b", hoursRaw: nil, vertical: "cafe",
+                attributes: VenueAttributes(
+                    wifi: Claim(value: "fast", source: "curated", confidence: 0.8, observedAt: "2026-08-01"),
+                    outlets: Claim(value: "plenty", source: "curated", confidence: 0.8, observedAt: "2026-08-01"),
+                    laptopPolicy: Claim(value: "unrestricted", source: "curated", confidence: 0.8, observedAt: "2026-08-01"),
+                    noise: Claim(value: "moderate", source: "curated", confidence: 0.8, observedAt: "2026-08-01")
+                ),
+                vibeTags: [], workScore: 70, lastVerified: nil, distanceM: nil, venueType: venueType
+            )
+        }
+        #expect(venue("cafe").typeBadge == .cafe)
+        #expect(venue("library").typeBadge == .library)
+        #expect(venue("park").typeBadge == .park)
+        #expect(venue("other").typeBadge == .coworking)
+        #expect(venue(nil).typeBadge == .unknown)
+    }
+
+    /// Display name + SF Symbol per case (brewdesk#240 spec, verbatim).
+    @Test func displayNamesAndSymbolsMatchTheSpec() {
+        #expect(VenueTypeBadge.cafe.symbolName == "cup.and.saucer")
+        #expect(VenueTypeBadge.library.displayName == "Library")
+        #expect(VenueTypeBadge.library.symbolName == "books.vertical")
+        #expect(VenueTypeBadge.park.displayName == "Park")
+        #expect(VenueTypeBadge.park.symbolName == "tree")
+        #expect(VenueTypeBadge.coworking.displayName == "Coworking")
+        #expect(VenueTypeBadge.coworking.symbolName == "building.2")
+    }
+
+    /// "Cafés get no badge (they are the default)" — `.unknown` also shows
+    /// nothing (no real claim to badge with); every other case does.
+    @Test func onlyNonCafeKnownTypesShowABadge() {
+        #expect(VenueTypeBadge.cafe.showsBadge == false)
+        #expect(VenueTypeBadge.unknown.showsBadge == false)
+        #expect(VenueTypeBadge.library.showsBadge)
+        #expect(VenueTypeBadge.park.showsBadge)
+        #expect(VenueTypeBadge.coworking.showsBadge)
+    }
+
+    @Test func filterableCasesAreTheFourChipsNotUnknown() {
+        #expect(VenueTypeBadge.filterableCases == [.cafe, .library, .park, .coworking])
+        #expect(!VenueTypeBadge.filterableCases.contains(.unknown))
+    }
+}
+
+// MARK: - ScoreCoverage / ScoreConfidence (ve#144/#148, brewdesk#240)
+
+@Suite struct ScoreCoverageDecodeTests {
+    private static let baseJSON = """
+    {"id":"v1","name":"Spot","lat":40.7,"lng":-74.0,"address":null,
+     "neighborhood":"SoHo","borough":"Manhattan","hoursRaw":null,"vertical":"cafe",
+     "attributes":{
+       "wifi":{"value":"fast","source":"agent","confidence":0.8,"observedAt":"2026-08-15T00:00:00Z"},
+       "outlets":{"value":"some","source":"agent","confidence":0.7,"observedAt":"2026-08-15T00:00:00Z"},
+       "laptopPolicy":{"value":"unrestricted","source":"agent","confidence":0.7,"observedAt":"2026-08-15T00:00:00Z"},
+       "noise":{"value":"moderate","source":"agent","confidence":0.6,"observedAt":"2026-08-15T00:00:00Z"}
+     },
+     "vibeTags":[],"workScore":80,"lastVerified":null}
+    """
+
+    @Test func decodesWithoutCoverageOrConfidenceAsNil() throws {
+        let venue = try JSONDecoder().decode(Venue.self, from: Data(Self.baseJSON.utf8))
+        #expect(venue.scoreCoverage == nil)
+        #expect(venue.scoreConfidence == nil)
+    }
+
+    @Test func decodesCoverageAndConfidenceWhenPresent() throws {
+        let json = Self.baseJSON.replacingOccurrences(
+            of: "\"vibeTags\":[],",
+            with: """
+            "vibeTags":[],"scoreCoverage":{"known":1,"of":5,"weight":0.2,"attributes":["wifi"]},"scoreConfidence":"low",
+            """
+        )
+        let venue = try JSONDecoder().decode(Venue.self, from: Data(json.utf8))
+        #expect(venue.scoreCoverage?.known == 1)
+        #expect(venue.scoreCoverage?.of == 5)
+        #expect(venue.scoreCoverage?.weight == 0.2)
+        #expect(venue.scoreCoverage?.attributes == ["wifi"])
+        #expect(venue.scoreConfidence == .low)
+    }
+
+    /// Every confidence level the contract documents.
+    @Test func decodesEveryConfidenceLevel() throws {
+        for level in ["high", "medium", "low"] {
+            let json = Self.baseJSON.replacingOccurrences(
+                of: "\"vibeTags\":[],",
+                with: "\"vibeTags\":[],\"scoreConfidence\":\"\(level)\","
+            )
+            let venue = try JSONDecoder().decode(Venue.self, from: Data(json.utf8))
+            #expect(venue.scoreConfidence?.rawValue == level)
+        }
+    }
+
+    @Test func coverageAndConfidenceRoundTripThroughCodable() throws {
+        let venue = Venue(
+            id: "v", name: "v", lat: 0, lng: 0, address: nil,
+            neighborhood: "n", borough: "b", hoursRaw: nil, vertical: "cafe",
+            attributes: VenueAttributes(
+                wifi: Claim(value: "unknown", source: "estimate", confidence: 0.3, observedAt: "2026-08-01"),
+                outlets: Claim(value: "unknown", source: "estimate", confidence: 0.3, observedAt: "2026-08-01"),
+                laptopPolicy: Claim(value: "unrestricted", source: "estimate", confidence: 0.3, observedAt: "2026-08-01"),
+                noise: Claim(value: "unknown", source: "estimate", confidence: 0.3, observedAt: "2026-08-01")
+            ),
+            vibeTags: [], workScore: 52, lastVerified: nil, distanceM: nil,
+            scoreDisplay: .notRated,
+            scoreCoverage: ScoreCoverage(known: 1, of: 5, weight: 0.2, attributes: ["wifi"]),
+            scoreConfidence: .low
+        )
+        let data = try JSONEncoder().encode(venue)
+        let decoded = try JSONDecoder().decode(Venue.self, from: data)
+        #expect(decoded.scoreCoverage == venue.scoreCoverage)
+        #expect(decoded.scoreConfidence == venue.scoreConfidence)
+    }
+}

@@ -93,6 +93,80 @@ struct ScoreBadge: View {
     }
 }
 
+/// brewdesk#240: the small capsule badge for a non-café venue type (library,
+/// park, coworking) — symbol + name, shown on the shelf card, list row, map
+/// pin's name label (symbol only there), and the detail header. Cafés never
+/// get one (`VenueTypeBadge.showsBadge` is `false` for `.cafe`) — this view
+/// renders nothing in that case rather than making every call site check
+/// first, so it's always safe to drop `VenueTypeBadgeView(type:)` next to a
+/// neighborhood line unconditionally.
+///
+/// Colors are `BrewDeskPalette` neutrals only (`surfaceSecondary` fill,
+/// `secondaryText` label/icon) — both already contrast-verified 4.5:1+ in
+/// both appearances elsewhere in this file (`ClaimRow`'s "estimate" tag,
+/// `DiscoveryShelfCard`'s neighborhood line) — never a tier/hue-coded color,
+/// so this reads identically to a colorblind viewer and never competes with
+/// the score badge's own tier ring.
+struct VenueTypeBadgeView: View {
+    let type: VenueTypeBadge
+
+    /// Structurally UNCONDITIONAL on purpose — no `if type.showsBadge { … }`
+    /// branch here. That shape (a `_ConditionalContent` several levels deep
+    /// inside a `Button` inside a `LazyVStack` `ForEach`, present on some
+    /// sibling rows and absent on others) reproducibly broke tap delivery
+    /// to a LATER row in the same list under XCUITest — found via
+    /// `UnobservedScoreUITests.testUnobservedVenueDetailShowsBadgeAndExplanation`,
+    /// which taps the shelf's last card ("Fixture Unchecked Spot", a café —
+    /// no badge) after an earlier row ("Fixture Reading Room", a library —
+    /// badged) rendered its conditional branch; the tap stopped opening the
+    /// detail sheet entirely, with no crash, no error, just silence.
+    /// Collapsing to zero size instead (still a real view, same subtree
+    /// shape on every row) fixed it. Filed as a real, reproducible SwiftUI/
+    /// XCUITest interaction rather than assumed to be one-off flakiness —
+    /// worth a from-scratch repro case if it recurs elsewhere.
+    var body: some View {
+        Label(type.displayName, systemImage: type.symbolName)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(BrewDeskPalette.secondaryText)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(BrewDeskPalette.surfaceSecondary, in: Capsule())
+            .accessibilityLabel(type.displayName)
+            .accessibilityIdentifier("venue-type-badge-\(type.rawValue)")
+            .opacity(type.showsBadge ? 1 : 0)
+            .frame(width: type.showsBadge ? nil : 0)
+            .clipped()
+            .allowsHitTesting(type.showsBadge)
+            .accessibilityHidden(!type.showsBadge)
+    }
+}
+
+/// brewdesk#240: the accessibility-label suffix a COMBINED venue row/card
+/// appends for a non-café type — `", Library"` etc.; empty for a café or an
+/// `.unknown` type. Shared by `DiscoveryShelfCard.venueButton` and
+/// `CafeListScreen.VenueRow`, whose `.accessibilityElement(children:
+/// .combine)` + explicit `.accessibilityLabel(...)` would otherwise drop
+/// `VenueTypeBadgeView`'s own label entirely — this is what makes "badge
+/// label 'Library'" reachable by VoiceOver/XCUITest on those two surfaces,
+/// not just the (uncombined) detail header.
+func accessibilityTypeSuffix(_ badge: VenueTypeBadge) -> String {
+    badge.showsBadge ? ", \(badge.displayName)" : ""
+}
+
+/// brewdesk#240 item 5: "Based on N of 5 details" — the reason under "Not
+/// rated yet" that `ScoreCoverage` exists for. Returns `nil` (render
+/// nothing) whenever the server hasn't sent coverage for this venue (older
+/// payload, non-NYC metro) — the caller falls back to its existing plain
+/// "Not rated yet" copy in that case, matching pre-#240 behavior exactly.
+func scoreCoverageCaption(_ coverage: ScoreCoverage?) -> String? {
+    guard let coverage else { return nil }
+    return String(
+        format: String(localized: "Based on %1$lld of %2$lld details"),
+        locale: .current,
+        coverage.known, coverage.of
+    )
+}
+
 struct AttributeGlyph: View {
     let systemImage: String
     let text: String

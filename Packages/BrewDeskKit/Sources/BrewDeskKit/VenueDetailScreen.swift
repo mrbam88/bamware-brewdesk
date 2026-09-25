@@ -265,6 +265,17 @@ public struct VenueDetailScreen: View {
 
             if venue.displayScore == nil {
                 unobservedExplanation
+            } else if let caption = scoreCoverageCaption(venue.scoreCoverage) {
+                // brewdesk#240 item 5: "Based on N of 5 details" isn't only
+                // the reason for "Not rated yet" — a RATED venue's own
+                // `scoreCoverage` is just as real evidence of how much the
+                // number rests on (e.g. Stavros Niarchos Foundation
+                // Library: 97, "Based on 5 of 5 details" — fully
+                // researched, not a guess).
+                Text(caption)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("score-coverage-caption")
             }
 
             if !venue.vibeTags.isEmpty {
@@ -301,6 +312,15 @@ public struct VenueDetailScreen: View {
     /// happens; this line does not add a second entry point. Unconditional
     /// since brewdesk#174 (C9) removed the store-submission surface gate
     /// this used to check.
+    ///
+    /// brewdesk#240 item 5: once the server sends `scoreCoverage` (Work Fit
+    /// v2), the generic "We haven't checked this one yet." is replaced by
+    /// the actual reason — "Based on N of 5 details" — so a mostly-unrated
+    /// viewport (per ve#144, roughly 95% of Greenwich Village) reads as
+    /// honestly incomplete data rather than a broken app. The "Been here?
+    /// Rate it." nudge is kept either way — the ticket only calls out that
+    /// it must survive `scoreConfidence == "low"`; nothing asks for it to
+    /// disappear at higher confidence, so it stays unconditional here too.
     private var unobservedExplanation: some View {
         Text(unobservedExplanationText)
             .font(.footnote)
@@ -309,8 +329,9 @@ public struct VenueDetailScreen: View {
     }
 
     private var unobservedExplanationText: String {
-        String(localized: "We haven't checked this one yet.")
-            + " " + String(localized: "Been here? Rate it.")
+        let reason = scoreCoverageCaption(venue.scoreCoverage)
+            ?? String(localized: "We haven't checked this one yet.")
+        return reason + " " + String(localized: "Been here? Rate it.")
     }
 
     /// Reports the hero name's frame (bottom edge, specifically) up through
@@ -340,9 +361,14 @@ public struct VenueDetailScreen: View {
     /// the system semantic color.
     private var locationSummary: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("\(venue.neighborhood) · \(venue.borough)")
-                .font(.subheadline)
-                .foregroundStyle(BrewDeskPalette.secondaryText)
+            HStack(spacing: 6) {
+                Text("\(venue.neighborhood) · \(venue.borough)")
+                    .font(.subheadline)
+                    .foregroundStyle(BrewDeskPalette.secondaryText)
+                // brewdesk#240: the type badge sits next to the
+                // neighborhood · borough line — renders nothing for a café.
+                VenueTypeBadgeView(type: venue.typeBadge)
+            }
             if let address = venue.address {
                 Label {
                     Text(address)

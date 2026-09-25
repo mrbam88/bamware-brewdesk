@@ -902,7 +902,11 @@ public struct CafeMapScreen: View {
     /// `scoreDisplay` over the `isObserved` heuristic).
     static func pinLabel(for venue: Venue) -> String {
         let score = venue.displayScore.map { "Work Fit \($0)" } ?? "not rated yet"
-        return "\(venue.name), \(score), \(venue.neighborhood)"
+        // brewdesk#240: same suffix `DiscoveryShelfCard`/`CafeListScreen`
+        // append to their own combined labels — a real map pin's own
+        // accessibility label should announce "Library"/"Park"/"Coworking"
+        // too, not just the shelf's rail card.
+        return "\(venue.name), \(score), \(venue.neighborhood)" + accessibilityTypeSuffix(venue.typeBadge)
     }
 
     // MARK: - Search-driven camera fit (brewdesk#158)
