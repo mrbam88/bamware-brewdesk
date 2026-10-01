@@ -628,11 +628,13 @@ struct VibeChips: View {
                 ForEach(tags, id: \.self) { tag in
                     Text(tag)
                         .font(.caption)
+                        .foregroundStyle(BrewDeskPalette.clusterSurfaceText)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(.thinMaterial, in: Capsule())
+                        .background(BrewDeskPalette.surfaceSecondary, in: Capsule())
                 }
             }
         }
+        .accessibilityIdentifier("vibe-chips")
     }
 }
