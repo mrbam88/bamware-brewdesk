@@ -67,6 +67,18 @@ struct ScoreBadgeContrastTests {
         #expect(ratio < 4.5, "if this ever passes, the badge redesign's rationale (bd#209) needs re-checking")
     }
 
+    // MARK: - brewdesk#232: vibe-chip palette contrast
+
+    @Test func vibeChipTextMeetsFourPointFiveToOneInLightMode() {
+        let ratio = contrastRatio(BrewDeskPalette.clusterSurfaceText, BrewDeskPalette.surfaceSecondary, style: .light)
+        #expect(ratio >= 4.5, "vibe chip text vs. fill (light): \(ratio):1")
+    }
+
+    @Test func vibeChipTextMeetsFourPointFiveToOneInDarkMode() {
+        let ratio = contrastRatio(BrewDeskPalette.clusterSurfaceText, BrewDeskPalette.surfaceSecondary, style: .dark)
+        #expect(ratio >= 4.5, "vibe chip text vs. fill (dark): \(ratio):1")
+    }
+
     // MARK: - bd#211: observed dot palette — single hue, lightness-ordered
 
     private func rgb(_ color: Color, style: UIUserInterfaceStyle) -> (r: Double, g: Double, b: Double) {
