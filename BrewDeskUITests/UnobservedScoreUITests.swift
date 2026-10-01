@@ -25,9 +25,12 @@ final class UnobservedScoreUITests: XCTestCase {
     }
 
     @MainActor
-    private func launchFixtures() -> XCUIApplication {
+    private func launchFixtures(darkMode: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-UITestSkipGates", "-UITestScenario", "fixtureOK"]
+        if darkMode {
+            app.launchArguments += ["-AppleInterfaceStyle", "Dark"]
+        }
         app.launch()
         XCTAssertTrue(app.spotsTab.waitForExistence(timeout: wait))
         app.spotsTab.tap()
@@ -184,6 +187,31 @@ final class UnobservedScoreUITests: XCTestCase {
         // used to reuse — the rate-it half of the line is unconditional now.
         XCTAssertTrue(explanation.label.contains("Rate it"),
                       "Should always offer the rate-it prompt, got: \(explanation.label)")
+    }
+
+    // MARK: - brewdesk#232: vibe-chip dark-mode contrast
+
+    @MainActor
+    func testVibeChipsPassContrastAuditInDarkMode() throws {
+        let app = launchFixtures(darkMode: true)
+        dragShelfToFullDetent(app)
+
+        let unchecked = shelfButtons(app).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Fixture Unchecked Spot,")
+        ).firstMatch
+        XCTAssertTrue(unchecked.waitForExistence(timeout: wait))
+        unchecked.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: wait))
+        let chips = app.descendants(matching: .any)["vibe-chips"].firstMatch
+        XCTAssertTrue(chips.waitForExistence(timeout: wait), "Missing deterministic fixture vibe chip")
+        capture("detail-vibe-chips-dark-contrast")
+
+        let chipFrame = chips.frame
+        try app.performAccessibilityAudit(for: .contrast) { issue in
+            guard let frame = issue.element?.frame else { return true }
+            return !frame.intersects(chipFrame)
+        }
     }
 
     // MARK: - brewdesk#216: estimate/unknown value styling contrast
