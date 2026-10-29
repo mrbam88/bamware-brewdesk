@@ -135,6 +135,54 @@
         }
       }
     },
+    "Ask": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preguntar"
+          }
+        }
+      }
+    },
+    "Ask about a spot…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask about a spot…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pregunta por un lugar…"
+          }
+        }
+      }
+    },
+    "Ask is taking a break. The map still works.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask is taking a break. The map still works."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preguntar está en pausa. El mapa sigue funcionando."
+          }
+        }
+      }
+    },
     "Baseline data here — not yet researched. NYC is fully researched.": {
       "localizations": {
         "es": {
@@ -300,6 +348,22 @@
         }
       }
     },
+    "Couldn't reach BrewDesk. Try again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't reach BrewDesk. Try again."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo conectar con BrewDesk. Inténtalo de nuevo."
+          }
+        }
+      }
+    },
     "Curated": {
       "extractionState": "stale",
       "localizations": {
@@ -317,6 +381,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Fuentes de datos"
+          }
+        }
+      }
+    },
+    "Describe the spot you're after. Answers come from BrewDesk's own data.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Describe the spot you're after. Answers come from BrewDesk's own data."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Describe el lugar que buscas. Las respuestas salen de los datos de BrewDesk."
           }
         }
       }
@@ -457,6 +537,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Solo rápido"
+          }
+        }
+      }
+    },
+    "Fast Wi-Fi in Williamsburg": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fast Wi-Fi in Williamsburg"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wi-Fi rápido en Williamsburg"
           }
         }
       }
@@ -954,6 +1050,22 @@
         }
       }
     },
+    "Open late, laptop friendly": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open late, laptop friendly"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Abierto hasta tarde, apto para portátil"
+          }
+        }
+      }
+    },
     "OSM baseline · updated %@": {
       "localizations": {
         "es": {
@@ -1219,6 +1331,22 @@
         }
       }
     },
+    "Quiet with outlets near me": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quiet with outlets near me"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tranquilo y con enchufes cerca de mí"
+          }
+        }
+      }
+    },
     "Rate your visit to help other remote workers.": {
       "localizations": {
         "en": {
@@ -1404,6 +1532,22 @@
         }
       }
     },
+    "Send": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enviar"
+          }
+        }
+      }
+    },
     "Share": {
       "extractionState": "stale",
       "localizations": {
@@ -1411,6 +1555,38 @@
           "stringUnit": {
             "state": "translated",
             "value": "Compartir"
+          }
+        }
+      }
+    },
+    "Sign in": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iniciar sesión"
+          }
+        }
+      }
+    },
+    "Sign in to ask": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sign in to ask"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inicia sesión para preguntar"
           }
         }
       }
@@ -1538,6 +1714,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "No se pudo leer ese archivo"
+          }
+        }
+      }
+    },
+    "Thinking…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thinking…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pensando…"
           }
         }
       }
@@ -1720,6 +1912,22 @@
         }
       }
     },
+    "What do you need today?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "What do you need today?"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "¿Qué necesitas hoy?"
+          }
+        }
+      }
+    },
     "WORK FIT": {
       "extractionState": "stale",
       "localizations": {
@@ -1839,6 +2047,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Estás fuera de NYC: mostramos nuestra cobertura de NYC."
+          }
+        }
+      }
+    },
+    "You've used today's questions. Back tomorrow.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've used today's questions. Back tomorrow."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ya usaste las preguntas de hoy. Vuelve mañana."
           }
         }
       }

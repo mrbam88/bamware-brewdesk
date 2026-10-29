@@ -75,7 +75,7 @@ public protocol VenueMeasuring: Sendable {
 /// Async client for the bamware-venue-engine master API.
 /// The iOS Simulator reaches `http://localhost:3000` on the host Mac directly.
 /// The app target permits local HTTP networking in its Debug configuration.
-public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenuePhotoServing, VenueObservationSubmitting, Sendable {
+public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenuePhotoServing, VenueObservationSubmitting, ChatClient, Sendable {
     public static var defaultBaseURL: URL {
         #if DEBUG
         URL(string: "http://localhost:3000")!
@@ -318,18 +318,69 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
     /// `.http(statusCode: 401)` — the ticket's explicit "signed-out
     /// behaviour unchanged" scope guard.
     private func postAuthenticated<T: Decodable>(_ type: T.Type, request: URLRequest) async throws -> T {
+        try await withAuthorizedRetry(request) { try await get(type, request: $0) }
+    }
+
+    /// The bearer + single-refresh-retry policy itself, independent of how
+    /// the response is read. `perform` must throw
+    /// `VenueAPIError.http(statusCode: 401)` for an unauthorized answer so
+    /// the retry can see it; everything else passes straight through.
+    /// Factored out of `postAuthenticated` for `sendChat` (bd#247), which
+    /// needs the error BODY of a non-2xx answer and so cannot go through
+    /// `get`'s body-discarding `check`.
+    private func withAuthorizedRetry<T>(
+        _ request: URLRequest,
+        perform: (URLRequest) async throws -> T
+    ) async throws -> T {
         let token = await tokenProvider()
         do {
-            return try await get(type, request: authorized(request, token: token))
+            return try await perform(authorized(request, token: token))
         } catch VenueAPIError.http(statusCode: 401) where token != nil {
             guard let refreshed = await tokenRefresher() else {
                 throw VenueAPIError.authenticationRequired
             }
             do {
-                return try await get(type, request: authorized(request, token: refreshed))
+                return try await perform(authorized(request, token: refreshed))
             } catch VenueAPIError.http(statusCode: 401) {
                 throw VenueAPIError.authenticationRequired
             }
+        }
+    }
+
+    // MARK: - Chat (bamware-brewdesk#247, venue-engine#218)
+
+    /// `POST /v1/chat`. Same bearer policy as every community write
+    /// (`withAuthorizedRetry`); non-2xx statuses the contract names become
+    /// `ChatError` cases (401 → `.signInRequired` whether signed in or out,
+    /// 429 → `.dailyCap`, 502 → `.upstream`, 503 → `.disabled`), any
+    /// `URLError` becomes `.offline`, and an unnamed status surfaces as the
+    /// usual `VenueAPIError.http`.
+    public func sendChat(_ request: ChatRequest) async throws -> ChatResponse {
+        var req = URLRequest(url: baseURL.appendingPathComponent("/v1/chat"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try JSONEncoder().encode(request)
+        do {
+            return try await withAuthorizedRetry(req) { authorizedRequest in
+                let (data, resp) = try await session.data(for: authorizedRequest)
+                guard let http = resp as? HTTPURLResponse else { throw VenueAPIError.invalidResponse }
+                if http.statusCode == 401 { throw VenueAPIError.http(statusCode: 401) }
+                guard (200...299).contains(http.statusCode) else {
+                    if let chatError = ChatError.from(statusCode: http.statusCode, body: data) {
+                        throw chatError
+                    }
+                    throw VenueAPIError.http(statusCode: http.statusCode)
+                }
+                do {
+                    return try JSONDecoder().decode(ChatResponse.self, from: data)
+                } catch is DecodingError {
+                    throw VenueAPIError.decoding
+                }
+            }
+        } catch VenueAPIError.authenticationRequired, VenueAPIError.http(statusCode: 401) {
+            throw ChatError.signInRequired
+        } catch is URLError {
+            throw ChatError.offline
         }
     }
 

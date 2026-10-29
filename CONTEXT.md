@@ -23,6 +23,11 @@ pointing at the source of truth.
   amenity) carries its own `source` (curated / osm / estimate / speed_test /
   user_report / field_visit) and `confidence`, not a single trusted value —
   the engine's provenance model, mirrored 1:1 in `VenueKit/Models.swift`.
+- **Ask / ChatClient** — the Ask tab (bd#247) is a grounded café chat over
+  the engine's `POST /v1/chat` (`VenueKit/ChatContract.swift`); `VenueAPI`
+  is the live `ChatClient`, `ScenarioChatClient` the fixture one, and the
+  tab shows only when `GET /v1/health` reports `features.chat` (or a
+  Scenario is active).
 - **Venue / Workability score** — `Venue.workScore` (0–100) is the "can I
   work here" composite the engine computes from Wi-Fi, seating, noise, and
   outlet claims; `scoreTier` buckets it for the UI badge.

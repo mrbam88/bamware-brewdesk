@@ -109,7 +109,7 @@ nonisolated enum BrewDeskMarkGeometry {
 }
 
 /// The saucer: a rounded bar beneath the cup.
-struct BrewDeskMarkSaucer: Shape {
+nonisolated struct BrewDeskMarkSaucer: Shape {
     func path(in rect: CGRect) -> Path {
         let g = BrewDeskMarkGeometry.self
         let topLeft = g.point(g.saucerL, g.saucerY0, in: rect)
@@ -124,7 +124,7 @@ struct BrewDeskMarkSaucer: Shape {
 
 /// The cup body: a trapezoid (wide rim, narrower base) with rounded bottom
 /// corners. The handle is its own shape (`BrewDeskMarkHandle`).
-struct BrewDeskMarkCupBody: Shape {
+nonisolated struct BrewDeskMarkCupBody: Shape {
     func path(in rect: CGRect) -> Path {
         let g = BrewDeskMarkGeometry.self
         let topL = g.point(g.cupTopL, g.cupTopY, in: rect)
@@ -148,7 +148,7 @@ struct BrewDeskMarkCupBody: Shape {
 /// The handle: a ring segment attached to the cup's right rim. This is the
 /// arc centerline only — stroke it with `BrewDeskMarkGeometry.handleLineWidth`
 /// so `.trim` keeps working for anyone who wants to draw it on too.
-struct BrewDeskMarkHandle: Shape {
+nonisolated struct BrewDeskMarkHandle: Shape {
     func path(in rect: CGRect) -> Path {
         let g = BrewDeskMarkGeometry.self
         let center = g.point(g.handleCX, g.handleCY, in: rect)
@@ -165,7 +165,7 @@ struct BrewDeskMarkHandle: Shape {
 }
 
 /// The dot above the arcs.
-struct BrewDeskMarkDot: Shape {
+nonisolated struct BrewDeskMarkDot: Shape {
     func path(in rect: CGRect) -> Path {
         let g = BrewDeskMarkGeometry.self
         let center = g.point(g.cx, g.dotCY, in: rect)
@@ -177,7 +177,7 @@ struct BrewDeskMarkDot: Shape {
 /// One of the three concentric signal arcs above the dot. `index` 0 is the
 /// innermost (smallest radius, closest to the dot), 2 is the outermost.
 /// Centerline only — stroke it with `BrewDeskMarkGeometry.arcLineWidth`.
-struct BrewDeskMarkArc: Shape {
+nonisolated struct BrewDeskMarkArc: Shape {
     let index: Int
 
     func path(in rect: CGRect) -> Path {

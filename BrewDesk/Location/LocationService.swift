@@ -25,6 +25,11 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
         authorizationStatus == .denied || authorizationStatus == .restricted
     }
 
+    /// bd#247: the Ask tab sends the device fix only under this.
+    var isAuthorized: Bool {
+        authorizationStatus == .authorizedWhenInUse || authorizationStatus == .authorizedAlways
+    }
+
     /// iOS has never been asked. Only `requestAccess()` can change this — the
     /// system shows its permission alert exactly once, on that call
     /// (brewdesk#149: the intro screen must not be the only caller).

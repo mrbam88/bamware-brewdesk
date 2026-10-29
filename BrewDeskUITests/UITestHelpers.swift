@@ -200,5 +200,8 @@ extension XCUIApplication {
 
     var spotsTab: XCUIElement { tabButton("Spots", identifier: "tab-spots") }
     var savedTab: XCUIElement { tabButton("Saved", identifier: "tab-saved") }
+    /// bd#247: present only when the engine advertises `features.chat` or
+    /// a `-UITestScenario` launch is active.
+    var askTab: XCUIElement { tabButton("Ask", identifier: "tab-ask") }
     var youTab: XCUIElement { tabButton("You", identifier: "tab-you") }
 }

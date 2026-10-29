@@ -6,9 +6,12 @@ struct DiscoveryRootView: View {
     /// Tab selection is programmable so empty states can route the user
     /// (Saved's "Browse Spots" CTA — ui-review-2026-08-21 finding 5).
     /// brewdesk#117: Explore + Nearby collapsed into one Spots surface, and
-    /// Account became its own You tab — exactly three tabs now.
+    /// Account became its own You tab. bd#247 adds Ask (grounded café chat),
+    /// shown only when the engine's health advertises `features.chat` (or a
+    /// scenario launch is active) — so three tabs on an old engine, four on
+    /// a chat-enabled one.
     enum DiscoveryTab: Hashable {
-        case spots, saved, you
+        case spots, saved, ask, you
     }
 
     let configuration: AppConfiguration
@@ -23,6 +26,9 @@ struct DiscoveryRootView: View {
     // make no real network call. Only a normal launch gets the server sync
     // adapter, and only it needs foreground/appear sync ticks.
     @State private var savedVenuesSync: ServerSavedVenuePersistence?
+    /// bd#247: owned here (not in `AskScreen`) so the transcript survives
+    /// tab switches for the life of the discovery root, like `model` does.
+    @State private var chatModel: ChatModel
     @State private var connectivity = ConnectivityMonitor()
     @State private var selectedTab: DiscoveryTab = .spots
     @Environment(\.scenePhase) private var scenePhase
@@ -32,6 +38,7 @@ struct DiscoveryRootView: View {
         locationService: LocationService,
         venueListing: any VenueListing,
         venueDetails: any VenueDetailServing,
+        chatClient: any ChatClient,
         snapshot: [Venue] = []
     ) {
         self.configuration = configuration
@@ -39,6 +46,14 @@ struct DiscoveryRootView: View {
         self.venueListing = venueListing
         self.venueDetails = venueDetails
         _model = State(initialValue: VenuesModel(api: venueListing, snapshot: snapshot))
+        // Location rides along only with a real authorized fix — denied,
+        // undetermined, or no fix yet all send no `location` at all.
+        _chatModel = State(initialValue: ChatModel(client: chatClient, locationProvider: {
+            guard locationService.isAuthorized, let coordinate = locationService.location?.coordinate else {
+                return nil
+            }
+            return ChatLocation(lat: coordinate.latitude, lng: coordinate.longitude)
+        }))
         if LaunchEnvironment.current.scenario != nil {
             _savedVenues = State(initialValue: SavedVenuesStore())
             _savedVenuesSync = State(initialValue: nil)
@@ -73,6 +88,15 @@ struct DiscoveryRootView: View {
                     .accessibilityIdentifier("tab-saved")
                 }
                 .tag(DiscoveryTab.saved)
+
+            if showsAskTab {
+                askTab
+                    .tabItem {
+                        Label("Ask", systemImage: "bubble.left.and.text.bubble.right")
+                            .accessibilityIdentifier("tab-ask")
+                    }
+                    .tag(DiscoveryTab.ask)
+            }
 
             youTab
                 .tabItem {
@@ -181,6 +205,19 @@ struct DiscoveryRootView: View {
     private var youTab: some View {
         NavigationStack {
             YouTabScreen()
+        }
+    }
+
+    /// bd#247: the engine says whether chat is live (`GET /v1/health`
+    /// `features.chat`); a scenario launch always shows the tab so the
+    /// fixture conversation is testable without the endpoint.
+    private var showsAskTab: Bool {
+        LaunchEnvironment.current.scenario != nil || model.health?.features?.chat == true
+    }
+
+    private var askTab: some View {
+        NavigationStack {
+            AskScreen(model: chatModel, savedVenues: savedVenues)
         }
     }
 }
