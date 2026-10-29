@@ -90,6 +90,7 @@ struct RootView: View {
                 locationService: locationService,
                 venueListing: service,
                 venueDetails: service,
+                chatClient: ScenarioChatClient(scenario: uiTestScenario),
                 snapshot: snapshot
             )
             .environment(\.venuePhotoService, service)
@@ -104,6 +105,7 @@ struct RootView: View {
                 locationService: locationService,
                 venueListing: VenueAPI(baseURL: env.baseURL),
                 venueDetails: VenueAPI(baseURL: env.baseURL),
+                chatClient: ChatClientResolver.resolve(environment: environment, baseURL: env.baseURL),
                 snapshot: snapshot
             )
             .environment(\.venuePhotoService, uiTestPhotoService(VenueAPI(baseURL: env.baseURL)))
@@ -114,6 +116,7 @@ struct RootView: View {
                 locationService: locationService,
                 venueListing: venueListing,
                 venueDetails: venueDetails,
+                chatClient: ChatClientResolver.resolve(environment: environment),
                 snapshot: snapshot
             )
             .environment(\.venuePhotoService, uiTestPhotoService(venueListing as? any VenuePhotoServing))

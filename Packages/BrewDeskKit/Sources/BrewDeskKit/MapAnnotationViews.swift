@@ -33,7 +33,7 @@ import VenueKit
 /// wrong, so every teardrop rendered as a near-invisible sliver instead of
 /// a filled head — this construction has no such direction ambiguity: it's
 /// one multiplication).
-struct TeardropShape: Shape {
+nonisolated struct TeardropShape: Shape {
     func path(in rect: CGRect) -> Path {
         let side = rect.width
         let headCenter = CGPoint(x: rect.midX, y: rect.minY + side / 2)

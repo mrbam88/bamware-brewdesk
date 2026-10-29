@@ -656,16 +656,42 @@ public struct VenuePhotosResponse: Codable, Sendable {
 }
 
 public struct HealthResponse: Codable, Hashable, Sendable {
+    /// Server-side feature switches (bamware-brewdesk#247). Optional so a
+    /// pre-#247 engine (no `features` key) still decodes; each flag inside
+    /// defaults to `false` when absent so a partial object never fails the
+    /// whole health decode.
+    public struct Features: Codable, Hashable, Sendable {
+        /// `POST /v1/chat` is live — the app shows the Ask tab.
+        public let chat: Bool
+
+        public init(chat: Bool) {
+            self.chat = chat
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            chat = try container.decodeIfPresent(Bool.self, forKey: .chat) ?? false
+        }
+    }
+
     public let ok: Bool
     public let venueCount: Int
     public let seededAt: String
     public let observationCount: Int?
+    public let features: Features?
 
-    public init(ok: Bool, venueCount: Int, seededAt: String, observationCount: Int? = nil) {
+    public init(
+        ok: Bool,
+        venueCount: Int,
+        seededAt: String,
+        observationCount: Int? = nil,
+        features: Features? = nil
+    ) {
         self.ok = ok
         self.venueCount = venueCount
         self.seededAt = seededAt
         self.observationCount = observationCount
+        self.features = features
     }
 }
 
