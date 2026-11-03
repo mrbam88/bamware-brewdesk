@@ -167,6 +167,59 @@ func scoreCoverageCaption(_ coverage: ScoreCoverage?) -> String? {
     )
 }
 
+/// brewdesk#250: the short "5 of 5 details" form of `scoreCoverageCaption`,
+/// for appending to a provenance line that already starts with "Based on"
+/// / "Researched". Same `nil`-when-absent contract.
+func scoreCoverageSuffix(_ coverage: ScoreCoverage?) -> String? {
+    guard let coverage else { return nil }
+    return String(
+        format: String(localized: "%1$lld of %2$lld details"),
+        locale: .current,
+        coverage.known, coverage.of
+    )
+}
+
+/// brewdesk#250: "where the score came from" — the one line under a Work
+/// Fit number that says what it rests on ("Based on 1 visit · today",
+/// "Researched Sep 16 · 5 sources"), built by `ScoreProvenance` from the
+/// venue's own scored claims. Renders NOTHING for an unrated venue — "Not
+/// rated yet" and its coverage reason (brewdesk#240) stay exactly as they
+/// are — and nothing when a rated venue somehow carries no visit/research
+/// evidence at all, rather than inventing a source.
+///
+/// `compact` is the shelf/list-card form ("1 visit" / "Researched"), at
+/// `.caption2` to sit beside `ProvenanceStamp`; the detail hero uses the
+/// full line at `.footnote`. Both use the contrast-verified
+/// `BrewDeskPalette.secondaryText` token (bd#170's fix for system
+/// `.secondary` on these same surfaces) — a neutral, never a tier hue, so
+/// the line reads identically to a red-green colorblind viewer and never
+/// competes with the badge's ring.
+struct ScoreProvenanceLine: View {
+    let venue: Venue
+    var compact = false
+    /// An extra " · …" segment the detail hero appends — the coverage
+    /// ("5 of 5 details", `scoreCoverageSuffix`) — so the hero reads as ONE
+    /// line about the number rather than two consecutive "Based on …"
+    /// captions. Ignored when the line itself has nothing to say.
+    var trailing: String? = nil
+
+    private var provenance: ScoreProvenance { ScoreProvenance(attributes: venue.attributes) }
+
+    var body: some View {
+        if venue.displayScore != nil,
+           let text = compact ? provenance.compactLine : provenance.detailLine() {
+            Label {
+                Text(trailing.map { "\(text) · \($0)" } ?? text)
+            } icon: {
+                Image(systemName: provenance.symbolName)
+            }
+            .font(compact ? .caption2 : .footnote)
+            .foregroundStyle(BrewDeskPalette.secondaryText)
+            .accessibilityIdentifier(compact ? "shelf-score-provenance" : "score-provenance")
+        }
+    }
+}
+
 struct AttributeGlyph: View {
     let systemImage: String
     let text: String
@@ -194,11 +247,20 @@ struct ProvenanceStamp: View {
     var body: some View {
         if let newest = Self.newestClaim(in: attributes),
            let date = Self.observationDate(of: newest) {
+            // brewdesk#250 (found next to the new "1 visit · Oct 27" line):
+            // `Text(date, format:)` re-resolves the style against the
+            // view's environment time zone, so the UTC pin on `dayStyle`
+            // was silently dropped and a "2026-10-27" report printed
+            // "Updated Oct 26" in New York — the same off-by-one
+            // brewdesk#142 fixed for the row line, which formats to a
+            // String first (as `ProvenanceStampDayTests` always did).
+            let day = date.formatted(Self.dayStyle(month: .abbreviated))
+            let dayWide = date.formatted(Self.dayStyle(month: .wide))
             Label {
                 if Self.isOSMBaseline(tier: tier, source: newest.source) {
-                    Text("OSM baseline · updated \(date, format: Self.dayStyle(month: .abbreviated))")
+                    Text("OSM baseline · updated \(day)")
                 } else {
-                    Text("Updated \(date, format: Self.dayStyle(month: .abbreviated)) · \(Self.sourceKind(of: newest))")
+                    Text("Updated \(day) · \(Self.sourceKind(of: newest))")
                 }
             } icon: {
                 Image(systemName: Self.humanSources.contains(newest.source)
@@ -209,8 +271,8 @@ struct ProvenanceStamp: View {
             .foregroundStyle(Self.humanSources.contains(newest.source) ? BrewDeskPalette.mossText : .secondary)
             .accessibilityLabel(
                 Self.isOSMBaseline(tier: tier, source: newest.source)
-                    ? Text("OSM baseline · updated \(date, format: Self.dayStyle(month: .wide))")
-                    : Text("Updated \(date, format: Self.dayStyle(month: .wide)), \(Self.sourceKind(of: newest))")
+                    ? Text("OSM baseline · updated \(dayWide)")
+                    : Text("Updated \(dayWide), \(Self.sourceKind(of: newest))")
             )
             .accessibilityIdentifier("provenance-stamp")
         }
