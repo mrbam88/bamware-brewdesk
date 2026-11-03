@@ -380,9 +380,19 @@ public final class VenuesModel {
     @ObservationIgnored
     private var hasReceivedLiveVenues = false
 
-    public init(api: any VenueListing, snapshot: [Venue] = []) {
+    /// bd#254: waits between health attempts. Production retries three times
+    /// (2 s, 4 s, 8 s) so a cold-start network blip cannot hide the Ask tab
+    /// for the whole session; tests pass `[]` for single-attempt semantics.
+    private let healthRetryDelays: [Duration]
+
+    public init(
+        api: any VenueListing,
+        snapshot: [Venue] = [],
+        healthRetryDelays: [Duration] = [.seconds(2), .seconds(4), .seconds(8)]
+    ) {
         self.api = api
         self.snapshot = snapshot
+        self.healthRetryDelays = healthRetryDelays
     }
 
     public var request: VenueLoadRequest {
@@ -553,11 +563,36 @@ public final class VenuesModel {
         health = (try? await api.fetchHealth()).flatMap { $0 }
     }
 
+    /// The in-flight health load. Unstructured on purpose (bd#254): a view's
+    /// `.task` is cancelled whenever SwiftUI rebuilds that view, and health
+    /// used to ride on it — build 36 against production logged two health
+    /// requests 11 s apart and still showed three tabs because the first
+    /// result was thrown away mid-flight. Cancelling the awaiting view does
+    /// not cancel this task.
+    private var healthTask: Task<Void, Never>?
+
     /// Idempotent entry point for views that merely need the stats present:
-    /// fetches once, refetches only after a failure left `health` nil.
+    /// starts one load (with retries) if none is in flight and `health` is
+    /// still nil, then waits for it. Safe to call from any number of views.
     public func loadHealthIfNeeded() async {
         guard health == nil else { return }
-        await loadHealth()
+        if healthTask == nil {
+            let delays = healthRetryDelays
+            healthTask = Task { [weak self] in
+                var attempt = 0
+                while let self {
+                    if let fetched = (try? await self.api.fetchHealth()).flatMap({ $0 }) {
+                        self.health = fetched
+                        break
+                    }
+                    guard attempt < delays.count else { break }
+                    try? await Task.sleep(for: delays[attempt])
+                    attempt += 1
+                }
+                self?.healthTask = nil
+            }
+        }
+        await healthTask?.value
     }
 
     /// Debounce (~200ms): one application per pause in typing, so the list
