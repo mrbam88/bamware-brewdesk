@@ -246,10 +246,14 @@ import Testing
         #expect(scenario?.scenario == .engineDown)
     }
 
+    /// bd#249: normal launches resolve to the signed-in guard wrapping the
+    /// production `VenueAPI`, so a session without a token surfaces the
+    /// sign-in sheet instead of an anonymous submit.
     @Test func resolverFallsBackToVenueAPIOnNormalLaunches() {
-        #expect(ObservationServiceResolver.resolve(environment: LaunchEnvironment(arguments: [])) is VenueAPI)
+        let normal = ObservationServiceResolver.resolve(environment: LaunchEnvironment(arguments: []))
+        #expect((normal as? SignedInObservationService)?.upstream is VenueAPI)
         #expect(
-            ObservationServiceResolver.resolve(
+            (ObservationServiceResolver.resolve(
                 // Non-asserting init: an unknown scenario name would
                 // `assertionFailure` via the public init (Debug only —
                 // see `LaunchEnvironmentTests`).
@@ -257,7 +261,7 @@ import Testing
                     arguments: ["-UITestScenario", "not-a-scenario"],
                     assertOnUnknownScenario: false
                 )
-            ) is VenueAPI
+            ) as? SignedInObservationService)?.upstream is VenueAPI
         )
     }
 }
