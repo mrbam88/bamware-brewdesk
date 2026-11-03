@@ -71,54 +71,24 @@ struct DiscoveryRootView: View {
         let request = model.request
 
         TabView(selection: $selectedTab) {
-            CafeMapScreen(model: model, savedVenues: savedVenues)
-                .tabItem {
-                    Label("Spots", systemImage: "map.fill")
-                        .accessibilityIdentifier("tab-spots")
-                }
-                .tag(DiscoveryTab.spots)
-
-            savedTab
-                .tabItem {
-                    Label {
-                        Text("saved_tab_title")
-                    } icon: {
-                        Image(systemName: "bookmark.fill")
-                    }
-                    .accessibilityIdentifier("tab-saved")
-                }
-                .tag(DiscoveryTab.saved)
-
-            if showsAskTab {
-                askTab
-                    .tabItem {
-                        Label("Ask", systemImage: "bubble.left.and.text.bubble.right")
-                            .accessibilityIdentifier("tab-ask")
-                    }
-                    .tag(DiscoveryTab.ask)
+            // bd#254: the Ask tab depends on `features.chat`, which arrives
+            // after the first render. A plain `if` inside TabView never
+            // inserts a tab that becomes true later (build 35), and
+            // re-identifying the TabView inserted it by tearing the whole
+            // tab bar down mid-use — the reviewer simulation lost its search
+            // text and banner when health landed (build 37). A ForEach over
+            // the visible tabs lets SwiftUI diff by tag: existing tabs keep
+            // their identity and state, the new one is inserted.
+            ForEach(visibleTabs, id: \.self) { tab in
+                tabContent(tab)
+                    .tag(tab)
             }
-
-            youTab
-                .tabItem {
-                    Label("You", systemImage: "person.circle")
-                        .accessibilityIdentifier("tab-you")
-                }
-                .tag(DiscoveryTab.you)
         }
         // Warm Utilitarian (brewdesk#98): the primary green becomes the
-        // selected-tab accent. iOS 26's floating glass tab bar already draws
-        // the selected item as a filled circle inside the glass pill from
-        // this tint — no custom pill container needed (and none was in the
-        // fence: layout/composition of the tab bar itself is untouched,
-        // only its accent color). iOS 17 falls back to a tinted icon, the
-        // same fallback shape the rest of the app already uses for glass.
+        // selected-tab accent. iOS 26's floating glass tab bar draws the
+        // selected item as a filled circle inside the glass pill from this
+        // tint; iOS 17 falls back to a tinted icon.
         .tint(BrewDeskPalette.roast)
-        // bd#254: `features.chat` arrives after the first render, and TabView
-        // does not add a conditional tab that appears later — build 35 against
-        // production still showed three tabs. Re-identify the TabView when the
-        // flag flips so the Ask tab is inserted; `selectedTab` lives on the
-        // parent, so the user's tab survives the rebuild.
-        .id(showsAskTab)
         .environment(\.locationDenied, locationService.isDenied)
         // brewdesk#149: past the intro, the map still offers one way to ask.
         .environment(\.locationUndetermined, locationService.isUndetermined)
@@ -217,8 +187,54 @@ struct DiscoveryRootView: View {
     /// bd#247: the engine says whether chat is live (`GET /v1/health`
     /// `features.chat`); a scenario launch always shows the tab so the
     /// fixture conversation is testable without the endpoint.
+    /// bd#254: present from the FIRST render unless the engine has said chat
+    /// is off. Three attempts to insert the tab after `features.chat`
+    /// arrived (conditional, `.id` rebuild, ForEach) all failed on fresh
+    /// installs against production: TabView does not reliably add a late
+    /// tab, and rebuilding it wiped the Spots screen mid-use. So the tab is
+    /// there by default; the Ask screen itself renders the engine's 503
+    /// "switched off" state (`ChatModel.disabled`), and an engine that
+    /// explicitly reports `chat: false` removes the tab.
     private var showsAskTab: Bool {
-        LaunchEnvironment.current.scenario != nil || model.health?.features?.chat == true
+        LaunchEnvironment.current.scenario != nil || model.health?.features?.chat != false
+    }
+
+    private var visibleTabs: [DiscoveryTab] {
+        showsAskTab ? [.spots, .saved, .ask, .you] : [.spots, .saved, .you]
+    }
+
+    @ViewBuilder
+    private func tabContent(_ tab: DiscoveryTab) -> some View {
+        switch tab {
+        case .spots:
+            CafeMapScreen(model: model, savedVenues: savedVenues)
+                .tabItem {
+                    Label("Spots", systemImage: "map.fill")
+                        .accessibilityIdentifier("tab-spots")
+                }
+        case .saved:
+            savedTab
+                .tabItem {
+                    Label {
+                        Text("saved_tab_title")
+                    } icon: {
+                        Image(systemName: "bookmark.fill")
+                    }
+                    .accessibilityIdentifier("tab-saved")
+                }
+        case .ask:
+            askTab
+                .tabItem {
+                    Label("Ask", systemImage: "bubble.left.and.text.bubble.right")
+                        .accessibilityIdentifier("tab-ask")
+                }
+        case .you:
+            youTab
+                .tabItem {
+                    Label("You", systemImage: "person.circle")
+                        .accessibilityIdentifier("tab-you")
+                }
+        }
     }
 
     private var askTab: some View {
