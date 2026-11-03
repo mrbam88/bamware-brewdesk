@@ -564,10 +564,15 @@ private actor ControlledVenueService: VenueListing {
         private let lock = NSLock()
         private var stored = 0
         var failing: Bool
-        init(failing: Bool = false) { self.failing = failing }
+        let delayMilliseconds: Int
+        init(failing: Bool = false, delayMilliseconds: Int = 0) {
+            self.failing = failing
+            self.delayMilliseconds = delayMilliseconds
+        }
         var fetches: Int { lock.withLock { stored } }
         func fetchVenues(_ query: VenueQuery) async throws -> [Venue] { [] }
         func fetchHealth() async throws -> HealthResponse? {
+            if delayMilliseconds > 0 { try await Task.sleep(for: .milliseconds(delayMilliseconds)) }
             lock.withLock { stored += 1 }
             if failing { throw VenueAPIError.invalidResponse }
             return HealthResponse(ok: true, venueCount: 1, seededAt: "2026-08-15T00:00:00Z", observationCount: nil)
@@ -576,7 +581,7 @@ private actor ControlledVenueService: VenueListing {
 
     @Test func loadHealthIfNeededFetchesOnce() async {
         let service = CountingHealthService()
-        let model = VenuesModel(api: service)
+        let model = VenuesModel(api: service, healthRetryDelays: [])
         await model.loadHealthIfNeeded()
         await model.loadHealthIfNeeded()
         #expect(service.fetches == 1)
@@ -585,13 +590,36 @@ private actor ControlledVenueService: VenueListing {
 
     @Test func loadHealthIfNeededRetriesAfterFailure() async {
         let service = CountingHealthService(failing: true)
-        let model = VenuesModel(api: service)
+        let model = VenuesModel(api: service, healthRetryDelays: [])
         await model.loadHealthIfNeeded()
         #expect(model.health == nil)
         service.failing = false
         await model.loadHealthIfNeeded()
         #expect(service.fetches == 2)
         #expect(model.health != nil)
+    }
+
+    /// bd#254: a transient failure at cold start retries by itself.
+    @Test func loadHealthIfNeededRetriesWithinOneCall() async {
+        let service = CountingHealthService(failing: true)
+        let model = VenuesModel(api: service, healthRetryDelays: [.milliseconds(10), .milliseconds(10)])
+        Task { try? await Task.sleep(for: .milliseconds(5)); service.failing = false }
+        await model.loadHealthIfNeeded()
+        #expect(service.fetches >= 2)
+        #expect(model.health?.venueCount == 1)
+    }
+
+    /// bd#254: the awaiting view being torn down (SwiftUI cancels its
+    /// `.task`) must not cancel the load — the next view finds health set.
+    @Test func loadHealthSurvivesCancellationOfTheAwaitingTask() async throws {
+        let service = CountingHealthService(delayMilliseconds: 50)
+        let model = VenuesModel(api: service, healthRetryDelays: [])
+        let awaiting = Task { await model.loadHealthIfNeeded() }
+        try await Task.sleep(for: .milliseconds(5))
+        awaiting.cancel()
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(model.health?.venueCount == 1)
+        #expect(service.fetches == 1)
     }
 }
 
