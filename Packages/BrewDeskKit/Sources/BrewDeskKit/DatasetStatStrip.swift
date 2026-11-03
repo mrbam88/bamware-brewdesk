@@ -22,9 +22,9 @@ struct DatasetStatStrip: View {
     }
 
     private func text(for health: HealthResponse) -> String {
-        let updated = ProvenanceStamp.observationDate(of: Claim(
-            value: "", source: "", confidence: 0, observedAt: health.seededAt
-        ))
+        let updated = health.seededAt.flatMap {
+            ProvenanceStamp.observationDate(of: Claim(value: "", source: "", confidence: 0, observedAt: $0))
+        }
         switch (health.observationCount, updated) {
         case let (.some(observations), .some(date)):
             return String(

@@ -43,6 +43,16 @@ import FoundationNetworking
         #expect(health.features?.chat == true)
     }
 
+    /// bd#254: the production body on 2026-11-03 — `seededAt: null` plus
+    /// fields the app does not model — must decode and keep `features.chat`.
+    @Test func healthWithNullSeededAtAndUnknownFieldsDecodes() throws {
+        let body = Data(#"{"ok":true,"venueCount":6952,"seededAt":null,"baseline":{"metros":1},"photos":{"venuesWithPhotos":3},"closed":{"permanentlyClosed":0},"features":{"chat":true}}"#.utf8)
+        let health = try JSONDecoder().decode(HealthResponse.self, from: body)
+        #expect(health.seededAt == nil)
+        #expect(health.venueCount == 6952)
+        #expect(health.features?.chat == true)
+    }
+
     @Test func healthWithoutFeaturesStillDecodes() throws {
         let body = Data(#"{"ok":true,"venueCount":3,"seededAt":"2026-08-01T00:00:00Z"}"#.utf8)
         let health = try JSONDecoder().decode(HealthResponse.self, from: body)
