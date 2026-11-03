@@ -676,14 +676,18 @@ public struct HealthResponse: Codable, Hashable, Sendable {
 
     public let ok: Bool
     public let venueCount: Int
-    public let seededAt: String
+    /// bd#254: the engine serves `null` here since its seed moved to a
+    /// database, so this is optional — a health body must never fail to
+    /// decode over one stale field, because `features.chat` (the Ask tab)
+    /// and the stat strip both ride on it.
+    public let seededAt: String?
     public let observationCount: Int?
     public let features: Features?
 
     public init(
         ok: Bool,
         venueCount: Int,
-        seededAt: String,
+        seededAt: String?,
         observationCount: Int? = nil,
         features: Features? = nil
     ) {
@@ -692,6 +696,22 @@ public struct HealthResponse: Codable, Hashable, Sendable {
         self.seededAt = seededAt
         self.observationCount = observationCount
         self.features = features
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case ok, venueCount, seededAt, observationCount, features
+    }
+
+    /// Lenient on purpose (bd#254): only `ok` and `venueCount` are required;
+    /// everything else is optional or defaults so a new or changed field on
+    /// the engine side cannot hide the Ask tab.
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        ok = try c.decodeIfPresent(Bool.self, forKey: .ok) ?? true
+        venueCount = try c.decodeIfPresent(Int.self, forKey: .venueCount) ?? 0
+        seededAt = try? c.decodeIfPresent(String.self, forKey: .seededAt)
+        observationCount = try? c.decodeIfPresent(Int.self, forKey: .observationCount)
+        features = try? c.decodeIfPresent(Features.self, forKey: .features)
     }
 }
 
