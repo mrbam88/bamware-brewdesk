@@ -71,6 +71,14 @@ public enum BrewDeskAccountTenant {
     /// `nil` when there is no session, or when refresh itself fails —
     /// callers can't and don't need to tell those apart: either way there
     /// is no bearer token, so the caller falls back to local-only.
+    /// brewdesk#249: whether a signed-in session is stored at all, read fresh
+    /// from the keychain like `freshAccessToken`. Lets callers tell "signed
+    /// out" (no bearer, by design) from "signed in but no token" (refresh
+    /// failed), which `freshAccessToken` alone deliberately does not.
+    public static func hasSession() -> Bool {
+        AccountSessionStore(persistence: KeychainSessionStore(service: keychainService)).session != nil
+    }
+
     public static func freshAccessToken(environment: LaunchEnvironment = .current) async -> String? {
         let sessions = AccountSessionStore(persistence: KeychainSessionStore(service: keychainService))
         guard sessions.session != nil else { return nil }

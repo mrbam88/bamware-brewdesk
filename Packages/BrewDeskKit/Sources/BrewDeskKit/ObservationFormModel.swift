@@ -218,9 +218,16 @@ public enum ObservationServiceResolver {
         // `communityAuth` starts enforcing it, and a signed-out submit is
         // byte-identical to before (both closures default to `{ nil }` when
         // omitted — passing them explicitly here is what turns this on).
-        return VenueAPI(
+        let api = VenueAPI(
             tokenProvider: { await BrewDeskAccountTenant.freshAccessToken(environment: environment) },
             tokenRefresher: { await BrewDeskAccountTenant.refreshAccessTokenAfterUnauthorized(environment: environment) }
+        )
+        // brewdesk#249: a session with no obtainable token must surface the
+        // sign-in sheet instead of silently submitting as anonymous.
+        return SignedInObservationService(
+            hasSession: { await BrewDeskAccountTenant.hasSession() },
+            accessToken: { await BrewDeskAccountTenant.freshAccessToken(environment: environment) },
+            upstream: api
         )
     }
 }
