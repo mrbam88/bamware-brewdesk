@@ -265,6 +265,13 @@ public struct VenueDetailScreen: View {
 
             if venue.displayScore == nil {
                 unobservedExplanation
+            } else if ScoreProvenance(attributes: venue.attributes).hasEvidence {
+                // brewdesk#250: what the number rests on — visit reports or
+                // research, and how recent — with brewdesk#240's coverage
+                // folded onto the same line ("Based on 1 visit · Oct 27 ·
+                // 5 of 5 details") so the hero never stacks two "Based on"
+                // captions. The unrated branch above is untouched.
+                ScoreProvenanceLine(venue: venue, trailing: scoreCoverageSuffix(venue.scoreCoverage))
             } else if let caption = scoreCoverageCaption(venue.scoreCoverage) {
                 // brewdesk#240 item 5: "Based on N of 5 details" isn't only
                 // the reason for "Not rated yet" — a RATED venue's own

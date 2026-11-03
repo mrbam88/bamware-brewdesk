@@ -847,6 +847,11 @@ struct DiscoveryShelfCard: View {
                         .foregroundStyle(BrewDeskPalette.secondaryText)
                         .accessibilityIdentifier("shelf-score-coverage-caption")
                 }
+                // brewdesk#250: the compact "1 visit" / "Researched" form
+                // of the detail screen's provenance line — a RATED card's
+                // counterpart to the unrated card's coverage caption above.
+                // Renders nothing when the venue isn't rated.
+                ScoreProvenanceLine(venue: venue, compact: true)
                 ProvenanceStamp(attributes: venue.attributes, tier: venue.tier)
             }
 
