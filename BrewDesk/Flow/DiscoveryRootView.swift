@@ -113,6 +113,12 @@ struct DiscoveryRootView: View {
         // only its accent color). iOS 17 falls back to a tinted icon, the
         // same fallback shape the rest of the app already uses for glass.
         .tint(BrewDeskPalette.roast)
+        // bd#254: `features.chat` arrives after the first render, and TabView
+        // does not add a conditional tab that appears later — build 35 against
+        // production still showed three tabs. Re-identify the TabView when the
+        // flag flips so the Ask tab is inserted; `selectedTab` lives on the
+        // parent, so the user's tab survives the rebuild.
+        .id(showsAskTab)
         .environment(\.locationDenied, locationService.isDenied)
         // brewdesk#149: past the intro, the map still offers one way to ask.
         .environment(\.locationUndetermined, locationService.isUndetermined)
