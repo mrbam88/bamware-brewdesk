@@ -1,0 +1,21 @@
+# Release smoke (DoD rule 7): get past first-run onboarding on a fresh install.
+appId: io.bamware.brewdesk
+---
+- repeat:
+    while:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+- runFlow:
+    when:
+      visible: "Find my work spot"
+    commands:
+      - tapOn: "Find my work spot"
+- runFlow:
+    when:
+      visible: "Use Union Square instead"
+    commands:
+      - tapOn: "Use Union Square instead"
+- extendedWaitUntil:
+    visible: "Spots"
+    timeout: 30000

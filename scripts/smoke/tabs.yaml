@@ -1,0 +1,22 @@
+# Release smoke (DoD rule 7): one screenshot per top-level surface.
+# The Ask tab is REQUIRED: production advertises features.chat (build 34/35
+# shipped without it showing).
+appId: io.bamware.brewdesk
+---
+- extendedWaitUntil:
+    visible: "Spots"
+    timeout: 30000
+- takeScreenshot: ${OUT}/01-spots
+- tapOn: "Saved"
+- takeScreenshot: ${OUT}/02-saved
+- assertVisible: "Ask"
+- tapOn: "Ask"
+- takeScreenshot: ${OUT}/03-ask
+- tapOn: "You"
+- takeScreenshot: ${OUT}/04-you
+- tapOn: "Spots"
+- tapOn:
+    text: "WORK FIT"
+    index: 0
+    optional: true
+- takeScreenshot: ${OUT}/05-detail
