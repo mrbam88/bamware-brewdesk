@@ -12,3 +12,4 @@ build/
 *.dSYM.zip
 fastlane/README.md
 fastlane/report.xml
+.smoke/
