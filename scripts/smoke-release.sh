@@ -20,10 +20,14 @@ if [ -z "$udid" ]; then
 fi
 xcrun simctl boot "$udid" 2>/dev/null || true
 xcrun simctl bootstatus "$udid" -b >/dev/null
+# The first-use swipe-typing tip covers the sign-in form on a fresh simulator.
+xcrun simctl spawn "$udid" defaults write com.apple.keyboard.preferences DidShowContinuousPathIntroduction -bool true >/dev/null 2>&1 || true
 
+# Signed on purpose: an unsigned simulator build has no application-identifier,
+# so the keychain refuses it (-34018) and a sign-in never persists.
 echo "== Release build (production engine)"
 xcodebuild build -project "$ROOT/BrewDesk.xcodeproj" -scheme BrewDesk -configuration Release \
-  -destination "platform=iOS Simulator,id=$udid" -derivedDataPath "$OUT/dd" CODE_SIGNING_ALLOWED=NO \
+  -destination "platform=iOS Simulator,id=$udid" -derivedDataPath "$OUT/dd" \
   > "$OUT/build.log" 2>&1 || { tail -20 "$OUT/build.log"; exit 1; }
 app=$(find "$OUT/dd/Build/Products" -name BrewDesk.app -path '*iphonesimulator*' | head -1)
 
@@ -36,6 +40,14 @@ xcrun simctl launch "$udid" io.bamware.brewdesk >/dev/null
 echo "== Walk the app"
 maestro --udid "$udid" test "$ROOT/scripts/smoke/onboard.yaml" > "$OUT/maestro-onboard.log" 2>&1 || { tail -20 "$OUT/maestro-onboard.log"; exit 1; }
 OUT="$OUT" maestro --udid "$udid" test -e OUT="$OUT" "$ROOT/scripts/smoke/tabs.yaml" > "$OUT/maestro-tabs.log" 2>&1 || { tail -20 "$OUT/maestro-tabs.log"; exit 1; }
+
+echo "== One real signed-in chat (vault test account; skipped if the vault is unreachable)"
+if smoke_pw=$(aws ssm get-parameter --profile bamware --name /bamware/shared/test-superusers/curry --with-decryption --query Parameter.Value --output text 2>/dev/null | tr -d '\n'); then
+  OUT="$OUT" maestro --udid "$udid" test -e OUT="$OUT" -e SMOKE_EMAIL="curry@bamware.com" -e SMOKE_PASSWORD="$smoke_pw" "$ROOT/scripts/smoke/chat.yaml" > "$OUT/maestro-chat.log" 2>&1 || { tail -20 "$OUT/maestro-chat.log"; echo "CHAT SMOKE FAILED"; exit 1; }
+  unset smoke_pw
+else
+  echo "vault unreachable: chat smoke skipped" | tee "$OUT/maestro-chat.log"
+fi
 
 echo "== Live engine contract tests"
 ( cd "$ROOT/Packages/BrewDeskKit" && TEST_RUNNER_BREWDESK_LIVE_CONTRACT=1 xcodebuild test -scheme BrewDeskKit-Package \
