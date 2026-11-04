@@ -617,7 +617,11 @@ private actor ControlledVenueService: VenueListing {
         let awaiting = Task { await model.loadHealthIfNeeded() }
         try await Task.sleep(for: .milliseconds(5))
         awaiting.cancel()
-        try await Task.sleep(for: .milliseconds(200))
+        // Poll instead of a fixed wait: under CI load a 50 ms mock fetch can
+        // take far longer than 200 ms to land (bd#261 branch run).
+        for _ in 0..<200 where model.health == nil {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         #expect(model.health?.venueCount == 1)
         #expect(service.fetches == 1)
     }
