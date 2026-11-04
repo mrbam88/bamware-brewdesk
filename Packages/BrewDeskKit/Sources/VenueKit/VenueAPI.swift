@@ -86,6 +86,9 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
 
     public let baseURL: URL
     private let session: URLSession
+    /// Session for `/v1/chat` only: the injected `session` when a caller
+    /// supplied one (tests, recording harness), else `chatSession`.
+    private let chatSession: URLSession
     private let blockStore: ContributorBlockStore
     /// Returns a fresh bearer token for the signed-in user, or `nil` when
     /// signed out — same shape `ServerSavedVenuePersistence.tokenProvider`
@@ -114,6 +117,17 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
         return URLSession(configuration: configuration)
     }()
 
+    /// Chat is slow by nature (bd#261): the engine's first request after an
+    /// idle spell pays a ~30 s cold start (measured 34 s on 2026-11-03) and a
+    /// warm turn runs a model call with an 8 s budget. The 15 s session above
+    /// is right for map loads and wrong for chat — the first question after a
+    /// quiet spell always timed out and showed "Couldn't reach BrewDesk".
+    public static let chatSession: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForRequest = 75
+        return URLSession(configuration: configuration)
+    }()
+
     public init(
         baseURL: URL = VenueAPI.defaultBaseURL,
         session: URLSession = VenueAPI.defaultSession,
@@ -123,6 +137,7 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
     ) {
         self.baseURL = baseURL
         self.session = session
+        self.chatSession = session === VenueAPI.defaultSession ? VenueAPI.chatSession : session
         self.blockStore = blockStore
         self.tokenProvider = tokenProvider
         self.tokenRefresher = tokenRefresher
@@ -362,7 +377,7 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
         req.httpBody = try JSONEncoder().encode(request)
         do {
             return try await withAuthorizedRetry(req) { authorizedRequest in
-                let (data, resp) = try await session.data(for: authorizedRequest)
+                let (data, resp) = try await chatSession.data(for: authorizedRequest)
                 guard let http = resp as? HTTPURLResponse else { throw VenueAPIError.invalidResponse }
                 if http.statusCode == 401 { throw VenueAPIError.http(statusCode: 401) }
                 guard (200...299).contains(http.statusCode) else {
