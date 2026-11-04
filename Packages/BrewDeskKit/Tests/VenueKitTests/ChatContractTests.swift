@@ -327,3 +327,11 @@ final class ChatStubProtocol: URLProtocol {
         return data
     }
 }
+
+/// bd#261: chat gets its own long-timeout session; map requests keep 15 s.
+@Suite struct ChatSessionTimeoutTests {
+    @Test func chatSessionAllowsAColdStartAndAModelTurn() {
+        #expect(VenueAPI.chatSession.configuration.timeoutIntervalForRequest >= 60)
+        #expect(VenueAPI.defaultSession.configuration.timeoutIntervalForRequest == 15)
+    }
+}
