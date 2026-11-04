@@ -1,9 +1,6 @@
-• Inicia sesión con Apple o Google: tus lugares guardados ahora se sincronizan entre dispositivos
-• Miles de cafés más en Manhattan y Brooklyn, sin los locales cerrados
-• Busca en toda la ciudad: elige un resultado y el mapa vuela hasta él
-• Búsquedas recientes, justo debajo del campo de búsqueda
-• Un mapa más limpio: pines pequeños con puntuación que crecen al acercar, con el nombre junto a los mejores
-• "Buscar en esta zona" cuando te mueves a otro lugar
-• Los filtros muestran primero las coincidencias confirmadas y avisan cuando faltan datos
-• Los cafés sin valorar dicen "Sin valorar aún" en lugar de mostrar una puntuación inventada
-• Inicio de sesión más rápido, nueva animación de inicio y decenas de mejoras menores
+• Pregunta: describe el sitio que necesitas ("tranquilo y con enchufes cerca de Union Square") y recibe una respuesta basada en los datos de cafés de BrewDesk, con los lugares para tocar
+• Cada puntuación indica de dónde viene: "Según 1 visita" o "Investigado el 16 sep · 5 fuentes"
+• Bibliotecas, parques y espacios de coworking aparecen etiquetados, con un filtro por tipo de lugar
+• Las valoraciones de visitas con sesión iniciada siempre se atribuyen a tu cuenta
+• Una imagen más clara de lo que sabemos y no sabemos de cada lugar
+• Correcciones menores y carga más rápida

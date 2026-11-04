@@ -1,9 +1,6 @@
-• Sign in with Apple or Google — your saved spots now sync across devices
-• Thousands more cafés across Manhattan and Brooklyn, with closed places removed
-• Search anywhere in NYC: pick a result and the map flies straight to it
-• Recent searches, right under the search field
-• A cleaner map: small score pins that scale as you zoom, names beside the best spots
-• "Search this area" when you pan somewhere new
-• Filters now show confirmed matches first and say when details are unknown
-• Unrated cafés say "Not rated yet" instead of showing a made-up score
-• Faster sign-in, a new launch animation, and dozens of smaller fixes
+• Ask: describe the spot you need ("quiet with outlets near Union Square") and get an answer from BrewDesk's own café data, with the places to tap
+• Every score now says where it came from: "Based on 1 visit" or "Researched Sep 16 · 5 sources"
+• Libraries, parks and coworking spaces are labelled, with a Place type filter
+• Signed-in visit ratings are always credited to your account
+• A clearer picture of what we know and don't know about each place
+• Smaller fixes and faster loading
