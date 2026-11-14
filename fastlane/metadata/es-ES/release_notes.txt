@@ -1,6 +1,6 @@
 • Pregunta: describe el sitio que necesitas ("tranquilo y con enchufes cerca de Union Square") y recibe una respuesta basada en los datos de cafés de BrewDesk, con los lugares para tocar
+• Todos los cafés están ahora en el mapa: los que aún no hemos puntuado aparecen como pines grises con una taza que puedes tocar
+• Mueve el mapa a cualquier zona y los cafés se cargan solos, con más cobertura en Queens, el Bronx y Staten Island
 • Cada puntuación indica de dónde viene: "Según 1 visita" o "Investigado el 16 sep · 5 fuentes"
 • Bibliotecas, parques y espacios de coworking aparecen etiquetados, con un filtro por tipo de lugar
-• Las valoraciones de visitas con sesión iniciada siempre se atribuyen a tu cuenta
-• Una imagen más clara de lo que sabemos y no sabemos de cada lugar
 • Correcciones menores y carga más rápida
