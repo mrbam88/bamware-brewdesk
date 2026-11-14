@@ -1,0 +1,46 @@
+# Release smoke (DoD rule 7): one REAL signed-in chat against production.
+# Build 38 shipped with chat answering 502 — the tab walk alone cannot see
+# that. Credentials arrive as Maestro env (-e SMOKE_EMAIL / -e SMOKE_PASSWORD,
+# read from the vault by smoke-release.sh); nothing is stored in the repo.
+appId: io.bamware.brewdesk
+---
+- tapOn: "You"
+- tapOn:
+    id: "account-entry"
+- tapOn:
+    id: "account-sign-in-email"
+- tapOn:
+    id: "account-sign-in-email-field"
+- inputText: ${SMOKE_EMAIL}
+- pressKey: Enter
+# The keyboard covers the lower half of the form and the fields have no
+# focus chaining (bamware-ios issue filed), so scroll each one into view.
+- scrollUntilVisible:
+    element:
+      id: "account-sign-in-password-field"
+    direction: DOWN
+- tapOn:
+    id: "account-sign-in-password-field"
+- inputText: ${SMOKE_PASSWORD}
+- pressKey: Enter
+- scrollUntilVisible:
+    element:
+      id: "account-sign-in-submit"
+    direction: DOWN
+- tapOn:
+    id: "account-sign-in-submit"
+- extendedWaitUntil:
+    notVisible:
+      id: "account-sign-in-busy-overlay"
+    timeout: 30000
+- tapOn: "Ask"
+- tapOn:
+    id: "ask-input"
+- inputText: "Quiet with outlets near me"
+- tapOn:
+    id: "ask-send"
+- extendedWaitUntil:
+    visible:
+      id: "ask-reply"
+    timeout: 90000
+- takeScreenshot: ${OUT}/06-chat-reply

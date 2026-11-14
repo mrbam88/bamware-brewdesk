@@ -2,9 +2,10 @@ import MapKit
 import Testing
 @testable import BrewDeskKit
 
-/// `CafeMapScreen.radiusMeters(for:)` and `.needsSearchAreaPill(...)`
-/// (bd#192): the pure geometry/hysteresis behind the "Search this area"
-/// pill, kept separate from the gesture/state wiring in `CafeMapScreen`
+/// `CafeMapScreen.radiusMeters(for:)` (bd#192) and `.viewport(for:mapWidth:)`
+/// (bd#267): the pure geometry behind viewport fetches — the "Search this
+/// area" pill and auto-load on pan — kept separate from the gesture/state
+/// wiring in `CafeMapScreen`
 /// itself (untestable outside a running `Map`) — same split
 /// `CafeMapScreenSearchFitTests` already uses for brewdesk#158.
 struct CafeMapScreenSearchAreaTests {
@@ -40,78 +41,30 @@ struct CafeMapScreenSearchAreaTests {
         #expect(CafeMapScreen.radiusMeters(for: huge) == VenuesModel.maxRadiusM)
     }
 
-    // MARK: - needsSearchAreaPill
+    // MARK: - viewport(for:mapWidth:) (bd#267)
 
-    @Test func sameCenterAndRadiusNeedsNoPill() {
-        let loaded = region(latDelta: 0.018, lngDelta: 0.018) // radius ≈ VenuesModel.defaultRadiusM-ish
-        let needs = CafeMapScreen.needsSearchAreaPill(
-            loadedCenterLat: Self.unionSquare.latitude,
-            loadedCenterLng: Self.unionSquare.longitude,
-            loadedRadiusM: CafeMapScreen.radiusMeters(for: loaded),
-            visibleRegion: loaded
-        )
-        #expect(!needs)
+    @Test func viewportCarriesCentreRadiusShorterSideAndZoom() throws {
+        // A portrait phone window: ~1,100 m wide, ~1,670 m tall, 393 pt wide.
+        let portrait = region(latDelta: 0.015, lngDelta: 0.01304)
+        let viewport = try #require(CafeMapScreen.viewport(for: portrait, mapWidth: 393))
+        #expect(viewport.centerLat == Self.unionSquare.latitude)
+        #expect(viewport.centerLng == Self.unionSquare.longitude)
+        // Radius: half the LONGER side. Span: the SHORTER side.
+        #expect(viewport.radiusM == CafeMapScreen.radiusMeters(for: portrait))
+        #expect(viewport.radiusM > 800 && viewport.radiusM < 870)
+        #expect(viewport.spanM > 1_050 && viewport.spanM < 1_150)
+        #expect(viewport.metersPerPoint > 2.6 && viewport.metersPerPoint < 3.0)
     }
 
-    @Test func smallPanUnderThirtyFivePercentNeedsNoPill() {
-        let loadedRadius = 1000
-        // ~0.001° longitude at this latitude ≈ 84 m — under 35% of 1000 m.
-        let nearby = region(
-            center: CLLocationCoordinate2D(
-                latitude: Self.unionSquare.latitude, longitude: Self.unionSquare.longitude + 0.001
-            ),
-            latDelta: 0.018, lngDelta: 0.018
-        )
-        let needs = CafeMapScreen.needsSearchAreaPill(
-            loadedCenterLat: Self.unionSquare.latitude,
-            loadedCenterLng: Self.unionSquare.longitude,
-            loadedRadiusM: loadedRadius,
-            visibleRegion: nearby
-        )
-        #expect(!needs)
+    @Test func cityWideViewportReportsAZoomPastTheAutoLoadLimit() throws {
+        // ~17.7 km across a 393 pt map ≈ 45 m/pt.
+        let cityWide = region(latDelta: 0.32, lngDelta: 0.21)
+        let viewport = try #require(CafeMapScreen.viewport(for: cityWide, mapWidth: 393))
+        #expect(viewport.metersPerPoint > VenuesModel.autoLoadMaxMetersPerPoint)
+        #expect(viewport.radiusM == VenuesModel.maxRadiusM)
     }
 
-    @Test func panPastThirtyFivePercentNeedsThePill() {
-        let loadedRadius = 1000
-        // ~0.01° longitude at this latitude ≈ 843 m — past 35% of 1000 m.
-        let farAway = region(
-            center: CLLocationCoordinate2D(
-                latitude: Self.unionSquare.latitude, longitude: Self.unionSquare.longitude + 0.01
-            ),
-            latDelta: 0.018, lngDelta: 0.018
-        )
-        let needs = CafeMapScreen.needsSearchAreaPill(
-            loadedCenterLat: Self.unionSquare.latitude,
-            loadedCenterLng: Self.unionSquare.longitude,
-            loadedRadiusM: loadedRadius,
-            visibleRegion: farAway
-        )
-        #expect(needs)
-    }
-
-    @Test func zoomOutPastTwiceTheRadiusNeedsThePill() {
-        // Loaded at a 500 m radius; the visible region now implies ~1500 m.
-        let loadedRadius = 500
-        let zoomedOut = region(latDelta: 0.027, lngDelta: 0.027)
-        let needs = CafeMapScreen.needsSearchAreaPill(
-            loadedCenterLat: Self.unionSquare.latitude,
-            loadedCenterLng: Self.unionSquare.longitude,
-            loadedRadiusM: loadedRadius,
-            visibleRegion: zoomedOut
-        )
-        #expect(needs)
-    }
-
-    @Test func zoomInPastHalfTheRadiusNeedsThePill() {
-        // Loaded at a 2000 m radius; the visible region now implies ~500 m.
-        let loadedRadius = 2000
-        let zoomedIn = region(latDelta: 0.009, lngDelta: 0.009)
-        let needs = CafeMapScreen.needsSearchAreaPill(
-            loadedCenterLat: Self.unionSquare.latitude,
-            loadedCenterLng: Self.unionSquare.longitude,
-            loadedRadiusM: loadedRadius,
-            visibleRegion: zoomedIn
-        )
-        #expect(needs)
+    @Test func noViewportBeforeTheMapHasASize() {
+        #expect(CafeMapScreen.viewport(for: region(latDelta: 0.015, lngDelta: 0.013), mapWidth: 0) == nil)
     }
 }

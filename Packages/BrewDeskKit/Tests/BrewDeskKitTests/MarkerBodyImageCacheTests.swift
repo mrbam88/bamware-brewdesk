@@ -124,4 +124,44 @@ struct MarkerBodyImageCacheTests {
         // dark-map equivalent above.
         #expect(sample.g < 140, "light-map top-tier head centre green channel \(sample.g) reads too bright for the dark #1C5243 ramp")
     }
+
+    /// bd#265: the unrated cup pin comes out of the SAME raster cache — a
+    /// padded, transparent-cornered image whose head is a neutral grey with
+    /// a white cup in it, never a tier color, in both appearances.
+    @Test func unratedPinRasterIsNeutralWithAWhiteGlyphAndTransparentCorners() throws {
+        for isDark in [true, false] {
+            for diameter: CGFloat in [11, 12, 18.5, MapAnnotationPlanner.selectedDiameter] {
+                let image = MarkerBodyImageCache.image(score: 0, diameter: diameter, isDark: isDark, isUnrated: true)
+                let cgImage = try #require(image.cgImage)
+                #expect(pixel(image, x: 0, y: 0)?.a == 0)
+                #expect(pixel(image, x: cgImage.width - 1, y: cgImage.height - 1)?.a == 0)
+                let scale = image.scale
+                let padding = MarkerBodyImageCache.bodyRasterPadding
+                // Scan the head: grey body pixels (low chroma) and at least
+                // some near-white glyph pixels, nothing saturated.
+                var whiteCount = 0
+                var greyCount = 0
+                let minX = Int(padding * scale), maxX = Int((padding + diameter) * scale)
+                let minY = Int(padding * scale), maxY = Int((padding + diameter) * scale)
+                for y in stride(from: minY, to: maxY, by: 1) {
+                    for x in stride(from: minX, to: maxX, by: 1) {
+                        guard let p = pixel(image, x: x, y: y), p.a == 255 else { continue }
+                        let chroma = Int(max(p.r, p.g, p.b)) - Int(min(p.r, p.g, p.b))
+                        #expect(chroma < 40, "unrated raster has a saturated pixel \(p) at (\(x),\(y))")
+                        if p.r > 235, p.g > 235, p.b > 235 { whiteCount += 1 } else { greyCount += 1 }
+                    }
+                }
+                #expect(greyCount > whiteCount, "the head should be mostly neutral body")
+                #expect(whiteCount > 0, "no white cup glyph drawn at diameter \(diameter) isDark \(isDark)")
+            }
+        }
+    }
+
+    @Test func unratedAndRatedRastersAreDistinctCacheEntries() {
+        let rated = MarkerBodyImageCache.image(score: 0, diameter: 12, isDark: false)
+        let unrated = MarkerBodyImageCache.image(score: 0, diameter: 12, isDark: false, isUnrated: true)
+        #expect(rated !== unrated)
+        #expect(unrated === MarkerBodyImageCache.image(score: 95, diameter: 12, isDark: false, isUnrated: true),
+                "an unrated pin's raster must not depend on its fallback score")
+    }
 }

@@ -243,6 +243,19 @@ public struct CafeMapScreen: View {
     /// frame in `.global` coordinates — `.zero` whenever no sheet is up.
     @State private var detailSheetGlobalFrame: CGRect = .zero
     @State private var searchAreaPillFrame: CGRect?
+    /// bd#265: the Map's own layout frame, in `Self.mapPlaneSpace`. The
+    /// header and shelf are safe-area insets, so this "window" is SHORTER
+    /// than the plane `mapSize` measures (the map still draws full-bleed
+    /// behind both) — and `visibleRegion` describes only this window
+    /// (`cameraRegion`'s `.local` space and MapKit's own `context.region`
+    /// agree on that). Projecting that region onto the taller `mapSize`, as
+    /// the planner did, stretched every vertical distance (×1.67 on an
+    /// iPhone 17 at the medium detent): pins the planner believed were a
+    /// pin-height apart drew on top of each other, and chrome exclusion
+    /// rects landed at the wrong height. Harmless-looking with a handful of
+    /// rated pins; obvious with 60 unrated ones. `planRegion` below
+    /// re-expresses `visibleRegion` over the full plane.
+    @State private var mapWindowFrame: CGRect = .zero
     @State private var locateButtonFrame: CGRect = .zero
     @State private var shelfFrame: CGRect = .zero
     /// Named coordinate space for the chrome-exclusion measurements above —
@@ -264,29 +277,18 @@ public struct CafeMapScreen: View {
 
     public var body: some View {
         let plan = cachedPlan()
-        // bd#192: purely derived from state already tracked elsewhere —
-        // `isSearchingThisArea` keeps the pill (with its progress state) up
-        // through the tap's own fetch, and once that clears, the pill's
-        // visibility falls straight out of comparing the settled
-        // `visibleRegion` against what `model` actually last queried. No
-        // separate "hide after fetch" flag: `searchThisArea()` updates
-        // `model`'s center/radius to match the region it fetched for, so
-        // the comparison naturally goes false the moment that lands.
-        // bd#200: a text search already re-queries city-wide on its own —
-        // the "Search this area" pill (a LOCAL viewport re-fetch) would be a
-        // confusing second, unrelated affordance while one's in flight.
-        // bd#210: `userHasMovedCamera` gates the whole thing — a
-        // center/radius mismatch from a PROGRAMMATIC move (first GPS fix,
-        // "Browse NYC", search fit, locate-me) must never show this with no
-        // actual gesture; see the property's own doc comment.
-        let showSearchAreaPill = userHasMovedCamera && model.searchQuery.isEmpty && (isSearchingThisArea || visibleRegion.map {
-            Self.needsSearchAreaPill(
-                loadedCenterLat: model.centerLat,
-                loadedCenterLng: model.centerLng,
-                loadedRadiusM: model.radiusM,
-                visibleRegion: $0
-            )
-        } == true)
+        // bd#267: cafés now load on their own when the camera comes to rest
+        // somewhere new (`cameraCameToRest` → `VenuesModel.cameraSettled`),
+        // so the "Search this area" pill (bd#192) is only the manual
+        // fallback: shown when that automatic fetch failed, or when the map
+        // is zoomed out too far for one. `isSearchingThisArea` keeps it up
+        // (with its progress state) through the tap's own fetch.
+        // bd#200: never during a text search — that already re-queries
+        // city-wide on its own.
+        // bd#210: `userHasMovedCamera` still gates the whole thing — the
+        // pill can never show before a real drag/pinch/double-tap.
+        let showSearchAreaPill = userHasMovedCamera && model.searchQuery.isEmpty
+            && (isSearchingThisArea || model.autoLoadFailed || model.autoLoadBlockedByZoom)
         // Camera tracking (brewdesk#54 / PR #61): the region is recovered on
         // demand — a gesture ending schedules one debounced `MapProxy` corner
         // conversion after momentum settles, and programmatic moves (cluster
@@ -325,7 +327,8 @@ public struct CafeMapScreen: View {
                                 venue: selected,
                                 kind: .teardrop(diameter: MapAnnotationPlanner.selectedDiameter),
                                 showsNumber: selected.isRated,
-                                isSelected: true
+                                isSelected: true,
+                                isUnrated: !selected.isRated
                             ))
                         }
                     }
@@ -353,8 +356,17 @@ public struct CafeMapScreen: View {
                 .onChange(of: appleFeatureSelection) { _, newValue in
                     handleAppleFeatureSelection(newValue)
                 }
+                // bd#265: where the Map's own layout frame sits inside the
+                // map plane — see `mapWindowFrame`'s doc comment.
+                .onGeometryChange(for: CGRect.self) { proxy in
+                    proxy.frame(in: .named(Self.mapPlaneSpace))
+                } action: { frame in
+                    mapWindowFrame = frame
+                }
                 .onMapCameraChange(frequency: .onEnd) { context in
                     refreshVisibleRegion(context.region)
+                    // bd#267: the one signal auto-load listens to.
+                    cameraCameToRest(context.region)
                     // bd#217: `mapHeading` change alone must still trigger a
                     // re-plan (a rotate-only gesture with no pan/zoom would
                     // otherwise leave `visibleRegion` — and so the memoized
@@ -366,6 +378,7 @@ public struct CafeMapScreen: View {
                     DragGesture(minimumDistance: 1)
                         .onChanged { _ in
                             mapInteraction.isActive = true
+                            mapInteraction.userDrivenCamera = true
                             stopTrackingUserLocation()
                             // bd#219 (supervisor 2nd revision): "authoritative
                             // until the user next gestures" — a real drag
@@ -383,6 +396,7 @@ public struct CafeMapScreen: View {
                     MagnifyGesture()
                         .onChanged { _ in
                             mapInteraction.isActive = true
+                            mapInteraction.userDrivenCamera = true
                             stopTrackingUserLocation()
                             flyTarget = nil
                         }
@@ -396,6 +410,7 @@ public struct CafeMapScreen: View {
                 .simultaneousGesture(
                     TapGesture(count: 2)
                         .onEnded {
+                            mapInteraction.userDrivenCamera = true
                             stopTrackingUserLocation()
                             userHasMovedCamera = true
                             flyTarget = nil
@@ -411,10 +426,10 @@ public struct CafeMapScreen: View {
                     DragGesture(minimumDistance: 0)
                         .onChanged { _ in searchFocused = false }
                 )
-                // bd#212 (supervisor revision): `.dot`/`.speck` markers are
+                // bd#212 (supervisor revision): `.dot` markers are
                 // native `MapCircle` overlays, not SwiftUI buttons, so they
                 // need their own tap dispatch — nearest marker within 22pt
-                // of the touch, rated (dot) preferred over unrated (speck).
+                // of the touch, rated dots preferred over unrated ones.
                 // `SpatialTapGesture` is simultaneous with every gesture
                 // above, so it never blocks panning/zooming/Apple-label
                 // selection; it only acts when the tap actually lands near
@@ -606,6 +621,7 @@ public struct CafeMapScreen: View {
                             span: MKCoordinateSpan(latitudeDelta: 0.012, longitudeDelta: 0.012)
                         )
                         logPositionWrite("plainBrowsingTap", region: browseRegion)
+                        mapInteraction.userDrivenCamera = false
                         position = .region(browseRegion)
                     }
                 },
@@ -765,6 +781,9 @@ public struct CafeMapScreen: View {
         // its selected pin stay visible above the sheet (`.large` is still
         // one drag away).
         .onChange(of: selected) { _, newValue in
+            // bd#267: a camera rest right around a detail sheet opening or
+            // closing is the sheet's doing, not a pan.
+            mapInteraction.lastSheetTransition = Date()
             guard newValue != nil else { return }
             if searchDrivenSelection, !dynamicTypeSize.isAccessibilitySize {
                 detailDetent = .medium
@@ -800,6 +819,11 @@ public struct CafeMapScreen: View {
             if newValue != searchSubmittedQuery {
                 searchSubmittedQuery = nil
             }
+        }
+        // bd#267: starting to edit the search field drops an auto fetch
+        // still waiting out its debounce — nothing reloads under a search.
+        .onChange(of: searchFocused) { _, focused in
+            if focused { model.cancelPendingAutoLoad() }
         }
         .onChange(of: model.centerLat) {
             applyCenterChange()
@@ -870,6 +894,7 @@ public struct CafeMapScreen: View {
                 let span = metersPerPoint * Double(assumedWidth) / metersPerDegreeLng
                 let region = Self.region(lat: model.centerLat, lng: model.centerLng, span: span)
                 logPositionWrite("debugInitialMetersPerPoint", region: region)
+                mapInteraction.userDrivenCamera = false
                 position = .region(region)
                 visibleRegion = region
             }
@@ -907,6 +932,13 @@ public struct CafeMapScreen: View {
         // accessibility label should announce "Library"/"Park"/"Coworking"
         // too, not just the shelf's rail card.
         return "\(venue.name), \(score), \(venue.neighborhood)" + accessibilityTypeSuffix(venue.typeBadge)
+    }
+
+    /// bd#265: an unrated cup pin reads as "<name>, not rated yet" — plus
+    /// the venue-type suffix for a non-café (empty for a café), same as
+    /// `pinLabel(for:)`.
+    static func unratedPinLabel(for venue: Venue) -> String {
+        "\(venue.name), not rated yet" + accessibilityTypeSuffix(venue.typeBadge)
     }
 
     // MARK: - Search-driven camera fit (brewdesk#158)
@@ -1062,7 +1094,7 @@ public struct CafeMapScreen: View {
             visibleRegion = region
             stopTrackingUserLocation()
             // bd#210: a search fit is programmatic, not a gesture.
-            userHasMovedCamera = false
+            markProgrammaticCameraMove()
             logPositionWrite("scheduleSearchFit", region: region)
             if reduceMotion {
                 position = .region(region)
@@ -1198,6 +1230,8 @@ public struct CafeMapScreen: View {
     private func selectSearchResult(_ venue: Venue) {
         searchFitTask?.cancel()
         flyCorrectionTask?.cancel()
+        // bd#267: the fly-to below loads its own surroundings.
+        model.cancelPendingAutoLoad()
         searchSelectionQuery = model.searchQuery
         // bd#223: a selection is one-shot — it must never leave a stale arm
         // behind for `shouldApplySearchFit` to (re-)act on if the user later
@@ -1228,7 +1262,7 @@ public struct CafeMapScreen: View {
         // A search selection is a programmatic move, not a gesture — same
         // convention every other programmatic camera move in this file
         // follows (bd#210): the "Search this area" pill must stay gated off.
-        userHasMovedCamera = false
+        markProgrammaticCameraMove()
 
         // First-pass ESTIMATE, applied immediately (before the `.medium`
         // sheet has actually presented) so the camera starts moving right
@@ -1380,7 +1414,7 @@ public struct CafeMapScreen: View {
             model.updateViewport(
                 lat: venue.lat, lng: venue.lng, radiusM: Self.radiusMeters(for: region)
             )
-            userHasMovedCamera = false
+            markProgrammaticCameraMove()
             // bd#219: `updateViewport` changes `model.request`, which loads
             // new surroundings and so changes `model.venues` — and THIS
             // screen's own `.onChange(of: model.venues)` unconditionally
@@ -1507,11 +1541,8 @@ public struct CafeMapScreen: View {
         // the center is already `model.centerLat/Lng` (this IS the user),
         // so only the radius actually changes here, from whatever the last
         // viewport query used to the walking-zoom radius this camera move
-        // lands on. Keeps the pill's own comparison in sync too: without
-        // this, a locate tap coming from a much-wider or much-tighter last
-        // query would leave `needsSearchAreaPill` true and the pill would
-        // reappear right after a locate move, which is the one thing the
-        // ticket says must never happen.
+        // lands on, so the loaded viewport auto-load (bd#267) compares the
+        // next pan against is the one this camera move actually shows.
         //
         // bd#198: `model.centerOnUser`, NOT `model.updateViewport` — the
         // latter would mark the result `.exploredViewport` and stop
@@ -1524,7 +1555,7 @@ public struct CafeMapScreen: View {
         // bd#210: an explicit locate-me tap is a programmatic move, not a
         // gesture — resets the "Search this area" pill's gate the same way
         // `applyCenterChange()`'s other programmatic moves do.
-        userHasMovedCamera = false
+        markProgrammaticCameraMove()
         logPositionWrite("centerOnUser", region: region)
         if reduceMotion {
             position = .region(region)
@@ -1602,8 +1633,7 @@ public struct CafeMapScreen: View {
         // below — `updateCenterIfNeeded` (the passive path this reacts to)
         // never had a radius to carry, so without this the first fetch after
         // a fix stayed at `defaultRadiusM` while the camera opened much
-        // tighter, which alone made `needsSearchAreaPill` see a spurious
-        // >2× radius "change" with no gesture involved.
+        // tighter — a spurious zoom "change" with no gesture involved.
         if model.centerSource == .userLocation {
             model.syncRadiusToCamera(Self.radiusMeters(for: region))
         }
@@ -1611,7 +1641,7 @@ public struct CafeMapScreen: View {
         // "Browse NYC" via `browseCoverageCenter()` — both land here since
         // neither is `.exploredViewport`), never a gesture — the pill must
         // stay gated off until a real drag/pinch/double-tap sets it back.
-        userHasMovedCamera = false
+        markProgrammaticCameraMove()
         logPositionWrite("applyCenterChange(centerSource=\(model.centerSource))", region: region)
         position = .region(region)
         visibleRegion = region
@@ -1698,11 +1728,14 @@ public struct CafeMapScreen: View {
         searchAreaFetchTask?.cancel()
         isSearchingThisArea = true
         stopTrackingUserLocation()
-        model.updateViewport(
+        let viewportChanged = model.updateViewport(
             lat: visibleRegion.center.latitude,
             lng: visibleRegion.center.longitude,
             radiusM: Self.radiusMeters(for: visibleRegion)
         )
+        // bd#267: after a failed auto fetch the model already points at
+        // this viewport, so there is no change to dispatch — re-ask instead.
+        if !viewportChanged { model.retry() }
         // Polls rather than observes — see `isSearchingThisArea`'s doc
         // comment for why a `.onChange(of: model.phase)` handler can miss
         // a fast fixture/scenario fetch entirely. Bounded so a genuinely
@@ -1739,26 +1772,56 @@ public struct CafeMapScreen: View {
         return Int(clamped.rounded())
     }
 
-    /// The pill's own hysteresis (bd#192) — deliberately distinct from
-    /// `needsReplan` below: that one decides when to recompute annotations
-    /// for the SAME result set on every settle; this one decides whether
-    /// the loaded result set might itself be stale for the new viewport,
-    /// checked against `model`'s last-queried center/radius rather than an
-    /// annotation-culling margin. True once the settled region's center has
-    /// moved more than 35% of the loaded radius, or the region's own
-    /// radius-equivalent has changed by more than 2× in either direction.
-    static func needsSearchAreaPill(
-        loadedCenterLat: Double, loadedCenterLng: Double, loadedRadiusM: Int,
-        visibleRegion: MKCoordinateRegion
-    ) -> Bool {
-        guard loadedRadiusM > 0 else { return true }
-        let movedM = VenuesModel.metersBetween(
-            loadedCenterLat, loadedCenterLng,
-            visibleRegion.center.latitude, visibleRegion.center.longitude
+    // MARK: - Auto-load on pan/zoom (bd#267)
+
+    /// Every camera rest MapKit reports lands here. The decision itself —
+    /// threshold, debounce, rate limit, cancellation — lives in
+    /// `VenuesModel.cameraSettled`; this only says where the camera is and
+    /// whether the view knows a reason not to fetch.
+    private func cameraCameToRest(_ region: MKCoordinateRegion) {
+        guard let viewport = Self.viewport(for: region, mapWidth: mapSize.width) else { return }
+        model.cameraSettled(viewport, suppressed: isAutoLoadSuppressed)
+    }
+
+    /// Never auto-fetch for a camera move the user's own finger didn't
+    /// make (first GPS fix, locate-me, search fit, a shelf-row recenter),
+    /// while the search field is being edited, while a search-selection
+    /// fly-to is authoritative (`flyTarget`, bd#219), or while a detail
+    /// sheet is up or was presented/dismissed a moment ago.
+    private var isAutoLoadSuppressed: Bool {
+        !mapInteraction.userDrivenCamera
+            || searchFocused
+            || flyTarget != nil
+            || selected != nil
+            || appleFeatureCandidate != nil
+            || Date().timeIntervalSince(mapInteraction.lastSheetTransition) < Self.sheetTransitionGrace
+    }
+
+    private static let sheetTransitionGrace: TimeInterval = 0.5
+
+    /// Resets both "the user moved the map" flags: the pill's gate (bd#210)
+    /// and auto-load's (bd#267). Called by every programmatic camera move.
+    private func markProgrammaticCameraMove() {
+        userHasMovedCamera = false
+        mapInteraction.userDrivenCamera = false
+    }
+
+    /// A settled MapKit region as the model's `MapViewport`: the query
+    /// radius it implies, its shorter visible side, and its zoom in metres
+    /// per point. `nil` until the map has a real size.
+    static func viewport(for region: MKCoordinateRegion, mapWidth: CGFloat) -> MapViewport? {
+        guard mapWidth > 0, region.span.latitudeDelta > 0, region.span.longitudeDelta > 0 else { return nil }
+        let metersPerDegreeLat = 111_320.0
+        let metersPerDegreeLng = metersPerDegreeLat * cos(region.center.latitude * .pi / 180)
+        let heightM = region.span.latitudeDelta * metersPerDegreeLat
+        let widthM = region.span.longitudeDelta * abs(metersPerDegreeLng)
+        return MapViewport(
+            centerLat: region.center.latitude,
+            centerLng: region.center.longitude,
+            radiusM: radiusMeters(for: region),
+            spanM: min(heightM, widthM),
+            metersPerPoint: widthM / Double(mapWidth)
         )
-        let candidateRadiusM = Double(radiusMeters(for: visibleRegion))
-        let radiusRatio = candidateRadiusM / Double(loadedRadiusM)
-        return movedM > Double(loadedRadiusM) * 0.35 || radiusRatio > 2 || radiusRatio < 0.5
     }
 
     /// The region between the map view's corners, via `MapProxy`.
@@ -1797,9 +1860,12 @@ public struct CafeMapScreen: View {
         // not implied by `venues` alone, or a filter change with no venue-
         // set change would silently reuse a stale plan.
         let unknownVenueIDs = Set(model.unknownVenues.map(\.id))
+        let planRegion = visibleRegion.map {
+            Self.planeRegion(windowRegion: $0, windowFrame: mapWindowFrame, planeSize: mapSize)
+        }
         let key = PlanCacheKey(
             venues: model.venues,
-            region: visibleRegion.map(RegionSnapshot.init),
+            region: planRegion.map(RegionSnapshot.init),
             mapSize: mapSize,
             selectedID: selected?.id,
             exclusionRects: exclusionRects,
@@ -1810,12 +1876,12 @@ public struct CafeMapScreen: View {
         }
         let plan = MapAnnotationPlanner.plan(
             venues: model.venues,
-            region: visibleRegion,
+            region: planRegion,
             mapSize: mapSize,
             selectedVenueID: selected?.id,
             exclusionRects: exclusionRects,
             // bd#222: confirmed venues render as normal pins, unknowns as
-            // faint specks, excluded hidden entirely (`model.venues` never
+            // neutral dots, excluded hidden entirely (`model.venues` never
             // includes them — `VenueFilter.matches`). Empty, a no-op, while
             // no filter is active.
             forcedUnratedVenueIDs: unknownVenueIDs
@@ -1880,14 +1946,17 @@ public struct CafeMapScreen: View {
         )
     }
 
-    /// bd#212 (supervisor revision): only numbered TEARDROPS are real
+    /// bd#212 (supervisor revision): only TEARDROPS are real
     /// SwiftUI `Annotation`s — `id: \.id` (the venue id) keeps a size/
     /// selection change an in-place update of the SAME hosted annotation
-    /// view rather than a remove+insert. Demoted dots and unrated specks
-    /// are native `MapCircle` overlay content (`mapCircles(for:)`) — the
+    /// view rather than a remove+insert. Demoted dots and overflow unrated
+    /// dots are native `MapCircle` overlay content (`mapCircles(for:)`) — the
     /// perf fix for #211's stalls: hosting every one of ~150-200 unrated
     /// venues as a SwiftUI annotation view (each wrapped in a 44pt Button)
-    /// was the real cost, not view type churn.
+    /// was the real cost, not view type churn. bd#265 brings back a CAPPED
+    /// number of unrated venues as real pins
+    /// (`MapAnnotationPlanner.maxUnratedPins`), inside the total the pan
+    /// measurement already covers.
     /// bd#221: `anchor` is no longer always `.bottom` — a teardrop carrying
     /// a name label reports WIDER content (the label is a real `HStack`
     /// sibling now, not an overflow overlay MapKit never measured; see
@@ -1903,9 +1972,9 @@ public struct CafeMapScreen: View {
         }
     }
 
-    /// bd#212 (supervisor revision): demoted rated venues and unrated
-    /// specks, drawn as cheap native `MapCircle`s — MapKit's own overlay
-    /// primitive, never a hosted SwiftUI view.
+    /// bd#212 (supervisor revision): demoted rated venues and overflow
+    /// unrated venues, drawn as cheap native `MapCircle`s — MapKit's own
+    /// overlay primitive, never a hosted SwiftUI view.
     ///
     /// Radius is derived from the LIVE metres-per-point, not a bare fixed
     /// metres constant: a pure fixed radius (the supervisor's own starting
@@ -1915,20 +1984,25 @@ public struct CafeMapScreen: View {
     /// closer zoom — a 5m dot at 7.2 m/pt is well under 1pt on screen,
     /// which undersells the "4pt dot" visual target that same zoom level
     /// is supposed to read as. Scaling the radius by the settled mpp keeps
-    /// a dot/speck's ON-SCREEN size roughly constant across zoom levels —
+    /// a dot's ON-SCREEN size roughly constant across zoom levels —
     /// still a cheap native overlay, just sized to actually be seen.
     @MapContentBuilder
     private func mapCircles(for plan: MapAnnotationPlan) -> some MapContent {
         let mpp = visibleRegion.map { MapAnnotationPlanner.metersPerPoint(region: $0, mapWidth: mapSize.width) } ?? 3.3
         let dotRadius = Self.dotRadiusMeters(forMetersPerPoint: mpp)
-        let speckRadius = Self.speckRadiusMeters(forMetersPerPoint: mpp)
+        let unratedRadius = Self.unratedDotRadiusMeters(forMetersPerPoint: mpp)
+        // bd#265: unrated dots no longer vanish at 5 m/pt — full strength
+        // to 12 m/pt, then a linear fade (the planner stops emitting them
+        // where this reaches zero).
+        let unratedFill = BrewDeskPalette.markerUnratedDotFill
+            .opacity(MapAnnotationPlanner.unratedDotOpacity(forMetersPerPoint: mpp))
         ForEach(plan.dots) { placement in
             MapCircle(center: coordinate(of: placement.venue), radius: dotRadius)
                 .foregroundStyle(BrewDeskPalette.markerFill(score: placement.venue.workScore))
         }
-        ForEach(plan.specks) { placement in
-            MapCircle(center: coordinate(of: placement.venue), radius: speckRadius)
-                .foregroundStyle(BrewDeskPalette.markerSpeckFill)
+        ForEach(plan.unratedDots) { placement in
+            MapCircle(center: coordinate(of: placement.venue), radius: unratedRadius)
+                .foregroundStyle(unratedFill)
         }
     }
 
@@ -1943,22 +2017,23 @@ public struct CafeMapScreen: View {
     }
 
     /// Same shape as `dotRadiusMeters(forMetersPerPoint:)`, a touch smaller
-    /// (~2.6pt apparent diameter) so an unrated speck stays visually
-    /// subordinate to a rated dot at the same zoom (supervisor spec: "~3-4
-    /// m radius").
-    private static func speckRadiusMeters(forMetersPerPoint mpp: Double) -> CLLocationDistance {
-        min(max(1.3 * mpp, 2.0), 10.0)
+    /// (~3pt apparent diameter) so an unrated dot stays visually
+    /// subordinate to a rated dot at the same zoom. The upper clamp covers
+    /// the whole range unrated dots now draw in (bd#265: out to
+    /// `MapAnnotationPlanner.unratedDotHiddenMetersPerPoint`).
+    private static func unratedDotRadiusMeters(forMetersPerPoint mpp: Double) -> CLLocationDistance {
+        min(max(1.5 * mpp, 2.0), 1.5 * MapAnnotationPlanner.unratedDotHiddenMetersPerPoint)
     }
-    /// Screen-point radius a tap must land within to select a `.dot`/
-    /// `.speck` marker (supervisor spec: "nearest venue within 22pt").
+    /// Screen-point radius a tap must land within to select a `.dot`
+    /// marker (supervisor spec: "nearest venue within 22pt").
     private static let mapCircleTapRadius: CGFloat = 22
 
-    /// bd#212 (supervisor revision): `.dot`/`.speck` markers have no
+    /// bd#212 (supervisor revision): `.dot` markers have no
     /// SwiftUI button of their own to catch a tap (they're `MapCircle`
     /// overlays), so a tap anywhere on the map is checked against every
-    /// dot/speck's SCREEN position (via `MapProxy.convert(_:to:)`) and the
-    /// nearest one within `mapCircleTapRadius` wins — rated (dot) preferred
-    /// over unrated (speck) at an equal distance, matching the spec's "nearest
+    /// dot's SCREEN position (via `MapProxy.convert(_:to:)`) and the
+    /// nearest one within `mapCircleTapRadius` wins — rated preferred
+    /// over unrated at an equal distance, matching the spec's "nearest
     /// marker … preferring rated over unrated." A miss (nothing within
     /// range) is a no-op, so a plain map tap still reaches Apple's own
     /// base-map label selection untouched.
@@ -1978,8 +2053,8 @@ public struct CafeMapScreen: View {
         }
         if let (dot, _) = nearest(in: plan.dots) {
             selected = dot.venue
-        } else if let (speck, _) = nearest(in: plan.specks) {
-            selected = speck.venue
+        } else if let (dot, _) = nearest(in: plan.unratedDots) {
+            selected = dot.venue
         }
     }
 
@@ -1998,7 +2073,7 @@ public struct CafeMapScreen: View {
         }
     }
 
-    /// bd#212: the button a numbered TEARDROP uses (dots/specks are native
+    /// bd#212: the button a TEARDROP uses (dots are native
     /// `MapCircle` overlays with no button of their own — see
     /// `handleMapCircleTap`). The min-44pt frame is attached to the BUTTON,
     /// not baked into `TeardropMarkerView`'s own layout, so even the
@@ -2019,7 +2094,9 @@ public struct CafeMapScreen: View {
         // from the venue's true coordinate.
         .frame(minWidth: 44, minHeight: 44, alignment: .bottom)
         .contentShape(Rectangle())
-        .accessibilityLabel(Self.pinLabel(for: placement.venue))
+        .accessibilityLabel(
+            placement.isUnrated ? Self.unratedPinLabel(for: placement.venue) : Self.pinLabel(for: placement.venue)
+        )
         .accessibilityValue(placement.isSelected ? "Selected" : "Not selected")
         .accessibilityAddTraits(placement.isSelected ? .isSelected : [])
         // bd#219 UI-test seam: a dedicated identifier for the SELECTED
@@ -2256,7 +2333,10 @@ public struct CafeMapScreen: View {
                 }
 
                 HStack {
-                    Text(ratedCafeCountLine)
+                    // bd#267: the same line, in the same style, says so
+                    // while an auto fetch is on the wire — no spinner, no
+                    // overlay, nothing that changes the header's height.
+                    Text(model.isAutoLoading ? String(localized: "Loading cafés…") : ratedCafeCountLine)
                         .font(.caption.bold())
                         .lineLimit(1)
                         .layoutPriority(1)
@@ -2356,10 +2436,41 @@ public struct CafeMapScreen: View {
         searchFocused || !model.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// bd#265: `windowRegion` (what the camera shows inside the Map's own
+    /// layout frame, `windowFrame`, measured in the map plane) re-expressed
+    /// as the region the WHOLE plane (`planeSize`, origin at the plane's
+    /// top-left) covers — the space the planner projects into and the
+    /// chrome exclusion rects are measured in. A straight linear
+    /// extension at the window's own degrees-per-point; the identity when
+    /// the window already is the plane, and when either hasn't been
+    /// measured yet.
+    static func planeRegion(windowRegion: MKCoordinateRegion, windowFrame: CGRect, planeSize: CGSize) -> MKCoordinateRegion {
+        guard windowFrame.width > 0, windowFrame.height > 0, planeSize.width > 0, planeSize.height > 0 else {
+            return windowRegion
+        }
+        let latPerPoint = windowRegion.span.latitudeDelta / Double(windowFrame.height)
+        let lngPerPoint = windowRegion.span.longitudeDelta / Double(windowFrame.width)
+        let topLat = windowRegion.center.latitude + windowRegion.span.latitudeDelta / 2 + Double(windowFrame.minY) * latPerPoint
+        let leftLng = windowRegion.center.longitude - windowRegion.span.longitudeDelta / 2 - Double(windowFrame.minX) * lngPerPoint
+        let latDelta = Double(planeSize.height) * latPerPoint
+        let lngDelta = Double(planeSize.width) * lngPerPoint
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: topLat - latDelta / 2, longitude: leftLng + lngDelta / 2),
+            span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lngDelta)
+        )
+    }
+
     /// A new plan is needed once the camera leaves what the current plan's
     /// culling margin (`MapAnnotationPlanner.cullMargin`) already annotated:
     /// the center moved by more than a quarter span, or the zoom changed
     /// meaningfully. Anything less keeps the existing annotations untouched.
+    ///
+    /// bd#265: the zoom band is ±10% (was 0.75…1.33). Pin spacing is only
+    /// collision-free at the zoom it was planned for — a plan made while a
+    /// fly-to was still zooming (venues landing mid-animation) and then
+    /// kept through a 30% zoom-out drew the new, denser unrated pins on top
+    /// of each other. This still runs once per SETTLED gesture, never
+    /// mid-gesture, and a pan alone never trips it.
     static func needsReplan(from current: MKCoordinateRegion?, to next: MKCoordinateRegion) -> Bool {
         guard let current else { return true }
         let latMove = abs(next.center.latitude - current.center.latitude)
@@ -2368,7 +2479,7 @@ public struct CafeMapScreen: View {
         let spanRatio = next.span.latitudeDelta / current.span.latitudeDelta
         return latMove > current.span.latitudeDelta * 0.25
             || lngMove > current.span.longitudeDelta * 0.25
-            || spanRatio < 0.75 || spanRatio > 1.33
+            || spanRatio < 0.9 || spanRatio > 1.1
     }
 
     /// The screen's original camera span (Browse NYC fallback, and every
@@ -2406,6 +2517,12 @@ public struct CafeMapScreen: View {
 @MainActor
 private final class MapInteractionFlag {
     var isActive = false
+    /// bd#267: the camera's last move was the user's own drag/pinch/
+    /// double-tap — set on the gesture's first frame, cleared by every
+    /// programmatic camera move. Only a user-driven rest may auto-load.
+    var userDrivenCamera = false
+    /// bd#267: when a detail sheet last opened or closed.
+    var lastSheetTransition = Date.distantPast
 }
 
 /// Prominent "center on me" control (bd#185), replacing the stock
