@@ -210,16 +210,63 @@ struct MarkerPaletteTests {
                 "light map label \((lr, lg, lb)) does not match #1C5243")
     }
 
-    @Test func speckFillIsNeutralNeverTierColored() {
-        // A speck's fill must not shift hue with score — it isn't even
-        // score-driven (unrated venues have no score to color by), but this
-        // also guards against ever accidentally wiring `markerFill` into
-        // the speck path.
-        let light = rgb(BrewDeskPalette.markerSpeckFill, style: .light)
-        let dark = rgb(BrewDeskPalette.markerSpeckFill, style: .dark)
+    @Test func unratedDotFillIsNeutralNeverTierColored() {
+        // An unrated dot's fill must not shift hue with score — it isn't
+        // even score-driven (unrated venues have no score to color by), but
+        // this also guards against ever accidentally wiring `markerFill`
+        // into the unrated path.
+        let light = rgb(BrewDeskPalette.markerUnratedDotFill, style: .light)
+        let dark = rgb(BrewDeskPalette.markerUnratedDotFill, style: .dark)
         // Achromatic (r≈g≈b) within a small tolerance — never a saturated
         // green like the rated ramp.
         #expect(abs(light.r - light.g) < 0.03 && abs(light.g - light.b) < 0.03)
         #expect(abs(dark.r - dark.g) < 0.03 && abs(dark.g - dark.b) < 0.03)
+    }
+
+    // MARK: - bd#265: the unrated cup pin
+
+    /// The white cup glyph must clear WCAG's 3:1 graphics threshold against
+    /// the neutral body — at the fill itself AND at the lighter top of its
+    /// gradient, in both map appearances.
+    @Test func unratedPinGlyphClearsContrastInBothSchemes() {
+        for (style, isDark) in [(UIUserInterfaceStyle.light, false), (.dark, true)] {
+            let fill = contrastRatio(BrewDeskPalette.markerUnratedGlyph, BrewDeskPalette.markerUnratedFill, style: style)
+            #expect(fill >= 3.0, "cup glyph vs unrated fill (\(isDark ? "dark" : "light") map) is only \(fill):1")
+            let top = contrastRatio(
+                BrewDeskPalette.markerUnratedGlyph, BrewDeskPalette.markerUnratedGradientTop(isDark: isDark), style: style
+            )
+            #expect(top >= 2.5, "cup glyph vs gradient top (\(isDark ? "dark" : "light") map) is only \(top):1")
+            // The adaptive token and the raster's explicit accessor agree.
+            let adaptive = rgb(BrewDeskPalette.markerUnratedFill, style: style)
+            let explicit = rgb(BrewDeskPalette.markerUnratedFill(isDark: isDark), style: style)
+            #expect(abs(adaptive.r - explicit.r) < 0.004 && abs(adaptive.g - explicit.g) < 0.004 && abs(adaptive.b - explicit.b) < 0.004)
+        }
+    }
+
+    /// Neutral means neutral: a low-chroma grey in both appearances, with
+    /// green never the dominant channel — it can't be read as a rated
+    /// (lime/green) tier, and it isn't red either.
+    @Test func unratedPinFillIsANeutralGreyNeverLimeGreenOrRed() {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let c = rgb(BrewDeskPalette.markerUnratedFill, style: style)
+            let chroma = max(c.r, c.g, c.b) - min(c.r, c.g, c.b)
+            #expect(chroma < 0.08, "unrated pin fill is too colorful (chroma \(chroma))")
+            #expect(c.g <= max(c.r, c.b), "green must not dominate the unrated pin fill")
+            for score in [40, 65, 75, 90] {
+                let tier = rgb(BrewDeskPalette.markerFill(score: score), style: style)
+                let distance = abs(tier.r - c.r) + abs(tier.g - c.g) + abs(tier.b - c.b)
+                #expect(distance > 0.25, "unrated pin fill is too close to the rated tier for score \(score)")
+            }
+        }
+    }
+
+    /// Neutral name ink beside an unrated pin reads against its own halo.
+    @Test func unratedLabelTextClearsContrastAgainstItsHaloInBothSchemes() {
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let ratio = contrastRatio(BrewDeskPalette.markerUnratedLabelText, BrewDeskPalette.markerLabelHalo, style: style)
+            #expect(ratio >= 4.5, "unrated label vs halo is only \(ratio):1")
+            let c = rgb(BrewDeskPalette.markerUnratedLabelText, style: style)
+            #expect(max(c.r, c.g, c.b) - min(c.r, c.g, c.b) < 0.08)
+        }
     }
 }

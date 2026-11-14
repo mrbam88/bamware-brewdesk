@@ -6,31 +6,35 @@ import VenueKit
 /// teardrops" — replaces the old pin/dot/cluster-stack three-representation
 /// model outright; there is no grouping of any kind left in the app).
 ///
-/// Only `.teardrop` is a real SwiftUI `Annotation`/`Button` — `.dot` and
-/// `.speck` are drawn as native MapKit `MapCircle` overlay content by
-/// `CafeMapScreen` (supervisor review of the first micro-teardrops pass:
-/// ~200 unrated specks as full SwiftUI annotation views, each wrapped in a
-/// 44pt `Button`, was the actual cost behind the missed hitchRatio target —
-/// a `MapCircle` is MapKit's own cheap overlay primitive, never a hosted
+/// Only `.teardrop` is a real SwiftUI `Annotation`/`Button` — `.dot` is
+/// drawn as native MapKit `MapCircle` overlay content by `CafeMapScreen`
+/// (supervisor review of the first micro-teardrops pass: ~200 unrated
+/// markers as full SwiftUI annotation views, each wrapped in a 44pt
+/// `Button`, was the actual cost behind the missed hitchRatio target — a
+/// `MapCircle` is MapKit's own cheap overlay primitive, never a hosted
 /// SwiftUI view at all).
+///
+/// bd#265: there is no separate "speck" kind any more. An UNRATED venue is
+/// either a small neutral cup pin (`.teardrop` with `MarkerPlacement
+/// .isUnrated`, capped at `MapAnnotationPlanner.maxUnratedPins`) or a
+/// neutral `.dot` — the faint, zoom-gated speck made every neighbourhood
+/// away from the founder's own look empty.
 public enum MarkerKind: Equatable, Sendable {
     /// Full teardrop, tip on the coordinate. `diameter` is the head
     /// diameter in points; the number renders only when the CALLER'S
     /// `showsNumber` is also true (see `MarkerPlacement`).
     case teardrop(diameter: CGFloat)
-    /// A plain tier-colored `MapCircle`, never numbered — either the zoom
-    /// is too far out for a teardrop shape at all, or this candidate lost a
-    /// screen-space collision to a better-scored teardrop and was demoted
-    /// (bd#212's overlap rule). Fixed real-world radius — see
-    /// `CafeMapScreen.demotedDotRadiusMeters`.
+    /// A plain `MapCircle`, never numbered — either the zoom is too far
+    /// out for a teardrop shape at all, or this candidate lost a
+    /// screen-space collision to an already-placed teardrop and was demoted
+    /// (bd#212's overlap rule), or (unrated only) the unrated-pin cap was
+    /// already spent. Tier-colored for a rated venue, neutral for an
+    /// unrated one (`MarkerPlacement.isUnrated`; bd#159's "never
+    /// tier-colored" rule). Sized in real-world metres by the view layer.
     case dot
-    /// A faint, neutral `MapCircle` for an UNRATED (unobserved) venue —
-    /// never tier-colored (bd#159's rule carried into bd#212). Fixed
-    /// real-world radius — see `CafeMapScreen.speckRadiusMeters`.
-    case speck
 
-    /// Only a `.teardrop` has a caller-chosen point-size; `.dot`/`.speck`
-    /// are sized in real-world meters by the view layer instead.
+    /// Only a `.teardrop` has a caller-chosen point-size; a `.dot` is
+    /// sized in real-world meters by the view layer instead.
     var teardropDiameter: CGFloat? {
         if case let .teardrop(diameter) = self { diameter } else { nil }
     }
@@ -41,14 +45,15 @@ public enum MarkerKind: Equatable, Sendable {
 /// `id` is always the venue id. A venue's kind/diameter/selection state can
 /// all change between two `plan()` calls (a re-plan after a camera settle,
 /// a new selection) without ever changing this id — within each of
-/// `CafeMapScreen`'s three `ForEach`s (teardrops/dots/specks) this keeps
+/// `CafeMapScreen`'s three `ForEach`s (teardrops/dots/unrated dots) this keeps
 /// MapKit updating the SAME hosted content in place rather than tearing it
 /// down and rebuilding it. (A venue crossing a KIND boundary — e.g. a
 /// teardrop losing a fresh collision and demoting to a dot — does move
 /// between those three `ForEach`s, a real remove+insert; that's an accepted
 ///, relatively rare trade-off for keeping the steady-state cost of ~150-200
-/// unrated specks at native-overlay prices instead of SwiftUI-annotation
+/// unrated dots at native-overlay prices instead of SwiftUI-annotation
 /// prices.)
+///
 /// bd#221: which side of its own head a teardrop's café-name label sits on
 /// — decided once, deterministically, by the planner (screen space), never
 /// by the view. `nil` on `MarkerPlacement` means "no label" (not eligible,
@@ -72,25 +77,40 @@ public struct MarkerPlacement: Identifiable, Equatable, Sendable {
     /// Always `nil` for the selected marker (it carries its own name above
     /// the halo instead) and for anything below the number threshold.
     public let nameLabelSide: NameLabelSide?
+    /// bd#265: draw this marker NEUTRAL, never tier-colored. On a
+    /// `.teardrop` it means a genuinely unrated venue (`!Venue.isRated`):
+    /// grey body with a cup glyph instead of a number. On a `.dot` it means
+    /// the planner classified the venue as unrated — genuinely unrated, or
+    /// a rated one the active filter can't confirm (`forcedUnratedVenueIDs`,
+    /// bd#222), which never becomes a cup pin.
+    public let isUnrated: Bool
 
     public var id: String { venue.id }
 
     public init(
         venue: Venue, kind: MarkerKind, showsNumber: Bool, isSelected: Bool = false,
-        nameLabelSide: NameLabelSide? = nil
+        nameLabelSide: NameLabelSide? = nil, isUnrated: Bool = false
     ) {
         self.venue = venue
         self.kind = kind
         self.showsNumber = showsNumber
         self.isSelected = isSelected
         self.nameLabelSide = nameLabelSide
+        self.isUnrated = isUnrated
+    }
+
+    func withNameLabel(_ side: NameLabelSide) -> MarkerPlacement {
+        MarkerPlacement(
+            venue: venue, kind: kind, showsNumber: showsNumber, isSelected: isSelected,
+            nameLabelSide: side, isUnrated: isUnrated
+        )
     }
 }
 
 /// What the map should draw for the current venues + camera (brewdesk#54,
 /// re-shaped bd#204/#209, replaced outright by bd#212's micro-teardrop
 /// design — no clusters/stacks/counts of any kind remain). Representation
-/// only — no styling; views decide what a teardrop/dot/speck looks like
+/// only — no styling; views decide what a teardrop/dot looks like
 /// (`MapAnnotationViews`/`CafeMapScreen`) without touching this logic.
 public struct MapAnnotationPlan: Equatable, Sendable {
     public let markers: [MarkerPlacement]
@@ -105,12 +125,16 @@ public struct MapAnnotationPlan: Equatable, Sendable {
         markers.contains { $0.id == id }
     }
 
-    /// Full teardrops — the only kind hosted as a real SwiftUI `Annotation`.
-    public var teardrops: [MarkerPlacement] { markers.filter { if case .teardrop = $0.kind { true } else { false } } }
-    /// Demoted rated venues — drawn as a native `MapCircle`.
-    public var dots: [MarkerPlacement] { markers.filter { $0.kind == .dot } }
-    /// Unrated venues — drawn as a native `MapCircle`.
-    public var specks: [MarkerPlacement] { markers.filter { $0.kind == .speck } }
+    /// Every teardrop, rated or unrated — the only kind hosted as a real
+    /// SwiftUI `Annotation`.
+    public var teardrops: [MarkerPlacement] { markers.filter { $0.kind.teardropDiameter != nil } }
+    /// bd#265: the small neutral cup pins (a subset of `teardrops`).
+    public var unratedPins: [MarkerPlacement] { teardrops.filter { $0.isUnrated && !$0.isSelected } }
+    /// Demoted RATED venues — a tier-colored native `MapCircle`.
+    public var dots: [MarkerPlacement] { markers.filter { $0.kind == .dot && !$0.isUnrated } }
+    /// Unrated venues past the pin cap (or that lost a collision) — a
+    /// neutral native `MapCircle`.
+    public var unratedDots: [MarkerPlacement] { markers.filter { $0.kind == .dot && $0.isUnrated } }
 }
 
 /// Pure, unit-tested planning: viewport culling with a margin, then a
@@ -119,7 +143,7 @@ public struct MapAnnotationPlan: Equatable, Sendable {
 /// ends (`.onMapCameraChange(frequency: .onEnd)`).
 public enum MapAnnotationPlanner {
     /// Hard ceiling on total rendered annotations — rated venues first,
-    /// then the nearest unrated specks fill whatever budget is left
+    /// then the nearest unrated venues fill whatever budget is left
     /// (bd#212 spec: "~220 annotations").
     public static let maxAnnotations = 220
     /// How many unrated candidates (nearest-to-centre) are even considered
@@ -136,7 +160,7 @@ public enum MapAnnotationPlanner {
     /// Shared margin added around a teardrop's own head before two
     /// footprints are tested for overlap. Supervisor review: the footprint
     /// must be the REAL head size, not a generous collision box — "head
-    /// diameter + 1pt, tail excluded from the box" — since `.dot`/`.speck`
+    /// diameter + 1pt, tail excluded from the box" — since `.dot`s
     /// are no longer discrete competing widgets (they're translucent
     /// `MapCircle` overlays MapKit draws natively), the ONLY thing that
     /// still needs strict AABB collision is teardrop-vs-teardrop (and
@@ -185,9 +209,45 @@ public enum MapAnnotationPlanner {
         // selection, so it was never part of any of these "bump" rounds).
         (9.0, 4), (5.4, 14), (3.6, 15), (1.8, 20), (0.9, 23),
     ]
-    /// Beyond this many metres/point an unrated speck draws nothing at all
-    /// (too zoomed out to mean anything).
-    public static let speckVisibilityThresholdMetersPerPoint: Double = 5.0
+    // MARK: - bd#265: unrated venues are real, tappable pins
+
+    /// At most this many unrated venues (nearest the viewport centre) get a
+    /// real cup pin; the rest stay neutral dots so density still reads.
+    /// 60 hosted SwiftUI annotations is well inside the 220-teardrop
+    /// density the pan measurement already covers.
+    public static let maxUnratedPins = 60
+    /// "One size step smaller than the smallest rated pin at that zoom":
+    /// every rated pin at one zoom shares `headDiameter`, so the unrated
+    /// pin is that diameter scaled down (14 → 11.2, 15 → 12, 23 → 18.4).
+    public static let unratedPinScale: CGFloat = 0.8
+    /// Below this head diameter the cup glyph is mush — unrated venues are
+    /// dots only (reached at about 5.8 m/pt).
+    public static let unratedPinMinDiameter: CGFloat = 10
+    /// Unrated dots draw at full strength up to this many metres/point…
+    public static let unratedDotFullOpacityMetersPerPoint: Double = 12.0
+    /// …then fade linearly to nothing here; past it they are not planned.
+    public static let unratedDotHiddenMetersPerPoint: Double = 16.0
+    /// Unrated pins carry café names only while the VIEWPORT (no cull
+    /// margin) holds fewer than this many rated venues…
+    public static let unratedLabelRatedThreshold = 5
+    /// …and then at most this many, nearest the centre first.
+    public static let unratedLabelCount = 6
+
+    /// Head diameter of an unrated cup pin at this zoom, or `nil` when the
+    /// zoom is too wide for one.
+    public static func unratedPinDiameter(forMetersPerPoint mpp: Double) -> CGFloat? {
+        let diameter = headDiameter(forMetersPerPoint: mpp) * unratedPinScale
+        return diameter >= unratedPinMinDiameter ? diameter : nil
+    }
+
+    /// 1 up to `unratedDotFullOpacityMetersPerPoint`, fading linearly to 0
+    /// at `unratedDotHiddenMetersPerPoint` — replaces the old hard "draw
+    /// nothing beyond 5 m/pt" cut that emptied the map one pinch out.
+    public static func unratedDotOpacity(forMetersPerPoint mpp: Double) -> Double {
+        let full = unratedDotFullOpacityMetersPerPoint
+        let hidden = unratedDotHiddenMetersPerPoint
+        return min(1, max(0, (hidden - mpp) / (hidden - full)))
+    }
     /// A teardrop shape needs enough pixels for the round head PLUS the
     /// pointed tail to read as a pin rather than a blob — below this the
     /// design intentionally "degrades to a plain dot" (spec's own words).
@@ -273,7 +333,7 @@ public enum MapAnnotationPlanner {
     /// dropped).
     static let labelScreenMargin: CGFloat = 20
 
-    private static func placeNameLabels(
+    private static func placeRatedNameLabels(
         into placed: inout [MarkerPlacement], grid: CollisionGrid, headBoxes: [AABB], projector: ScreenProjector,
         diameter: CGFloat, mpp: Double, mapSize: CGSize
     ) {
@@ -283,6 +343,18 @@ public enum MapAnnotationPlanner {
             let m = placed[index]
             return !m.isSelected && m.showsNumber && m.kind.teardropDiameter != nil
         }
+        placeNameLabels(
+            into: &placed, eligibleIndices: eligibleIndices, limit: limit, grid: grid, headBoxes: headBoxes,
+            projector: projector, diameter: diameter, mapSize: mapSize
+        )
+    }
+
+    /// Shared by rated labels (bd#221) and unrated-pin labels (bd#265):
+    /// walks `eligibleIndices` in order until `limit` labels land.
+    private static func placeNameLabels(
+        into placed: inout [MarkerPlacement], eligibleIndices: [Int], limit: Int, grid: CollisionGrid,
+        headBoxes: [AABB], projector: ScreenProjector, diameter: CGFloat, mapSize: CGSize
+    ) {
         // `placed` is already score-descending for rated teardrops (the
         // selected venue, if any, is index 0 and excluded above), so
         // `eligibleIndices` is too. Supervisor review (bd#221 round 2):
@@ -334,11 +406,7 @@ public enum MapAnnotationPlanner {
                 // of a nearby pin's actual circle.
                 guard !headBoxes.contains(where: { $0.intersects(queryBox) }) else { continue }
                 grid.insert(box)
-                let m = placed[index]
-                placed[index] = MarkerPlacement(
-                    venue: m.venue, kind: m.kind, showsNumber: m.showsNumber, isSelected: m.isSelected,
-                    nameLabelSide: side
-                )
+                placed[index] = placed[index].withNameLabel(side)
                 placedCount += 1
                 break
             }
@@ -390,10 +458,11 @@ public enum MapAnnotationPlanner {
     ///   - exclusionRects: screen-space rects already "occupied" before any
     ///     TEARDROP is placed (bd#210, extended bd#217) — the search
     ///     header, "Search this area" pill, compass, locate button, shelf
-    ///     card. `.speck` markers are native `MapCircle` overlays and are
-    ///     never checked against these — a faint, unrated, never-numbered
+    ///     card. Unrated `.dot` markers are native `MapCircle` overlays and
+    ///     are never checked against these — a small, unrated, never-numbered
     ///     indicator sitting briefly under chrome isn't the same problem a
-    ///     hidden, un-tappable teardrop was.
+    ///     hidden, un-tappable teardrop was. An unrated cup PIN (bd#265) is
+    ///     a teardrop and follows the teardrop rule: skipped under chrome.
     ///
     ///     bd#217: a RATED candidate whose teardrop attempt collides with
     ///     one of these rects is now SKIPPED outright rather than falling
@@ -418,7 +487,9 @@ public enum MapAnnotationPlanner {
     /// - Parameter forcedUnratedVenueIDs: bd#222 input classification — a
     ///   venue in this set is treated as UNRATED for the rated/unrated split
     ///   below regardless of its own `Venue.isRated`, i.e. it draws as a
-    ///   faint speck, never a teardrop/dot. The caller (`CafeMapScreen`)
+    ///   neutral dot, never a teardrop/tier dot — and never a cup pin
+    ///   either (bd#265: a cup pin says "not rated yet", which would be
+    ///   false for these). The caller (`CafeMapScreen`)
     ///   passes the active filter's `unknownVenues` ids here: a genuinely
     ///   rated café (WeWork, Work Fit 48) whose Wi-Fi is UNKNOWN under a
     ///   "fast Wi-Fi" filter must not present as a normal pin — TestFlight
@@ -447,7 +518,8 @@ public enum MapAnnotationPlanner {
                     // brewdesk#213: `isRated` honors the server's explicit
                     // `scoreDisplay` over the `isObserved` heuristic.
                     showsNumber: isRated($0),
-                    isSelected: $0.id == selectedVenueID
+                    isSelected: $0.id == selectedVenueID,
+                    isUnrated: !$0.isRated
                 )
             }
             return MapAnnotationPlan(markers: markers)
@@ -473,7 +545,6 @@ public enum MapAnnotationPlanner {
 
         let mpp = metersPerPoint(region: region, mapWidth: size.width)
         let ratedDiameter = headDiameter(forMetersPerPoint: mpp)
-        let speckVisible = mpp <= speckVisibilityThresholdMetersPerPoint
 
         var placed: [MarkerPlacement] = []
         var totalPlaced = 0
@@ -513,7 +584,8 @@ public enum MapAnnotationPlanner {
                     venue: match,
                     kind: .teardrop(diameter: selectedDiameter),
                     showsNumber: isRated(match),
-                    isSelected: true
+                    isSelected: true,
+                    isUnrated: !match.isRated
                 )
             )
             totalPlaced += 1
@@ -567,19 +639,66 @@ public enum MapAnnotationPlanner {
         // pin above is already placed: labels are pure decoration and must
         // never cause a pin to demote (spec's own rule) — this pass only
         // ever appends to `grid`, it never removes or re-checks a pin.
-        placeNameLabels(into: &placed, grid: grid, headBoxes: headBoxes, projector: projector, diameter: ratedDiameter, mpp: mpp, mapSize: size)
+        placeRatedNameLabels(into: &placed, grid: grid, headBoxes: headBoxes, projector: projector, diameter: ratedDiameter, mpp: mpp, mapSize: size)
 
-        // 3. Unrated (unobserved) venues — faint neutral specks, nearest-
-        // to-centre first, never numbered, never tier-colored, never
-        // collision-checked (native `MapCircle` overlays render fine
-        // overlapping each other).
-        if speckVisible {
-            let unratedEligible = visible.filter { !isRated($0) && $0.id != selectedVenue?.id }
-            let nearest = nearestToCentre(unratedEligible, region: region, limit: unratedCandidateLimit)
-            for candidate in nearest {
-                guard totalPlaced < maxAnnotations else { break }
-                placed.append(MarkerPlacement(venue: candidate, kind: .speck, showsNumber: false))
-                totalPlaced += 1
+        // 3. Unrated venues (bd#265), nearest-to-centre first, always AFTER
+        // every rated pin and rated label above so a rated pin can never
+        // lose its slot to one. The first `maxUnratedPins` that find a
+        // collision-free slot become small neutral cup pins — real,
+        // tappable teardrops through the same grid; everything else is a
+        // neutral dot so density still reads. Dots fade out between
+        // `unratedDotFullOpacityMetersPerPoint` and
+        // `unratedDotHiddenMetersPerPoint` and are not planned past that.
+        guard mpp < unratedDotHiddenMetersPerPoint else { return MapAnnotationPlan(markers: placed) }
+        let unratedEligible = visible.filter { !isRated($0) && $0.id != selectedVenue?.id }
+        let nearest = nearestToCentre(unratedEligible, region: region, limit: unratedCandidateLimit)
+        let unratedDiameter = unratedPinDiameter(forMetersPerPoint: mpp)
+        var unratedPinIndices: [Int] = []
+        for candidate in nearest {
+            guard totalPlaced < maxAnnotations else { break }
+            // A filter-unknown venue (`forcedUnratedVenueIDs`, bd#222) is a
+            // dot only, never a cup pin: it may well be rated, and under an
+            // active filter "unknown" must stay visibly below "confirmed".
+            if let unratedDiameter, unratedPinIndices.count < maxUnratedPins,
+               !forcedUnratedVenueIDs.contains(candidate.id) {
+                let point = projector.point(for: coordinate(of: candidate))
+                let box = teardropFootprint(diameter: unratedDiameter, at: point)
+                // Sizes are mixed from here on (rated, selected 30pt,
+                // unrated), so tip-centred footprints alone no longer
+                // guarantee two HEADS stay apart — check the true head box
+                // against every head already placed as well.
+                let head = headBox(diameter: unratedDiameter, tip: point)
+                if !grid.collides(box), !headBoxes.contains(where: { $0.intersects(head) }) {
+                    grid.insert(box)
+                    headBoxes.append(head)
+                    unratedPinIndices.append(placed.count)
+                    placed.append(MarkerPlacement(
+                        venue: candidate, kind: .teardrop(diameter: unratedDiameter), showsNumber: false,
+                        isUnrated: true
+                    ))
+                    totalPlaced += 1
+                    continue
+                }
+                // Same rule as a rated teardrop (bd#217): under chrome it is
+                // skipped outright, never left peeking out as a dot.
+                if exclusionBoxes.contains(where: { $0.intersects(box) }) {
+                    continue
+                }
+            }
+            placed.append(MarkerPlacement(venue: candidate, kind: .dot, showsNumber: false, isUnrated: true))
+            totalPlaced += 1
+        }
+
+        // 3b. Names on unrated pins, only where the viewport has almost no
+        // rated venues to carry names — otherwise the rated labels above
+        // already tell the user where they are.
+        if let unratedDiameter, !unratedPinIndices.isEmpty {
+            let ratedInViewport = culled(venues, region: region, margin: 0).count(where: isRated)
+            if ratedInViewport < unratedLabelRatedThreshold {
+                placeNameLabels(
+                    into: &placed, eligibleIndices: unratedPinIndices, limit: unratedLabelCount, grid: grid,
+                    headBoxes: headBoxes, projector: projector, diameter: unratedDiameter, mapSize: size
+                )
             }
         }
 
@@ -607,9 +726,9 @@ public enum MapAnnotationPlanner {
 
     /// Venues inside the region padded by `cullMargin` on every side.
     /// Order is preserved (the model ranks by Work Fit).
-    public static func culled(_ venues: [Venue], region: MKCoordinateRegion) -> [Venue] {
-        let latPad = region.span.latitudeDelta * cullMargin
-        let lngPad = region.span.longitudeDelta * cullMargin
+    public static func culled(_ venues: [Venue], region: MKCoordinateRegion, margin: Double = cullMargin) -> [Venue] {
+        let latPad = region.span.latitudeDelta * margin
+        let lngPad = region.span.longitudeDelta * margin
         let minLat = region.center.latitude - region.span.latitudeDelta / 2 - latPad
         let maxLat = region.center.latitude + region.span.latitudeDelta / 2 + latPad
         let minLng = region.center.longitude - region.span.longitudeDelta / 2 - lngPad
