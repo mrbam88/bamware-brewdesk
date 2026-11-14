@@ -7,10 +7,11 @@ import VenueKit
 /// after rejecting build 24's score-circle + count-stack markers. There is
 /// no grouping/clustering representation left anywhere in the app.
 ///
-/// Only the numbered TEARDROP lives here as a SwiftUI view any more — a
-/// demoted rated dot and an unrated speck are native MapKit `MapCircle`
+/// Only the TEARDROP (numbered, or bd#265's small neutral cup pin for an
+/// unrated café) lives here as a SwiftUI view — demoted rated dots and
+/// overflow unrated dots are native MapKit `MapCircle`
 /// overlay content built directly in `CafeMapScreen` (supervisor review:
-/// hosting ~200 unrated specks as SwiftUI annotation views, each wrapped in
+/// hosting ~200 unrated markers as SwiftUI annotation views, each wrapped in
 /// its own 44pt `Button`, was the real cost behind the missed perf target —
 /// a `MapCircle` is MapKit's own cheap overlay primitive, never a hosted
 /// SwiftUI view).
@@ -152,7 +153,12 @@ struct TeardropMarkerView: View, Equatable {
             // size would.
             Color.clear
                 .overlay(
-                    Image(uiImage: MarkerBodyImageCache.image(score: score, diameter: diameter, isDark: colorScheme == .dark))
+                    // bd#265: an unrated pin's whole face — neutral body AND
+                    // its cup glyph — is static, so both live in the cached
+                    // raster; nothing extra draws per frame for it.
+                    Image(uiImage: MarkerBodyImageCache.image(
+                        score: score, diameter: diameter, isDark: colorScheme == .dark, isUnrated: placement.isUnrated
+                    ))
                 )
             if placement.showsNumber {
                 // brewdesk#213: `showsNumber` is only ever true for a rated
@@ -194,7 +200,7 @@ struct TeardropMarkerView: View, Equatable {
     private func labelSlot(side: NameLabelSide) -> some View {
         HaloText(
             text: placement.venue.name,
-            color: BrewDeskPalette.markerLabelText,
+            color: placement.isUnrated ? BrewDeskPalette.markerUnratedLabelText : BrewDeskPalette.markerLabelText,
             halo: BrewDeskPalette.markerLabelHalo,
             symbolName: placement.venue.typeBadge.showsBadge ? placement.venue.typeBadge.symbolName : nil
         )
@@ -263,6 +269,8 @@ private struct MarkerBodyShape: View {
     /// `BrewDeskPalette`'s new non-adaptive `isDark:` accessors this shape
     /// now calls instead.
     let isDark: Bool
+    /// bd#265: neutral grey body with a cup glyph — never a tier color.
+    var isUnrated = false
 
     /// bd#241 rim `"light"`: 1pt in BOTH appearances — Bilal's saved
     /// design-review selection has no per-appearance width split. The rim
@@ -300,6 +308,17 @@ private struct MarkerBodyShape: View {
                 TeardropShape().stroke(BrewDeskPalette.markerRim(score: score, isDark: isDark), lineWidth: hairlineWidth)
             )
             .shadow(color: BrewDeskPalette.markerShadow(isDark: isDark), radius: 1.5, x: 0, y: 1.5)
+            .overlay {
+                if isUnrated {
+                    // Centered on the HEAD, not the frame — same geometry as
+                    // `TeardropMarkerView.numberVerticalOffset`. The symbol
+                    // is wider than tall, so 0.5× keeps it inside the rim.
+                    Image(systemName: "cup.and.saucer.fill")
+                        .font(.system(size: diameter * 0.5, weight: .semibold))
+                        .foregroundStyle(BrewDeskPalette.markerUnratedGlyph)
+                        .offset(y: (diameter - frameHeight) / 2)
+                }
+            }
             .frame(width: diameter, height: frameHeight, alignment: .bottom)
     }
 
@@ -313,7 +332,18 @@ private struct MarkerBodyShape: View {
     /// the design-review mock's CSS (`rotate(-45deg)` on the whole div)
     /// required.
     private var markerGradient: LinearGradient {
-        LinearGradient(
+        if isUnrated {
+            return LinearGradient(
+                stops: [
+                    .init(color: BrewDeskPalette.markerUnratedGradientTop(isDark: isDark), location: 0),
+                    .init(color: BrewDeskPalette.markerUnratedFill(isDark: isDark), location: 0.52),
+                    .init(color: BrewDeskPalette.markerUnratedGradientBottom(isDark: isDark), location: 1),
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        }
+        return LinearGradient(
             stops: [
                 .init(color: BrewDeskPalette.markerGradientTop(score: score, isDark: isDark), location: 0),
                 .init(color: BrewDeskPalette.markerFill(score: score, isDark: isDark), location: 0.52),
@@ -377,7 +407,7 @@ enum MarkerBodyImageCache {
 
     /// Bump alongside any `BrewDeskPalette` marker fill/rim/gradient/number
     /// change — see `Key.paletteVersion`'s own doc comment.
-    private static let paletteVersion = 2
+    private static let paletteVersion = 3
 
     private static var cache: [Key: UIImage] = [:]
 
@@ -389,9 +419,14 @@ enum MarkerBodyImageCache {
     /// of a fresh entry per exact pinch-zoom frame.
     private static func sizeBucket(_ diameter: CGFloat) -> Int { Int((diameter * 2).rounded()) }
 
-    static func image(score: Int, diameter: CGFloat, isDark: Bool) -> UIImage {
+    /// Cache slot for the unrated cup pin (bd#265) — outside the four tier
+    /// indices, and independent of whatever fallback `score` it carries.
+    private static let unratedTierIndex = -1
+
+    static func image(score: Int, diameter: CGFloat, isDark: Bool, isUnrated: Bool = false) -> UIImage {
         let key = Key(
-            tierIndex: BrewDeskPalette.markerTierIndex(score: score), sizeBucket: sizeBucket(diameter),
+            tierIndex: isUnrated ? unratedTierIndex : BrewDeskPalette.markerTierIndex(score: score),
+            sizeBucket: sizeBucket(diameter),
             isDark: isDark, paletteVersion: paletteVersion
         )
         if let cached = cache[key] { return cached }
@@ -417,7 +452,7 @@ enum MarkerBodyImageCache {
         // mechanism resolving an ambient appearance correctly, is the only
         // reliable fix.
         let renderer = ImageRenderer(content:
-            MarkerBodyShape(score: score, diameter: diameter, frameHeight: frameHeight, isDark: isDark)
+            MarkerBodyShape(score: score, diameter: diameter, frameHeight: frameHeight, isDark: isDark, isUnrated: isUnrated)
                 .padding(MarkerBodyImageCache.bodyRasterPadding)
                 .environment(\.colorScheme, isDark ? .dark : .light)
         )

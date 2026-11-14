@@ -431,14 +431,47 @@ public enum BrewDeskPalette {
         dark: hex("#0B1014")
     )
 
-    /// Faint neutral fill for an unrated (unobserved) venue's speck — never
-    /// tier-colored, never red/green (bd#159's "not checked yet" rule
-    /// carried into bd#212), and adaptive so it stays visible against both
-    /// basemaps rather than the old fixed-dark-grey regression
-    /// (`unobservedDotStroke`'s own doc comment documents that exact bug).
-    public static let markerSpeckFill = adaptive(
-        light: Color(red: 0.42, green: 0.42, blue: 0.44).opacity(0.55),
-        dark: Color(red: 0.74, green: 0.76, blue: 0.78).opacity(0.55)
+    /// Neutral fill for an unrated venue's overflow DOT (bd#265 — was the
+    /// fainter "speck" fill) — never tier-colored, never red/green (bd#159's
+    /// "not checked yet" rule), and adaptive so it stays visible against
+    /// both basemaps (`unobservedDotStroke`'s doc comment has that bug).
+    public static let markerUnratedDotFill = adaptive(
+        light: Color(red: 0.42, green: 0.42, blue: 0.44).opacity(0.7),
+        dark: Color(red: 0.74, green: 0.76, blue: 0.78).opacity(0.7)
+    )
+
+    // MARK: - bd#265: unrated cup pin — neutral, never a tier color
+
+    /// Body of the small "not rated yet" pin: warm grey on the light map,
+    /// mid grey on the dark map, both under the shared white rim. Same
+    /// family as `unobserved`, darkened so the white cup glyph clears 3:1
+    /// (`MarkerPaletteTests.unratedPinGlyphClearsContrastInBothSchemes`:
+    /// about 4.8:1 light, 3.8:1 dark). Never lime, never green or red —
+    /// the founder is red-green colorblind and lime means "rated".
+    private static let markerUnratedFillLightMap = hex("#77716A")
+    private static let markerUnratedFillDarkMap = hex("#7F838A")
+
+    static func markerUnratedFill(isDark: Bool) -> Color {
+        isDark ? markerUnratedFillDarkMap : markerUnratedFillLightMap
+    }
+
+    static func markerUnratedGradientTop(isDark: Bool) -> Color {
+        mix(markerUnratedFill(isDark: isDark), .white, 0.22)
+    }
+
+    static func markerUnratedGradientBottom(isDark: Bool) -> Color {
+        mix(markerUnratedFill(isDark: isDark), .black, 0.16)
+    }
+
+    public static let markerUnratedFill = adaptive(light: markerUnratedFillLightMap, dark: markerUnratedFillDarkMap)
+    /// The cup glyph inside an unrated pin — white on both maps.
+    public static let markerUnratedGlyph = Color.white
+    /// Café-name label beside an unrated pin: the existing label style in a
+    /// neutral ink (dark grey over the white halo, light grey over the dark
+    /// halo) so it never reads as one of the rated, tier-colored names.
+    public static let markerUnratedLabelText = adaptive(
+        light: hex("#4F4A45"),
+        dark: hex("#D4D6DA")
     )
 
     /// Halo label background behind the selected marker's café name — a

@@ -243,6 +243,19 @@ public struct CafeMapScreen: View {
     /// frame in `.global` coordinates — `.zero` whenever no sheet is up.
     @State private var detailSheetGlobalFrame: CGRect = .zero
     @State private var searchAreaPillFrame: CGRect?
+    /// bd#265: the Map's own layout frame, in `Self.mapPlaneSpace`. The
+    /// header and shelf are safe-area insets, so this "window" is SHORTER
+    /// than the plane `mapSize` measures (the map still draws full-bleed
+    /// behind both) — and `visibleRegion` describes only this window
+    /// (`cameraRegion`'s `.local` space and MapKit's own `context.region`
+    /// agree on that). Projecting that region onto the taller `mapSize`, as
+    /// the planner did, stretched every vertical distance (×1.67 on an
+    /// iPhone 17 at the medium detent): pins the planner believed were a
+    /// pin-height apart drew on top of each other, and chrome exclusion
+    /// rects landed at the wrong height. Harmless-looking with a handful of
+    /// rated pins; obvious with 60 unrated ones. `planRegion` below
+    /// re-expresses `visibleRegion` over the full plane.
+    @State private var mapWindowFrame: CGRect = .zero
     @State private var locateButtonFrame: CGRect = .zero
     @State private var shelfFrame: CGRect = .zero
     /// Named coordinate space for the chrome-exclusion measurements above —
@@ -325,7 +338,8 @@ public struct CafeMapScreen: View {
                                 venue: selected,
                                 kind: .teardrop(diameter: MapAnnotationPlanner.selectedDiameter),
                                 showsNumber: selected.isRated,
-                                isSelected: true
+                                isSelected: true,
+                                isUnrated: !selected.isRated
                             ))
                         }
                     }
@@ -352,6 +366,13 @@ public struct CafeMapScreen: View {
                 }
                 .onChange(of: appleFeatureSelection) { _, newValue in
                     handleAppleFeatureSelection(newValue)
+                }
+                // bd#265: where the Map's own layout frame sits inside the
+                // map plane — see `mapWindowFrame`'s doc comment.
+                .onGeometryChange(for: CGRect.self) { proxy in
+                    proxy.frame(in: .named(Self.mapPlaneSpace))
+                } action: { frame in
+                    mapWindowFrame = frame
                 }
                 .onMapCameraChange(frequency: .onEnd) { context in
                     refreshVisibleRegion(context.region)
@@ -411,10 +432,10 @@ public struct CafeMapScreen: View {
                     DragGesture(minimumDistance: 0)
                         .onChanged { _ in searchFocused = false }
                 )
-                // bd#212 (supervisor revision): `.dot`/`.speck` markers are
+                // bd#212 (supervisor revision): `.dot` markers are
                 // native `MapCircle` overlays, not SwiftUI buttons, so they
                 // need their own tap dispatch — nearest marker within 22pt
-                // of the touch, rated (dot) preferred over unrated (speck).
+                // of the touch, rated dots preferred over unrated ones.
                 // `SpatialTapGesture` is simultaneous with every gesture
                 // above, so it never blocks panning/zooming/Apple-label
                 // selection; it only acts when the tap actually lands near
@@ -907,6 +928,13 @@ public struct CafeMapScreen: View {
         // accessibility label should announce "Library"/"Park"/"Coworking"
         // too, not just the shelf's rail card.
         return "\(venue.name), \(score), \(venue.neighborhood)" + accessibilityTypeSuffix(venue.typeBadge)
+    }
+
+    /// bd#265: an unrated cup pin reads as "<name>, not rated yet" — plus
+    /// the venue-type suffix for a non-café (empty for a café), same as
+    /// `pinLabel(for:)`.
+    static func unratedPinLabel(for venue: Venue) -> String {
+        "\(venue.name), not rated yet" + accessibilityTypeSuffix(venue.typeBadge)
     }
 
     // MARK: - Search-driven camera fit (brewdesk#158)
@@ -1797,9 +1825,12 @@ public struct CafeMapScreen: View {
         // not implied by `venues` alone, or a filter change with no venue-
         // set change would silently reuse a stale plan.
         let unknownVenueIDs = Set(model.unknownVenues.map(\.id))
+        let planRegion = visibleRegion.map {
+            Self.planeRegion(windowRegion: $0, windowFrame: mapWindowFrame, planeSize: mapSize)
+        }
         let key = PlanCacheKey(
             venues: model.venues,
-            region: visibleRegion.map(RegionSnapshot.init),
+            region: planRegion.map(RegionSnapshot.init),
             mapSize: mapSize,
             selectedID: selected?.id,
             exclusionRects: exclusionRects,
@@ -1810,12 +1841,12 @@ public struct CafeMapScreen: View {
         }
         let plan = MapAnnotationPlanner.plan(
             venues: model.venues,
-            region: visibleRegion,
+            region: planRegion,
             mapSize: mapSize,
             selectedVenueID: selected?.id,
             exclusionRects: exclusionRects,
             // bd#222: confirmed venues render as normal pins, unknowns as
-            // faint specks, excluded hidden entirely (`model.venues` never
+            // neutral dots, excluded hidden entirely (`model.venues` never
             // includes them — `VenueFilter.matches`). Empty, a no-op, while
             // no filter is active.
             forcedUnratedVenueIDs: unknownVenueIDs
@@ -1880,14 +1911,17 @@ public struct CafeMapScreen: View {
         )
     }
 
-    /// bd#212 (supervisor revision): only numbered TEARDROPS are real
+    /// bd#212 (supervisor revision): only TEARDROPS are real
     /// SwiftUI `Annotation`s — `id: \.id` (the venue id) keeps a size/
     /// selection change an in-place update of the SAME hosted annotation
-    /// view rather than a remove+insert. Demoted dots and unrated specks
-    /// are native `MapCircle` overlay content (`mapCircles(for:)`) — the
+    /// view rather than a remove+insert. Demoted dots and overflow unrated
+    /// dots are native `MapCircle` overlay content (`mapCircles(for:)`) — the
     /// perf fix for #211's stalls: hosting every one of ~150-200 unrated
     /// venues as a SwiftUI annotation view (each wrapped in a 44pt Button)
-    /// was the real cost, not view type churn.
+    /// was the real cost, not view type churn. bd#265 brings back a CAPPED
+    /// number of unrated venues as real pins
+    /// (`MapAnnotationPlanner.maxUnratedPins`), inside the total the pan
+    /// measurement already covers.
     /// bd#221: `anchor` is no longer always `.bottom` — a teardrop carrying
     /// a name label reports WIDER content (the label is a real `HStack`
     /// sibling now, not an overflow overlay MapKit never measured; see
@@ -1903,9 +1937,9 @@ public struct CafeMapScreen: View {
         }
     }
 
-    /// bd#212 (supervisor revision): demoted rated venues and unrated
-    /// specks, drawn as cheap native `MapCircle`s — MapKit's own overlay
-    /// primitive, never a hosted SwiftUI view.
+    /// bd#212 (supervisor revision): demoted rated venues and overflow
+    /// unrated venues, drawn as cheap native `MapCircle`s — MapKit's own
+    /// overlay primitive, never a hosted SwiftUI view.
     ///
     /// Radius is derived from the LIVE metres-per-point, not a bare fixed
     /// metres constant: a pure fixed radius (the supervisor's own starting
@@ -1915,20 +1949,25 @@ public struct CafeMapScreen: View {
     /// closer zoom — a 5m dot at 7.2 m/pt is well under 1pt on screen,
     /// which undersells the "4pt dot" visual target that same zoom level
     /// is supposed to read as. Scaling the radius by the settled mpp keeps
-    /// a dot/speck's ON-SCREEN size roughly constant across zoom levels —
+    /// a dot's ON-SCREEN size roughly constant across zoom levels —
     /// still a cheap native overlay, just sized to actually be seen.
     @MapContentBuilder
     private func mapCircles(for plan: MapAnnotationPlan) -> some MapContent {
         let mpp = visibleRegion.map { MapAnnotationPlanner.metersPerPoint(region: $0, mapWidth: mapSize.width) } ?? 3.3
         let dotRadius = Self.dotRadiusMeters(forMetersPerPoint: mpp)
-        let speckRadius = Self.speckRadiusMeters(forMetersPerPoint: mpp)
+        let unratedRadius = Self.unratedDotRadiusMeters(forMetersPerPoint: mpp)
+        // bd#265: unrated dots no longer vanish at 5 m/pt — full strength
+        // to 12 m/pt, then a linear fade (the planner stops emitting them
+        // where this reaches zero).
+        let unratedFill = BrewDeskPalette.markerUnratedDotFill
+            .opacity(MapAnnotationPlanner.unratedDotOpacity(forMetersPerPoint: mpp))
         ForEach(plan.dots) { placement in
             MapCircle(center: coordinate(of: placement.venue), radius: dotRadius)
                 .foregroundStyle(BrewDeskPalette.markerFill(score: placement.venue.workScore))
         }
-        ForEach(plan.specks) { placement in
-            MapCircle(center: coordinate(of: placement.venue), radius: speckRadius)
-                .foregroundStyle(BrewDeskPalette.markerSpeckFill)
+        ForEach(plan.unratedDots) { placement in
+            MapCircle(center: coordinate(of: placement.venue), radius: unratedRadius)
+                .foregroundStyle(unratedFill)
         }
     }
 
@@ -1943,22 +1982,23 @@ public struct CafeMapScreen: View {
     }
 
     /// Same shape as `dotRadiusMeters(forMetersPerPoint:)`, a touch smaller
-    /// (~2.6pt apparent diameter) so an unrated speck stays visually
-    /// subordinate to a rated dot at the same zoom (supervisor spec: "~3-4
-    /// m radius").
-    private static func speckRadiusMeters(forMetersPerPoint mpp: Double) -> CLLocationDistance {
-        min(max(1.3 * mpp, 2.0), 10.0)
+    /// (~3pt apparent diameter) so an unrated dot stays visually
+    /// subordinate to a rated dot at the same zoom. The upper clamp covers
+    /// the whole range unrated dots now draw in (bd#265: out to
+    /// `MapAnnotationPlanner.unratedDotHiddenMetersPerPoint`).
+    private static func unratedDotRadiusMeters(forMetersPerPoint mpp: Double) -> CLLocationDistance {
+        min(max(1.5 * mpp, 2.0), 1.5 * MapAnnotationPlanner.unratedDotHiddenMetersPerPoint)
     }
-    /// Screen-point radius a tap must land within to select a `.dot`/
-    /// `.speck` marker (supervisor spec: "nearest venue within 22pt").
+    /// Screen-point radius a tap must land within to select a `.dot`
+    /// marker (supervisor spec: "nearest venue within 22pt").
     private static let mapCircleTapRadius: CGFloat = 22
 
-    /// bd#212 (supervisor revision): `.dot`/`.speck` markers have no
+    /// bd#212 (supervisor revision): `.dot` markers have no
     /// SwiftUI button of their own to catch a tap (they're `MapCircle`
     /// overlays), so a tap anywhere on the map is checked against every
-    /// dot/speck's SCREEN position (via `MapProxy.convert(_:to:)`) and the
-    /// nearest one within `mapCircleTapRadius` wins — rated (dot) preferred
-    /// over unrated (speck) at an equal distance, matching the spec's "nearest
+    /// dot's SCREEN position (via `MapProxy.convert(_:to:)`) and the
+    /// nearest one within `mapCircleTapRadius` wins — rated preferred
+    /// over unrated at an equal distance, matching the spec's "nearest
     /// marker … preferring rated over unrated." A miss (nothing within
     /// range) is a no-op, so a plain map tap still reaches Apple's own
     /// base-map label selection untouched.
@@ -1978,8 +2018,8 @@ public struct CafeMapScreen: View {
         }
         if let (dot, _) = nearest(in: plan.dots) {
             selected = dot.venue
-        } else if let (speck, _) = nearest(in: plan.specks) {
-            selected = speck.venue
+        } else if let (dot, _) = nearest(in: plan.unratedDots) {
+            selected = dot.venue
         }
     }
 
@@ -1998,7 +2038,7 @@ public struct CafeMapScreen: View {
         }
     }
 
-    /// bd#212: the button a numbered TEARDROP uses (dots/specks are native
+    /// bd#212: the button a TEARDROP uses (dots are native
     /// `MapCircle` overlays with no button of their own — see
     /// `handleMapCircleTap`). The min-44pt frame is attached to the BUTTON,
     /// not baked into `TeardropMarkerView`'s own layout, so even the
@@ -2019,7 +2059,9 @@ public struct CafeMapScreen: View {
         // from the venue's true coordinate.
         .frame(minWidth: 44, minHeight: 44, alignment: .bottom)
         .contentShape(Rectangle())
-        .accessibilityLabel(Self.pinLabel(for: placement.venue))
+        .accessibilityLabel(
+            placement.isUnrated ? Self.unratedPinLabel(for: placement.venue) : Self.pinLabel(for: placement.venue)
+        )
         .accessibilityValue(placement.isSelected ? "Selected" : "Not selected")
         .accessibilityAddTraits(placement.isSelected ? .isSelected : [])
         // bd#219 UI-test seam: a dedicated identifier for the SELECTED
@@ -2356,10 +2398,41 @@ public struct CafeMapScreen: View {
         searchFocused || !model.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    /// bd#265: `windowRegion` (what the camera shows inside the Map's own
+    /// layout frame, `windowFrame`, measured in the map plane) re-expressed
+    /// as the region the WHOLE plane (`planeSize`, origin at the plane's
+    /// top-left) covers — the space the planner projects into and the
+    /// chrome exclusion rects are measured in. A straight linear
+    /// extension at the window's own degrees-per-point; the identity when
+    /// the window already is the plane, and when either hasn't been
+    /// measured yet.
+    static func planeRegion(windowRegion: MKCoordinateRegion, windowFrame: CGRect, planeSize: CGSize) -> MKCoordinateRegion {
+        guard windowFrame.width > 0, windowFrame.height > 0, planeSize.width > 0, planeSize.height > 0 else {
+            return windowRegion
+        }
+        let latPerPoint = windowRegion.span.latitudeDelta / Double(windowFrame.height)
+        let lngPerPoint = windowRegion.span.longitudeDelta / Double(windowFrame.width)
+        let topLat = windowRegion.center.latitude + windowRegion.span.latitudeDelta / 2 + Double(windowFrame.minY) * latPerPoint
+        let leftLng = windowRegion.center.longitude - windowRegion.span.longitudeDelta / 2 - Double(windowFrame.minX) * lngPerPoint
+        let latDelta = Double(planeSize.height) * latPerPoint
+        let lngDelta = Double(planeSize.width) * lngPerPoint
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: topLat - latDelta / 2, longitude: leftLng + lngDelta / 2),
+            span: MKCoordinateSpan(latitudeDelta: latDelta, longitudeDelta: lngDelta)
+        )
+    }
+
     /// A new plan is needed once the camera leaves what the current plan's
     /// culling margin (`MapAnnotationPlanner.cullMargin`) already annotated:
     /// the center moved by more than a quarter span, or the zoom changed
     /// meaningfully. Anything less keeps the existing annotations untouched.
+    ///
+    /// bd#265: the zoom band is ±10% (was 0.75…1.33). Pin spacing is only
+    /// collision-free at the zoom it was planned for — a plan made while a
+    /// fly-to was still zooming (venues landing mid-animation) and then
+    /// kept through a 30% zoom-out drew the new, denser unrated pins on top
+    /// of each other. This still runs once per SETTLED gesture, never
+    /// mid-gesture, and a pan alone never trips it.
     static func needsReplan(from current: MKCoordinateRegion?, to next: MKCoordinateRegion) -> Bool {
         guard let current else { return true }
         let latMove = abs(next.center.latitude - current.center.latitude)
@@ -2368,7 +2441,7 @@ public struct CafeMapScreen: View {
         let spanRatio = next.span.latitudeDelta / current.span.latitudeDelta
         return latMove > current.span.latitudeDelta * 0.25
             || lngMove > current.span.longitudeDelta * 0.25
-            || spanRatio < 0.75 || spanRatio > 1.33
+            || spanRatio < 0.9 || spanRatio > 1.1
     }
 
     /// The screen's original camera span (Browse NYC fallback, and every
