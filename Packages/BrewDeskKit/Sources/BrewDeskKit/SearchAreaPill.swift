@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// "Search this area" pill (bd#192): floats at the top-center of the map
-/// once a pan/zoom has moved the camera far enough that the loaded venue
-/// list may no longer cover what's on screen (see
-/// `CafeMapScreen.needsSearchAreaPill`). Tapping it re-fetches for the
-/// current camera viewport.
+/// "Search this area" pill (bd#192): floats at the top-center of the map.
+/// Since bd#267 cafés load on their own when the map comes to rest
+/// somewhere new, so this is the manual fallback — shown only when that
+/// automatic fetch failed or the map is zoomed out too far for one.
+/// Tapping it re-fetches for the current camera viewport.
 ///
 /// Icon + text carry the state, never color alone (the founder is
 /// red-green colorblind) — same convention as `LocateMeButton`.

@@ -277,29 +277,18 @@ public struct CafeMapScreen: View {
 
     public var body: some View {
         let plan = cachedPlan()
-        // bd#192: purely derived from state already tracked elsewhere —
-        // `isSearchingThisArea` keeps the pill (with its progress state) up
-        // through the tap's own fetch, and once that clears, the pill's
-        // visibility falls straight out of comparing the settled
-        // `visibleRegion` against what `model` actually last queried. No
-        // separate "hide after fetch" flag: `searchThisArea()` updates
-        // `model`'s center/radius to match the region it fetched for, so
-        // the comparison naturally goes false the moment that lands.
-        // bd#200: a text search already re-queries city-wide on its own —
-        // the "Search this area" pill (a LOCAL viewport re-fetch) would be a
-        // confusing second, unrelated affordance while one's in flight.
-        // bd#210: `userHasMovedCamera` gates the whole thing — a
-        // center/radius mismatch from a PROGRAMMATIC move (first GPS fix,
-        // "Browse NYC", search fit, locate-me) must never show this with no
-        // actual gesture; see the property's own doc comment.
-        let showSearchAreaPill = userHasMovedCamera && model.searchQuery.isEmpty && (isSearchingThisArea || visibleRegion.map {
-            Self.needsSearchAreaPill(
-                loadedCenterLat: model.centerLat,
-                loadedCenterLng: model.centerLng,
-                loadedRadiusM: model.radiusM,
-                visibleRegion: $0
-            )
-        } == true)
+        // bd#267: cafés now load on their own when the camera comes to rest
+        // somewhere new (`cameraCameToRest` → `VenuesModel.cameraSettled`),
+        // so the "Search this area" pill (bd#192) is only the manual
+        // fallback: shown when that automatic fetch failed, or when the map
+        // is zoomed out too far for one. `isSearchingThisArea` keeps it up
+        // (with its progress state) through the tap's own fetch.
+        // bd#200: never during a text search — that already re-queries
+        // city-wide on its own.
+        // bd#210: `userHasMovedCamera` still gates the whole thing — the
+        // pill can never show before a real drag/pinch/double-tap.
+        let showSearchAreaPill = userHasMovedCamera && model.searchQuery.isEmpty
+            && (isSearchingThisArea || model.autoLoadFailed || model.autoLoadBlockedByZoom)
         // Camera tracking (brewdesk#54 / PR #61): the region is recovered on
         // demand — a gesture ending schedules one debounced `MapProxy` corner
         // conversion after momentum settles, and programmatic moves (cluster
@@ -376,6 +365,8 @@ public struct CafeMapScreen: View {
                 }
                 .onMapCameraChange(frequency: .onEnd) { context in
                     refreshVisibleRegion(context.region)
+                    // bd#267: the one signal auto-load listens to.
+                    cameraCameToRest(context.region)
                     // bd#217: `mapHeading` change alone must still trigger a
                     // re-plan (a rotate-only gesture with no pan/zoom would
                     // otherwise leave `visibleRegion` — and so the memoized
@@ -387,6 +378,7 @@ public struct CafeMapScreen: View {
                     DragGesture(minimumDistance: 1)
                         .onChanged { _ in
                             mapInteraction.isActive = true
+                            mapInteraction.userDrivenCamera = true
                             stopTrackingUserLocation()
                             // bd#219 (supervisor 2nd revision): "authoritative
                             // until the user next gestures" — a real drag
@@ -404,6 +396,7 @@ public struct CafeMapScreen: View {
                     MagnifyGesture()
                         .onChanged { _ in
                             mapInteraction.isActive = true
+                            mapInteraction.userDrivenCamera = true
                             stopTrackingUserLocation()
                             flyTarget = nil
                         }
@@ -417,6 +410,7 @@ public struct CafeMapScreen: View {
                 .simultaneousGesture(
                     TapGesture(count: 2)
                         .onEnded {
+                            mapInteraction.userDrivenCamera = true
                             stopTrackingUserLocation()
                             userHasMovedCamera = true
                             flyTarget = nil
@@ -627,6 +621,7 @@ public struct CafeMapScreen: View {
                             span: MKCoordinateSpan(latitudeDelta: 0.012, longitudeDelta: 0.012)
                         )
                         logPositionWrite("plainBrowsingTap", region: browseRegion)
+                        mapInteraction.userDrivenCamera = false
                         position = .region(browseRegion)
                     }
                 },
@@ -786,6 +781,9 @@ public struct CafeMapScreen: View {
         // its selected pin stay visible above the sheet (`.large` is still
         // one drag away).
         .onChange(of: selected) { _, newValue in
+            // bd#267: a camera rest right around a detail sheet opening or
+            // closing is the sheet's doing, not a pan.
+            mapInteraction.lastSheetTransition = Date()
             guard newValue != nil else { return }
             if searchDrivenSelection, !dynamicTypeSize.isAccessibilitySize {
                 detailDetent = .medium
@@ -821,6 +819,11 @@ public struct CafeMapScreen: View {
             if newValue != searchSubmittedQuery {
                 searchSubmittedQuery = nil
             }
+        }
+        // bd#267: starting to edit the search field drops an auto fetch
+        // still waiting out its debounce — nothing reloads under a search.
+        .onChange(of: searchFocused) { _, focused in
+            if focused { model.cancelPendingAutoLoad() }
         }
         .onChange(of: model.centerLat) {
             applyCenterChange()
@@ -891,6 +894,7 @@ public struct CafeMapScreen: View {
                 let span = metersPerPoint * Double(assumedWidth) / metersPerDegreeLng
                 let region = Self.region(lat: model.centerLat, lng: model.centerLng, span: span)
                 logPositionWrite("debugInitialMetersPerPoint", region: region)
+                mapInteraction.userDrivenCamera = false
                 position = .region(region)
                 visibleRegion = region
             }
@@ -1090,7 +1094,7 @@ public struct CafeMapScreen: View {
             visibleRegion = region
             stopTrackingUserLocation()
             // bd#210: a search fit is programmatic, not a gesture.
-            userHasMovedCamera = false
+            markProgrammaticCameraMove()
             logPositionWrite("scheduleSearchFit", region: region)
             if reduceMotion {
                 position = .region(region)
@@ -1226,6 +1230,8 @@ public struct CafeMapScreen: View {
     private func selectSearchResult(_ venue: Venue) {
         searchFitTask?.cancel()
         flyCorrectionTask?.cancel()
+        // bd#267: the fly-to below loads its own surroundings.
+        model.cancelPendingAutoLoad()
         searchSelectionQuery = model.searchQuery
         // bd#223: a selection is one-shot — it must never leave a stale arm
         // behind for `shouldApplySearchFit` to (re-)act on if the user later
@@ -1256,7 +1262,7 @@ public struct CafeMapScreen: View {
         // A search selection is a programmatic move, not a gesture — same
         // convention every other programmatic camera move in this file
         // follows (bd#210): the "Search this area" pill must stay gated off.
-        userHasMovedCamera = false
+        markProgrammaticCameraMove()
 
         // First-pass ESTIMATE, applied immediately (before the `.medium`
         // sheet has actually presented) so the camera starts moving right
@@ -1408,7 +1414,7 @@ public struct CafeMapScreen: View {
             model.updateViewport(
                 lat: venue.lat, lng: venue.lng, radiusM: Self.radiusMeters(for: region)
             )
-            userHasMovedCamera = false
+            markProgrammaticCameraMove()
             // bd#219: `updateViewport` changes `model.request`, which loads
             // new surroundings and so changes `model.venues` — and THIS
             // screen's own `.onChange(of: model.venues)` unconditionally
@@ -1535,11 +1541,8 @@ public struct CafeMapScreen: View {
         // the center is already `model.centerLat/Lng` (this IS the user),
         // so only the radius actually changes here, from whatever the last
         // viewport query used to the walking-zoom radius this camera move
-        // lands on. Keeps the pill's own comparison in sync too: without
-        // this, a locate tap coming from a much-wider or much-tighter last
-        // query would leave `needsSearchAreaPill` true and the pill would
-        // reappear right after a locate move, which is the one thing the
-        // ticket says must never happen.
+        // lands on, so the loaded viewport auto-load (bd#267) compares the
+        // next pan against is the one this camera move actually shows.
         //
         // bd#198: `model.centerOnUser`, NOT `model.updateViewport` — the
         // latter would mark the result `.exploredViewport` and stop
@@ -1552,7 +1555,7 @@ public struct CafeMapScreen: View {
         // bd#210: an explicit locate-me tap is a programmatic move, not a
         // gesture — resets the "Search this area" pill's gate the same way
         // `applyCenterChange()`'s other programmatic moves do.
-        userHasMovedCamera = false
+        markProgrammaticCameraMove()
         logPositionWrite("centerOnUser", region: region)
         if reduceMotion {
             position = .region(region)
@@ -1630,8 +1633,7 @@ public struct CafeMapScreen: View {
         // below — `updateCenterIfNeeded` (the passive path this reacts to)
         // never had a radius to carry, so without this the first fetch after
         // a fix stayed at `defaultRadiusM` while the camera opened much
-        // tighter, which alone made `needsSearchAreaPill` see a spurious
-        // >2× radius "change" with no gesture involved.
+        // tighter — a spurious zoom "change" with no gesture involved.
         if model.centerSource == .userLocation {
             model.syncRadiusToCamera(Self.radiusMeters(for: region))
         }
@@ -1639,7 +1641,7 @@ public struct CafeMapScreen: View {
         // "Browse NYC" via `browseCoverageCenter()` — both land here since
         // neither is `.exploredViewport`), never a gesture — the pill must
         // stay gated off until a real drag/pinch/double-tap sets it back.
-        userHasMovedCamera = false
+        markProgrammaticCameraMove()
         logPositionWrite("applyCenterChange(centerSource=\(model.centerSource))", region: region)
         position = .region(region)
         visibleRegion = region
@@ -1726,11 +1728,14 @@ public struct CafeMapScreen: View {
         searchAreaFetchTask?.cancel()
         isSearchingThisArea = true
         stopTrackingUserLocation()
-        model.updateViewport(
+        let viewportChanged = model.updateViewport(
             lat: visibleRegion.center.latitude,
             lng: visibleRegion.center.longitude,
             radiusM: Self.radiusMeters(for: visibleRegion)
         )
+        // bd#267: after a failed auto fetch the model already points at
+        // this viewport, so there is no change to dispatch — re-ask instead.
+        if !viewportChanged { model.retry() }
         // Polls rather than observes — see `isSearchingThisArea`'s doc
         // comment for why a `.onChange(of: model.phase)` handler can miss
         // a fast fixture/scenario fetch entirely. Bounded so a genuinely
@@ -1767,26 +1772,56 @@ public struct CafeMapScreen: View {
         return Int(clamped.rounded())
     }
 
-    /// The pill's own hysteresis (bd#192) — deliberately distinct from
-    /// `needsReplan` below: that one decides when to recompute annotations
-    /// for the SAME result set on every settle; this one decides whether
-    /// the loaded result set might itself be stale for the new viewport,
-    /// checked against `model`'s last-queried center/radius rather than an
-    /// annotation-culling margin. True once the settled region's center has
-    /// moved more than 35% of the loaded radius, or the region's own
-    /// radius-equivalent has changed by more than 2× in either direction.
-    static func needsSearchAreaPill(
-        loadedCenterLat: Double, loadedCenterLng: Double, loadedRadiusM: Int,
-        visibleRegion: MKCoordinateRegion
-    ) -> Bool {
-        guard loadedRadiusM > 0 else { return true }
-        let movedM = VenuesModel.metersBetween(
-            loadedCenterLat, loadedCenterLng,
-            visibleRegion.center.latitude, visibleRegion.center.longitude
+    // MARK: - Auto-load on pan/zoom (bd#267)
+
+    /// Every camera rest MapKit reports lands here. The decision itself —
+    /// threshold, debounce, rate limit, cancellation — lives in
+    /// `VenuesModel.cameraSettled`; this only says where the camera is and
+    /// whether the view knows a reason not to fetch.
+    private func cameraCameToRest(_ region: MKCoordinateRegion) {
+        guard let viewport = Self.viewport(for: region, mapWidth: mapSize.width) else { return }
+        model.cameraSettled(viewport, suppressed: isAutoLoadSuppressed)
+    }
+
+    /// Never auto-fetch for a camera move the user's own finger didn't
+    /// make (first GPS fix, locate-me, search fit, a shelf-row recenter),
+    /// while the search field is being edited, while a search-selection
+    /// fly-to is authoritative (`flyTarget`, bd#219), or while a detail
+    /// sheet is up or was presented/dismissed a moment ago.
+    private var isAutoLoadSuppressed: Bool {
+        !mapInteraction.userDrivenCamera
+            || searchFocused
+            || flyTarget != nil
+            || selected != nil
+            || appleFeatureCandidate != nil
+            || Date().timeIntervalSince(mapInteraction.lastSheetTransition) < Self.sheetTransitionGrace
+    }
+
+    private static let sheetTransitionGrace: TimeInterval = 0.5
+
+    /// Resets both "the user moved the map" flags: the pill's gate (bd#210)
+    /// and auto-load's (bd#267). Called by every programmatic camera move.
+    private func markProgrammaticCameraMove() {
+        userHasMovedCamera = false
+        mapInteraction.userDrivenCamera = false
+    }
+
+    /// A settled MapKit region as the model's `MapViewport`: the query
+    /// radius it implies, its shorter visible side, and its zoom in metres
+    /// per point. `nil` until the map has a real size.
+    static func viewport(for region: MKCoordinateRegion, mapWidth: CGFloat) -> MapViewport? {
+        guard mapWidth > 0, region.span.latitudeDelta > 0, region.span.longitudeDelta > 0 else { return nil }
+        let metersPerDegreeLat = 111_320.0
+        let metersPerDegreeLng = metersPerDegreeLat * cos(region.center.latitude * .pi / 180)
+        let heightM = region.span.latitudeDelta * metersPerDegreeLat
+        let widthM = region.span.longitudeDelta * abs(metersPerDegreeLng)
+        return MapViewport(
+            centerLat: region.center.latitude,
+            centerLng: region.center.longitude,
+            radiusM: radiusMeters(for: region),
+            spanM: min(heightM, widthM),
+            metersPerPoint: widthM / Double(mapWidth)
         )
-        let candidateRadiusM = Double(radiusMeters(for: visibleRegion))
-        let radiusRatio = candidateRadiusM / Double(loadedRadiusM)
-        return movedM > Double(loadedRadiusM) * 0.35 || radiusRatio > 2 || radiusRatio < 0.5
     }
 
     /// The region between the map view's corners, via `MapProxy`.
@@ -2298,7 +2333,10 @@ public struct CafeMapScreen: View {
                 }
 
                 HStack {
-                    Text(ratedCafeCountLine)
+                    // bd#267: the same line, in the same style, says so
+                    // while an auto fetch is on the wire — no spinner, no
+                    // overlay, nothing that changes the header's height.
+                    Text(model.isAutoLoading ? String(localized: "Loading cafés…") : ratedCafeCountLine)
                         .font(.caption.bold())
                         .lineLimit(1)
                         .layoutPriority(1)
@@ -2479,6 +2517,12 @@ public struct CafeMapScreen: View {
 @MainActor
 private final class MapInteractionFlag {
     var isActive = false
+    /// bd#267: the camera's last move was the user's own drag/pinch/
+    /// double-tap — set on the gesture's first frame, cleared by every
+    /// programmatic camera move. Only a user-driven rest may auto-load.
+    var userDrivenCamera = false
+    /// bd#267: when a detail sheet last opened or closed.
+    var lastSheetTransition = Date.distantPast
 }
 
 /// Prominent "center on me" control (bd#185), replacing the stock

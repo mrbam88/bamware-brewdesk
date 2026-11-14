@@ -59,7 +59,7 @@ final class MapSearchAreaGPSRegressionUITests: XCTestCase {
 
     /// Same shape as `MapSearchAreaUITests.panFarWest` — several fast,
     /// same-direction drags so the settled centre ends up well past both
-    /// the pill's own threshold and the ~2 km this test asserts.
+    /// auto-load's own threshold and the ~1 km this test asserts.
     @MainActor
     private func panFarWest(_ app: XCUIApplication) {
         let window = app.windows.firstMatch
@@ -95,14 +95,14 @@ final class MapSearchAreaGPSRegressionUITests: XCTestCase {
 
     // MARK: - Test
 
-    /// Pan ~2 km away from the fixed GPS fix, tap "Search this area", and
-    /// confirm `map-last-query` reflects the PANNED centre, not the GPS
-    /// fix — immediately after the tap, and still after 3s of further
-    /// location ticks (`-brewdesk.uitest-fixed-location` re-delivers the
-    /// same fix roughly once a second). Must FAIL on origin/main (before
-    /// bd#198's fix) and PASS on the fix branch.
+    /// Pan ~2 km away from the fixed GPS fix and — with no tap (bd#267:
+    /// the pan itself loads the new area) — confirm `map-last-query`
+    /// reflects the PANNED centre, not the GPS fix, and still does after 3s
+    /// of further location ticks (`-brewdesk.uitest-fixed-location`
+    /// re-delivers the same fix roughly once a second). The bd#198
+    /// regression, now through the automatic path.
     @MainActor
-    func testSearchThisAreaSurvivesFurtherLocationTicks() throws {
+    func testAutoLoadedViewportSurvivesFurtherLocationTicks() throws {
         let app = launchWithFixedLocation()
         XCTAssertTrue(element(app, "map-header-card").waitForExistence(timeout: wait))
         // Let the cold-start fix land and settle before panning.
@@ -110,21 +110,25 @@ final class MapSearchAreaGPSRegressionUITests: XCTestCase {
 
         panFarWest(app)
 
-        let pill = app.buttons["map-search-area"]
-        XCTAssertTrue(pill.waitForExistence(timeout: wait), "panning far enough never showed the Search this area pill")
-        capture("gps-regression-pill-visible-after-pan")
-
-        pill.tap()
-        XCTAssertTrue(pill.waitForNonExistence(timeout: wait), "the pill never hid after its own fetch settled")
-
-        let panned = try XCTUnwrap(lastQuery(app), "map-last-query did not expose a parseable value after the tap")
-        let distanceFromFix = Self.metersBetween(panned.lat, panned.lng, fixedLat, fixedLng)
-        XCTAssertGreaterThan(
-            distanceFromFix, 1_000,
-            "the panned-to query should land well away from the GPS fix (got \(distanceFromFix)m) — "
-            + "the pan/tap itself didn't move the query far enough for this test to be meaningful"
-        )
-        capture("gps-regression-query-after-search-this-area")
+        // Wait for an automatic query well away from the fix…
+        var panned: (lat: Double, lng: Double, radiusM: Int)?
+        let moveDeadline = Date().addingTimeInterval(wait)
+        while Date() < moveDeadline {
+            if let current = lastQuery(app),
+               Self.metersBetween(current.lat, current.lng, fixedLat, fixedLng) > 1_000 {
+                panned = current
+                break
+            }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        XCTAssertNotNil(panned, "panning ~2 km away never dispatched a query for the new area")
+        // …then let the last of the four drags' own fetch land (debounce +
+        // the 1 s between automatic fetches) before pinning the value.
+        Thread.sleep(forTimeInterval: 2.5)
+        let settled = try XCTUnwrap(lastQuery(app), "map-last-query did not expose a parseable value after the pan")
+        XCTAssertGreaterThan(Self.metersBetween(settled.lat, settled.lng, fixedLat, fixedLng), 1_000)
+        XCTAssertFalse(app.buttons["map-search-area"].exists, "a successful automatic load must not show the pill")
+        capture("gps-regression-query-after-auto-load")
 
         // The regression: further GPS ticks (the fixture re-delivers the
         // same fix ~once a second) must NOT overwrite the explored
@@ -133,12 +137,12 @@ final class MapSearchAreaGPSRegressionUITests: XCTestCase {
         while Date() < deadline {
             let current = try XCTUnwrap(lastQuery(app), "map-last-query stopped exposing a parseable value")
             XCTAssertEqual(
-                current.lat, panned.lat, accuracy: 0.0001,
-                "a GPS tick snapped the map back to the phone's location after \"Search this area\" (bd#198)"
+                current.lat, settled.lat, accuracy: 0.0001,
+                "a GPS tick snapped the map back to the phone's location after an automatic load (bd#198)"
             )
             XCTAssertEqual(
-                current.lng, panned.lng, accuracy: 0.0001,
-                "a GPS tick snapped the map back to the phone's location after \"Search this area\" (bd#198)"
+                current.lng, settled.lng, accuracy: 0.0001,
+                "a GPS tick snapped the map back to the phone's location after an automatic load (bd#198)"
             )
             Thread.sleep(forTimeInterval: 0.3)
         }
@@ -146,22 +150,16 @@ final class MapSearchAreaGPSRegressionUITests: XCTestCase {
         capture("gps-regression-query-after-3s-of-ticks")
     }
 
-    /// bd#210 regression: bd#209's walking-scale initial camera (~0.014°
-    /// span once a real fix lands) no longer matched `VenuesModel`'s
-    /// `defaultRadiusM` (2,500m) — the mismatch alone made
-    /// `needsSearchAreaPill` see a >2x radius "change" and show the pill
-    /// on cold start with zero gestures. Fixed two ways:
-    /// `VenuesModel.syncRadiusToCamera` (the radius itself no longer
-    /// mismatches) and `CafeMapScreen.userHasMovedCamera` (a backstop —
-    /// the pill can never show before a real drag/pinch/double-tap
-    /// regardless). This proves both: the pill stays absent through the
-    /// fixed fix landing AND settling (3s, past `-brewdesk.uitest-fixed-
-    /// location`'s ~1s re-delivery interval), then appears once the user
-    /// actually pans.
+    /// bd#210 regression: the pill must never appear at cold start with
+    /// zero gestures (a real fix landing is a programmatic camera move).
+    /// bd#267: and the cold-start camera settling must not trigger an
+    /// automatic fetch either — `map-last-query` stays on the fix through
+    /// 3s of ticks.
     @MainActor
-    func testPillNeverAppearsAtColdStartThenAppearsAfterAPan() throws {
+    func testNothingRefetchesOrShowsThePillAtColdStart() throws {
         let app = launchWithFixedLocation()
         XCTAssertTrue(element(app, "map-header-card").waitForExistence(timeout: wait))
+        Thread.sleep(forTimeInterval: 1.5)
 
         let deadline = Date().addingTimeInterval(3)
         while Date() < deadline {
@@ -169,16 +167,13 @@ final class MapSearchAreaGPSRegressionUITests: XCTestCase {
                 app.buttons["map-search-area"].exists,
                 "the pill must not appear before the user has panned/zoomed, even once the fixed GPS fix has settled"
             )
+            let current = try XCTUnwrap(lastQuery(app), "map-last-query did not expose a parseable value")
+            XCTAssertLessThan(
+                Self.metersBetween(current.lat, current.lng, fixedLat, fixedLng), 50,
+                "nothing may refetch away from the GPS fix before the user has touched the map"
+            )
             Thread.sleep(forTimeInterval: 0.3)
         }
-        capture("gps-regression-pill-absent-at-cold-start")
-
-        panFarWest(app)
-
-        XCTAssertTrue(
-            app.buttons["map-search-area"].waitForExistence(timeout: wait),
-            "panning far enough after a fixed GPS fix should still surface the pill"
-        )
-        capture("gps-regression-pill-appears-after-pan")
+        capture("gps-regression-quiet-at-cold-start")
     }
 }

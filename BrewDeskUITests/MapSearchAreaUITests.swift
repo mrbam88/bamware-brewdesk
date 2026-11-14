@@ -1,9 +1,10 @@
 import XCTest
 
-/// bd#192 ("Search this area"): the map now derives its fetch from the
-/// visible viewport instead of one fixed 2.5 km/100-venue query — this pill
-/// is the trigger for a NEW query once a pan/zoom moves the camera far
-/// enough that the loaded venues may no longer cover what's on screen.
+/// bd#267: cafés load on their own when the map comes to rest somewhere new
+/// — a pan past the threshold dispatches a NEW viewport query with no tap.
+/// The "Search this area" pill (bd#192) is only the manual fallback now:
+/// it shows when the map is zoomed out too far for an automatic fetch (or
+/// one failed), and tapping it still refetches the viewport on screen.
 ///
 /// `fixtureOK` (and every other `ScenarioVenueService` scenario) returns the
 /// same venues regardless of the query's lat/lng/radius, so this suite
@@ -21,9 +22,9 @@ final class MapSearchAreaUITests: XCTestCase {
     // MARK: - Helpers
 
     @MainActor
-    private func launchFixtures() -> XCUIApplication {
+    private func launchFixtures(extraArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += [
+        app.launchArguments += extraArguments + [
             "-UITestSkipGates",
             "-UITestScenario", "fixtureOK",
             // A real CoreLocation fix landing mid-test (e.g. a simulator
@@ -31,7 +32,7 @@ final class MapSearchAreaUITests: XCTestCase {
             // fight this suite's own viewport updates via
             // `DiscoveryRootView`'s `updateCenterIfNeeded` short-circuit —
             // pin `.notDetermined` so every center/radius change this file
-            // observes came from the pill/pan under test, not GPS.
+            // observes came from the pan/pill under test, not GPS.
             "-UITestLocationUndetermined",
         ]
         app.launch()
@@ -54,7 +55,7 @@ final class MapSearchAreaUITests: XCTestCase {
     }
 
     /// Several fast, same-direction drags so the camera's settled center
-    /// ends up well past the pill's 35%-of-loaded-radius threshold — a
+    /// ends up well past auto-load's 35%-of-visible-span threshold — a
     /// single short drag is too small to guarantee that on every simulator/
     /// zoom combination (same reasoning `MapPerformanceUITests.scriptedPan`
     /// documents for its own repeated drags).
@@ -80,10 +81,26 @@ final class MapSearchAreaUITests: XCTestCase {
         add(attachment)
     }
 
+    /// A city-wide opening camera (m/pt), past auto-load's 40 m/pt limit —
+    /// the one state where the pill is the only way to refetch.
+    private let zoomedOutArguments = ["-brewdesk.debug.initial-span", "45"]
+
+    /// Polls `map-last-query` until its longitude differs from `before`.
+    @MainActor
+    private func waitForQueryToMove(
+        _ app: XCUIApplication, from before: (lat: Double, lng: Double, radiusM: Int)
+    ) -> (lat: Double, lng: Double, radiusM: Int)? {
+        let deadline = Date().addingTimeInterval(wait)
+        while Date() < deadline {
+            if let current = lastQuery(app), abs(current.lng - before.lng) > 0.0001 { return current }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        return nil
+    }
+
     // MARK: - Tests
 
-    /// First load must never show the pill (the ticket's own exception) —
-    /// only a real pan/zoom does.
+    /// First load must never show the pill — only a real pan/zoom can.
     @MainActor
     func testPillIsHiddenOnFirstLoad() throws {
         let app = launchFixtures()
@@ -98,11 +115,11 @@ final class MapSearchAreaUITests: XCTestCase {
         )
     }
 
-    /// The core flow: pan far enough → pill appears → tap → pill shows a
-    /// progress state, then hides → the exposed last-query center/radius
-    /// now matches the panned-to viewport, not the original load.
+    /// The core flow (bd#267): pan far enough → with NO tap, the exposed
+    /// last-query center moves to the panned-to viewport, and the pill
+    /// never shows.
     @MainActor
-    func testPanRevealsPillAndTapRefetchesTheNewViewport() throws {
+    func testPanAutoLoadsTheNewViewportWithoutAnyTap() throws {
         let app = launchFixtures()
         XCTAssertTrue(element(app, "map-header-card").waitForExistence(timeout: wait))
         Thread.sleep(forTimeInterval: 1.0)
@@ -113,9 +130,63 @@ final class MapSearchAreaUITests: XCTestCase {
 
         panFarWest(app)
 
+        let after = try XCTUnwrap(
+            waitForQueryToMove(app, from: before),
+            "panning to a new area never dispatched a query for it (before: \(before))"
+        )
+        // Dragging the map content west brings the area to the EAST into view.
+        XCTAssertGreaterThan(after.lng, before.lng, "the new query should be centered on the panned-to area, east of the first")
+        XCTAssertFalse(
+            app.buttons["map-search-area"].exists,
+            "the pill is a fallback only — a successful automatic load must not show it"
+        )
+        capture("auto-load-after-pan")
+    }
+
+    /// A small nudge stays inside the loaded viewport: no new query.
+    @MainActor
+    func testSmallPanDoesNotRefetch() throws {
+        let app = launchFixtures()
+        XCTAssertTrue(element(app, "map-header-card").waitForExistence(timeout: wait))
+        Thread.sleep(forTimeInterval: 1.0)
+        let before = try XCTUnwrap(lastQuery(app), "map-last-query did not expose a parseable value")
+
+        let window = app.windows.firstMatch
+        window.coordinate(withNormalizedOffset: CGVector(dx: 0.55, dy: 0.45))
+            .press(
+                forDuration: 0.1,
+                thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.45)),
+                withVelocity: .slow,
+                thenHoldForDuration: 0.3
+            )
+        Thread.sleep(forTimeInterval: 2.5)
+
+        let after = try XCTUnwrap(lastQuery(app), "map-last-query stopped exposing a parseable value")
+        XCTAssertEqual(after.lng, before.lng, accuracy: 0.000001, "a small pan must not refetch")
+        XCTAssertEqual(after.lat, before.lat, accuracy: 0.000001, "a small pan must not refetch")
+        XCTAssertFalse(app.buttons["map-search-area"].exists)
+    }
+
+    /// The fallback: zoomed out past the auto-load limit, a pan does NOT
+    /// fetch on its own — the pill appears instead, and tapping it
+    /// dispatches the query, shows its progress state, then hides.
+    @MainActor
+    func testZoomedOutPanShowsPillAndTapRefetchesTheNewViewport() throws {
+        let app = launchFixtures(extraArguments: zoomedOutArguments)
+        XCTAssertTrue(element(app, "map-header-card").waitForExistence(timeout: wait))
+        Thread.sleep(forTimeInterval: 1.0)
+
+        let lastQueryElement = element(app, "map-last-query")
+        XCTAssertTrue(lastQueryElement.waitForExistence(timeout: wait))
+        let before = try XCTUnwrap(lastQuery(app), "map-last-query did not expose a parseable value")
+
+        panFarWest(app)
+
         let pill = app.buttons["map-search-area"]
-        XCTAssertTrue(pill.waitForExistence(timeout: wait), "panning far enough never showed the Search this area pill")
-        capture("search-area-pill-visible-after-pan")
+        XCTAssertTrue(pill.waitForExistence(timeout: wait), "zoomed out, panning far never offered the Search this area pill")
+        let untouched = try XCTUnwrap(lastQuery(app))
+        XCTAssertEqual(untouched.lng, before.lng, accuracy: 0.000001, "zoomed out past the limit, nothing may fetch on its own")
+        capture("search-area-pill-visible-zoomed-out")
 
         pill.tap()
 
@@ -152,14 +223,16 @@ final class MapSearchAreaUITests: XCTestCase {
     /// to tell a marker button apart from every other button on screen.
     @MainActor
     func testNoAnnotationButtonIntersectsThePillAfterPan() throws {
-        let app = launchFixtures()
+        // bd#267: the pill only shows as a fallback now — zoomed out past
+        // the auto-load limit is the deterministic way to get it on screen.
+        let app = launchFixtures(extraArguments: zoomedOutArguments)
         XCTAssertTrue(element(app, "map-header-card").waitForExistence(timeout: wait))
         Thread.sleep(forTimeInterval: 1.0)
 
         panFarWest(app)
 
         let pill = app.buttons["map-search-area"]
-        XCTAssertTrue(pill.waitForExistence(timeout: wait), "panning far enough never showed the Search this area pill")
+        XCTAssertTrue(pill.waitForExistence(timeout: wait), "zoomed out, panning far never offered the Search this area pill")
         // Let the re-plan settle (the pill's own geometry read + the
         // resulting re-plan are each a separate render pass) before
         // reading marker frames.
