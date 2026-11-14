@@ -4,6 +4,14 @@
 # read from the vault by smoke-release.sh); nothing is stored in the repo.
 appId: io.bamware.brewdesk
 ---
+# The tab walk ends with a café detail open; close it so the tab bar is reachable.
+- runFlow:
+    when:
+      visible:
+        id: "detail-close"
+    commands:
+      - tapOn:
+          id: "detail-close"
 - tapOn: "You"
 - tapOn:
     id: "account-entry"
