@@ -7,6 +7,51 @@ public struct VenueLoadRequest: Equatable, Sendable {
     let revision: Int
 }
 
+/// bd#267: one settled map camera, reduced to what the auto-load decision
+/// needs. Built by `CafeMapScreen` from MapKit's own settled region.
+public nonisolated struct MapViewport: Equatable, Sendable {
+    public let centerLat: Double
+    public let centerLng: Double
+    /// The query radius this viewport implies — half the longer visible
+    /// side. Clamped to `minRadiusM...maxRadiusM` wherever it is used.
+    public let radiusM: Int
+    /// The shorter visible side, in metres.
+    public let spanM: Double
+    /// Zoom, as real-world metres per screen point.
+    public let metersPerPoint: Double
+
+    public init(centerLat: Double, centerLng: Double, radiusM: Int, spanM: Double, metersPerPoint: Double) {
+        self.centerLat = centerLat
+        self.centerLng = centerLng
+        self.radiusM = radiusM
+        self.spanM = spanM
+        self.metersPerPoint = metersPerPoint
+    }
+}
+
+/// bd#267: the clock behind the auto-load debounce and rate limit, injected
+/// so tests drive time by hand instead of sleeping.
+public nonisolated struct AutoLoadTiming: Sendable {
+    /// Quiet time after the camera comes to rest before a fetch starts.
+    public var debounce: Duration
+    /// Minimum time between two auto fetch STARTS.
+    public var minimumInterval: Duration
+    public var now: @Sendable () -> ContinuousClock.Instant
+    public var sleep: @Sendable (Duration) async throws -> Void
+
+    public init(
+        debounce: Duration = .milliseconds(400),
+        minimumInterval: Duration = .seconds(1),
+        now: @escaping @Sendable () -> ContinuousClock.Instant = { ContinuousClock.now },
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) {
+        self.debounce = debounce
+        self.minimumInterval = minimumInterval
+        self.now = now
+        self.sleep = sleep
+    }
+}
+
 /// Single source of truth for the venue list + filters.
 /// @MainActor + @Observable: Swift 6-clean, SwiftUI-native observation.
 /// DI-framework-agnostic — the app's composition root injects the API.
@@ -388,11 +433,254 @@ public final class VenuesModel {
     public init(
         api: any VenueListing,
         snapshot: [Venue] = [],
-        healthRetryDelays: [Duration] = [.seconds(2), .seconds(4), .seconds(8)]
+        healthRetryDelays: [Duration] = [.seconds(2), .seconds(4), .seconds(8)],
+        autoLoadTiming: AutoLoadTiming = AutoLoadTiming()
     ) {
         self.api = api
         self.snapshot = snapshot
         self.healthRetryDelays = healthRetryDelays
+        self.autoLoadTiming = autoLoadTiming
+    }
+
+    // MARK: - Auto-load on pan/zoom (bd#267)
+    //
+    // The map used to refetch only when the user tapped "Search this area".
+    // Now a settled camera that has left the loaded viewport fetches on its
+    // own: `CafeMapScreen` reports every camera rest to `cameraSettled`,
+    // which decides, debounces, rate-limits and runs the fetch here — the
+    // model owns the task, so a newer camera move cancels it directly and a
+    // late answer is dropped by `loadGeneration` (the same token `load`
+    // uses, so the two paths can never overwrite each other out of order).
+    //
+    // `centerLat/Lng/radiusM` (and so `request`) move to the new viewport
+    // only once the fetch has an outcome; `autoHandledRequest` then tells
+    // `load` that `DiscoveryRootView`'s `.task(id: request)` re-run for
+    // that change is already answered, so it never becomes a second
+    // request for the same viewport.
+
+    public enum AutoLoadDecision: Equatable, Sendable {
+        /// A fetch for this viewport starts after the debounce.
+        case scheduled
+        /// This viewport is already pending or in flight.
+        case alreadyScheduled
+        /// Still covered by the loaded viewport — nothing to do.
+        case withinThreshold
+        /// Typing, a fly-to, a sheet transition or the offline snapshot.
+        case suppressed
+        /// Past `autoLoadMaxMetersPerPoint` — the pill is the fallback.
+        case zoomedOut
+    }
+
+    /// Centre moved more than this fraction of the visible span.
+    public static let autoLoadMoveFraction = 0.35
+    /// …or the zoom changed by more than this factor, either way.
+    public static let autoLoadZoomRatio = 1.6
+    /// Zoomed out past this many metres per point, nothing auto-fetches: a
+    /// city-wide view would only ever show the capped 3 km around its centre.
+    public static let autoLoadMaxMetersPerPoint = 40.0
+
+    /// True only while an auto fetch is on the wire — drives the header's
+    /// quiet "Loading cafés…" line. Never true during the debounce.
+    public private(set) var isAutoLoading = false
+    /// The last auto fetch failed and nothing has replaced it since — the
+    /// "Search this area" pill comes back as the manual retry.
+    public private(set) var autoLoadFailed = false
+    /// The last settled camera needed a fetch but was zoomed out too far
+    /// for an automatic one — the pill comes back as the manual fallback.
+    public private(set) var autoLoadBlockedByZoom = false
+
+    @ObservationIgnored
+    private let autoLoadTiming: AutoLoadTiming
+    /// Debounce + fetch for the current target. Internal so tests can await it.
+    @ObservationIgnored
+    var autoLoadTask: Task<Void, Never>?
+    @ObservationIgnored
+    private var autoLoadTarget: MapViewport?
+    @ObservationIgnored
+    private var autoLoadIsFetching = false
+    @ObservationIgnored
+    private var lastAutoLoadStart: ContinuousClock.Instant?
+    /// The `request` an auto fetch already answered (see the note above).
+    @ObservationIgnored
+    private var autoHandledRequest: VenueLoadRequest?
+    /// The viewport whose answer is actually on screen. Distinct from
+    /// `centerLat/Lng/radiusM`, which also move for a FAILED auto fetch (so
+    /// Retry re-asks for the right place).
+    @ObservationIgnored
+    private var loadedViewport: (lat: Double, lng: Double, radiusM: Int)?
+
+    /// Call once per camera rest. `suppressed` carries what only the view
+    /// knows: the settle was not a user gesture, the search field has
+    /// focus, a search-selection fly-to is active, or a detail sheet is up
+    /// or in transition.
+    @discardableResult
+    public func cameraSettled(_ viewport: MapViewport, suppressed: Bool = false) -> AutoLoadDecision {
+        guard !suppressed, autoLoadAllowedByModelState else {
+            // Never start one — but a fetch already on the wire for a real
+            // pan is still the newest answer for where the user went.
+            cancelPendingAutoLoad()
+            return .suppressed
+        }
+        if let target = autoLoadTarget, Self.isSameViewport(target, viewport) {
+            return .alreadyScheduled
+        }
+        // A newer camera move cancels a pending or in-flight auto fetch.
+        cancelAutoLoad()
+        autoLoadFailed = false
+        let baseline = loadedViewport ?? (lat: centerLat, lng: centerLng, radiusM: radiusM)
+        guard Self.viewportNeedsLoad(
+            loadedLat: baseline.lat, loadedLng: baseline.lng, loadedRadiusM: baseline.radiusM,
+            visible: viewport
+        ) else {
+            autoLoadBlockedByZoom = false
+            return .withinThreshold
+        }
+        guard viewport.metersPerPoint <= Self.autoLoadMaxMetersPerPoint else {
+            autoLoadBlockedByZoom = true
+            return .zoomedOut
+        }
+        autoLoadBlockedByZoom = false
+        scheduleAutoLoad(viewport)
+        return .scheduled
+    }
+
+    /// Drops an auto fetch still waiting out its debounce (the user started
+    /// typing, picked a search result, or opened a café). One already on
+    /// the wire is left to finish.
+    public func cancelPendingAutoLoad() {
+        guard !autoLoadIsFetching else { return }
+        autoLoadTask?.cancel()
+        autoLoadTask = nil
+        autoLoadTarget = nil
+    }
+
+    /// Typing (the raw field text or the settled search) and the offline
+    /// snapshot both rule an auto fetch out: a search already re-queries
+    /// city-wide, and the snapshot banner owns its own retry.
+    private var autoLoadAllowedByModelState: Bool {
+        searchQuery.isEmpty && activeSearchText.isEmpty && !isShowingSnapshot
+    }
+
+    private func cancelAutoLoad() {
+        autoLoadTask?.cancel()
+        autoLoadTask = nil
+        autoLoadTarget = nil
+        guard autoLoadIsFetching else { return }
+        autoLoadIsFetching = false
+        isAutoLoading = false
+        // The token: whatever that fetch answers now is stale.
+        loadGeneration += 1
+        phase = hasReceivedLiveVenues ? .loaded : .idle
+    }
+
+    private func scheduleAutoLoad(_ viewport: MapViewport) {
+        autoLoadTarget = viewport
+        // The user is exploring: a passive GPS tick must not pull the map
+        // back while this is pending (bd#198).
+        followsUser = false
+        let timing = autoLoadTiming
+        var delay = timing.debounce
+        if let last = lastAutoLoadStart {
+            let untilAllowed = timing.now().duration(to: last.advanced(by: timing.minimumInterval))
+            if untilAllowed > delay { delay = untilAllowed }
+        }
+        autoLoadTask = Task { [weak self] in
+            do { try await timing.sleep(delay) } catch { return }
+            guard let self, !Task.isCancelled, self.autoLoadTarget == viewport else { return }
+            await self.performAutoLoad(viewport)
+        }
+    }
+
+    private func performAutoLoad(_ viewport: MapViewport) async {
+        // Re-checked at fire time: typing may have started mid-debounce.
+        guard autoLoadAllowedByModelState else {
+            autoLoadTarget = nil
+            return
+        }
+        loadGeneration += 1
+        let generation = loadGeneration
+        lastAutoLoadStart = autoLoadTiming.now()
+        let radius = min(max(viewport.radiusM, Self.minRadiusM), Self.maxRadiusM)
+        let query = VenueQuery(
+            lat: viewport.centerLat,
+            lng: viewport.centerLng,
+            radiusM: radius,
+            sort: .workScore,
+            limit: Self.viewportQueryLimit
+        )
+        autoLoadIsFetching = true
+        isAutoLoading = true
+        // `loadedVenues` is deliberately untouched until the answer lands:
+        // the pins on screen stay put while this loads.
+        phase = .loading
+        do {
+            let answer = try await api.fetchVenuesResult(query)
+            guard generation == loadGeneration, !Task.isCancelled else { return }
+            applyAutoLoadViewport(viewport, radiusM: radius)
+            loadedViewport = (lat: viewport.centerLat, lng: viewport.centerLng, radiusM: radius)
+            loadedVenues = answer.venues
+            coverage = answer.coverage
+            hasReceivedLiveVenues = true
+            isShowingSnapshot = false
+            finishAutoLoad()
+            phase = .loaded
+        } catch {
+            // Cancelled or superseded: whoever bumped `loadGeneration`
+            // already restored the state this fetch had set.
+            guard generation == loadGeneration, !Task.isCancelled else { return }
+            // Old pins stay. The centre still moves so Retry and the pill
+            // re-ask for the place the user is actually looking at.
+            applyAutoLoadViewport(viewport, radiusM: radius)
+            autoLoadFailed = true
+            finishAutoLoad()
+            phase = .failed(error.localizedDescription)
+        }
+    }
+
+    private func finishAutoLoad() {
+        autoLoadIsFetching = false
+        isAutoLoading = false
+        autoLoadTarget = nil
+        autoLoadTask = nil
+    }
+
+    /// Same bookkeeping as `updateViewport` (bd#198: an explored viewport
+    /// is never overwritten by a passive GPS tick), plus `hasAppliedFirstFix`
+    /// so a first fix that arrives late cannot snap back either.
+    private func applyAutoLoadViewport(_ viewport: MapViewport, radiusM: Int) {
+        centerLat = viewport.centerLat
+        centerLng = viewport.centerLng
+        self.radiusM = radiusM
+        centerSource = .exploredViewport
+        followsUser = false
+        hasAppliedFirstFix = true
+        autoHandledRequest = request
+    }
+
+    /// The whole trigger rule, pure: the centre moved more than
+    /// `autoLoadMoveFraction` of the visible span, or the zoom changed by
+    /// more than `autoLoadZoomRatio`. Both sides are measured the way the
+    /// query itself is — the span and radius clamped to what
+    /// `minRadiusM...maxRadiusM` can actually ask for — so zooming where the
+    /// query would not change never refetches.
+    static func viewportNeedsLoad(
+        loadedLat: Double, loadedLng: Double, loadedRadiusM: Int, visible: MapViewport
+    ) -> Bool {
+        guard loadedRadiusM > 0 else { return true }
+        let moved = metersBetween(loadedLat, loadedLng, visible.centerLat, visible.centerLng)
+        let span = min(max(visible.spanM, Double(2 * minRadiusM)), Double(2 * maxRadiusM))
+        if moved > span * autoLoadMoveFraction { return true }
+        let visibleRadius = min(max(visible.radiusM, minRadiusM), maxRadiusM)
+        let ratio = Double(visibleRadius) / Double(loadedRadiusM)
+        return ratio > autoLoadZoomRatio || ratio < 1 / autoLoadZoomRatio
+    }
+
+    /// Two camera rests that are the same place for fetching purposes —
+    /// MapKit reports a rest more than once for one gesture.
+    static func isSameViewport(_ a: MapViewport, _ b: MapViewport) -> Bool {
+        let moved = metersBetween(a.centerLat, a.centerLng, b.centerLat, b.centerLng)
+        let radiusDelta = abs(a.radiusM - b.radiusM)
+        return moved <= 0.02 * max(a.spanM, 1) && Double(radiusDelta) <= 0.02 * Double(max(a.radiusM, 1))
     }
 
     public var request: VenueLoadRequest {
@@ -454,6 +742,7 @@ public final class VenuesModel {
             }
         }
         guard centerLat != lat || centerLng != lng else { return false }
+        cancelAutoLoad()
         centerLat = lat
         centerLng = lng
         centerSource = .userLocation
@@ -469,6 +758,7 @@ public final class VenuesModel {
     /// right after even on a model that has never seen a real fix yet
     /// (`hasAppliedFirstFix = true` closes the cold-start exception).
     public func browseCoverageCenter() {
+        cancelAutoLoad()
         centerLat = Self.coverageCenterLat
         centerLng = Self.coverageCenterLng
         radiusM = Self.defaultRadiusM
@@ -494,6 +784,7 @@ public final class VenuesModel {
     public func updateViewport(lat: Double, lng: Double, radiusM: Int) -> Bool {
         let clampedRadius = min(max(radiusM, Self.minRadiusM), Self.maxRadiusM)
         guard centerLat != lat || centerLng != lng || self.radiusM != clampedRadius else { return false }
+        cancelAutoLoad()
         centerLat = lat
         centerLng = lng
         self.radiusM = clampedRadius
@@ -513,6 +804,7 @@ public final class VenuesModel {
     public func centerOnUser(lat: Double, lng: Double, radiusM: Int) -> Bool {
         let clampedRadius = min(max(radiusM, Self.minRadiusM), Self.maxRadiusM)
         let changed = centerLat != lat || centerLng != lng || self.radiusM != clampedRadius
+        cancelAutoLoad()
         centerLat = lat
         centerLng = lng
         self.radiusM = clampedRadius
@@ -528,8 +820,8 @@ public final class VenuesModel {
     /// first fetch after a real GPS fix kept querying at `defaultRadiusM`
     /// (2,500m) while bd#209's walking-scale initial camera (~0.014° span)
     /// implies a radius under a third of that. The mismatch alone — not any
-    /// real user pan — made `CafeMapScreen.needsSearchAreaPill` see a >2×
-    /// radius "change" on cold start and show the pill with zero gestures.
+    /// real user pan — read as a >2× radius "change" on cold start and
+    /// showed the pill with zero gestures.
     /// `CafeMapScreen.applyCenterChange()` calls this right after computing
     /// the region the camera will actually show, so by the time
     /// `visibleRegion` settles to match, `radiusM` already does too.
@@ -624,6 +916,7 @@ public final class VenuesModel {
     }
 
     public func retry() {
+        cancelAutoLoad()
         requestRevision &+= 1
     }
 
@@ -672,6 +965,12 @@ public final class VenuesModel {
     }
 
     public func load(_ request: VenueLoadRequest) async {
+        // bd#267: this request only exists because an auto fetch moved the
+        // centre once it had its answer — nothing left to ask.
+        guard request != autoHandledRequest else { return }
+        cancelAutoLoad()
+        autoLoadFailed = false
+        autoLoadBlockedByZoom = false
         loadGeneration += 1
         let generation = loadGeneration
         phase = .loading
@@ -687,6 +986,9 @@ public final class VenuesModel {
             try Task.checkCancellation()
             guard generation == loadGeneration else { return }
             loadedVenues = answer.venues
+            if let lat = request.query.lat, let lng = request.query.lng {
+                loadedViewport = (lat: lat, lng: lng, radiusM: request.query.radiusM)
+            }
             coverage = answer.coverage
             hasReceivedLiveVenues = true
             isShowingSnapshot = false
