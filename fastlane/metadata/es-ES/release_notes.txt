@@ -1,6 +1,2 @@
-• Pregunta: describe el sitio que necesitas ("tranquilo y con enchufes cerca de Union Square") y recibe una respuesta basada en los datos de cafés de BrewDesk, con los lugares para tocar
-• Todos los cafés están ahora en el mapa: los que aún no hemos puntuado aparecen como pines grises con una taza que puedes tocar
-• Mueve el mapa a cualquier zona y los cafés se cargan solos, con más cobertura en Queens, el Bronx y Staten Island
-• Cada puntuación indica de dónde viene: "Según 1 visita" o "Investigado el 16 sep · 5 fuentes"
-• Bibliotecas, parques y espacios de coworking aparecen etiquetados, con un filtro por tipo de lugar
-• Correcciones menores y carga más rápida
+• Corrige que no cargaran los cafés, las puntuaciones ni Pregunta: la app ya se conecta al servicio de BrewDesk en su nueva dirección
+• Incluye todo lo de la 1.2: Pregunta, todos los cafés en el mapa, cafés que se cargan al mover el mapa y puntuaciones que indican de dónde vienen
