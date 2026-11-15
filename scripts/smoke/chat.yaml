@@ -15,32 +15,44 @@ appId: io.bamware.brewdesk
 - tapOn: "You"
 - tapOn:
     id: "account-entry"
-- tapOn:
-    id: "account-sign-in-email"
-- tapOn:
-    id: "account-sign-in-email-field"
-- inputText: ${SMOKE_EMAIL}
-- pressKey: Enter
-# The keyboard covers the lower half of the form and the fields have no
-# focus chaining (bamware-ios issue filed), so scroll each one into view.
-- scrollUntilVisible:
-    element:
-      id: "account-sign-in-password-field"
-    direction: DOWN
-- tapOn:
-    id: "account-sign-in-password-field"
-- inputText: ${SMOKE_PASSWORD}
-- pressKey: Enter
-- scrollUntilVisible:
-    element:
-      id: "account-sign-in-submit"
-    direction: DOWN
-- tapOn:
-    id: "account-sign-in-submit"
-- extendedWaitUntil:
-    notVisible:
-      id: "account-sign-in-busy-overlay"
-    timeout: 30000
+# The simulator keychain survives a reinstall, so the test account may still
+# be signed in from the last run: sign in only when the sign-in sheet shows.
+- runFlow:
+    when:
+      visible:
+        id: "account-sign-in-email"
+    commands:
+      - tapOn:
+          id: "account-sign-in-email"
+      - tapOn:
+          id: "account-sign-in-email-field"
+      - inputText: ${SMOKE_EMAIL}
+      - pressKey: Enter
+      # The keyboard covers the lower half of the form and the fields have no
+      # focus chaining (bamware-ios#14), so scroll each one into view.
+      - scrollUntilVisible:
+          element:
+            id: "account-sign-in-password-field"
+          direction: DOWN
+      - tapOn:
+          id: "account-sign-in-password-field"
+      - inputText: ${SMOKE_PASSWORD}
+      - pressKey: Enter
+      - scrollUntilVisible:
+          element:
+            id: "account-sign-in-submit"
+          direction: DOWN
+      - tapOn:
+          id: "account-sign-in-submit"
+      - extendedWaitUntil:
+          notVisible:
+            id: "account-sign-in-busy-overlay"
+          timeout: 30000
+- runFlow:
+    when:
+      visible: "Sign Out"
+    commands:
+      - tapOn: "Close"
 - tapOn: "Ask"
 - tapOn:
     id: "ask-input"
