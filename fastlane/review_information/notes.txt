@@ -6,7 +6,7 @@ USER-GENERATED CONTENT & MODERATION (Apple 1.2): community photos and structured
 
 SETUP: Launch → onboarding (ends with an optional account step — Skip is fine) → location intro → allow location, or tap "Use Union Square instead" to review without it. Location is the only device permission the app requests. Without location the app shows the full NYC dataset, so it can be reviewed from anywhere.
 
-REVIEWING OUTSIDE NYC: grant location and the map shows real venues near you from baseline coverage with a banner saying the area is baseline data. Engine liveness: https://venuekit-ashen.vercel.app/v1/health (JSON; the bare root is not a product URL).
+REVIEWING OUTSIDE NYC: grant location and the map shows real venues near you from baseline coverage with a banner saying the area is baseline data. Engine liveness: https://venuekit.bamware.io/v1/health (JSON; the bare root is not a product URL).
 
 WHAT DISTINGUISHES THIS APP — claim-level evidence, not crowd ratings:
 1. Spots tab → search "Housing Works" → open Housing Works Bookstore Cafe.
@@ -17,7 +17,7 @@ Also: Directions hands off to Maps; Save adds to the Saved tab; Import parses an
 
 DEVICES TESTED: physical iPhone via TestFlight builds 1–18; Release UI suites incl. a scripted reviewer-flow simulation on iPhone 17 Pro Max and iPad Pro 13-inch (M5), iOS 26. Minimum iOS 17.0.
 
-EXTERNAL SERVICES: our venue data service on Vercel (URL above); our account/identity service (bamware-auth-service, called only when the user chooses to sign in) with optional Sign in with Apple / Google; OpenStreetMap data (ODbL, attributed in the You tab) incl. an Overpass lookup done by our server; Google Places photos via our server, shown with attribution; Apple MapKit / Core Location; Apple Maps for directions. No payment, ad, analytics, crash-reporting or AI services are called by the app. The dataset is researched offline by our team from public web sources.
+EXTERNAL SERVICES: our venue data service (URL above); our account/identity service (bamware-auth-service, called only when the user chooses to sign in) with optional Sign in with Apple / Google; OpenStreetMap data (ODbL, attributed in the You tab) incl. an Overpass lookup done by our server; Google Places photos via our server, shown with attribution; Apple MapKit / Core Location; Apple Maps for directions. No payment, ad, analytics, crash-reporting or AI services are called by the app. The dataset is researched offline by our team from public web sources.
 
 REGIONS: features identical everywhere; data depth differs (NYC researched, 50 US metros baseline with banner, elsewhere live OSM lookup or an explained empty state).
 

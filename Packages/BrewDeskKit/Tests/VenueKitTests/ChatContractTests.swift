@@ -12,7 +12,7 @@ import FoundationNetworking
 /// protocol (never registered globally) so the suite can run in parallel
 /// with `CommunityAuthTests`.
 @Suite(.serialized) struct ChatContractTests {
-    static let engine = URL(string: "https://venuekit-ashen.vercel.app")!
+    static let engine = URL(string: "https://venuekit.bamware.io")!
 
     // MARK: - Decoding
 

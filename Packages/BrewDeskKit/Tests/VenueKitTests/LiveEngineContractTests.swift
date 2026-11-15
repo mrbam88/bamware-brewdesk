@@ -9,7 +9,7 @@ import Testing
 /// contract job and the pre-upload smoke script set it); PR CI skips it.
 @Suite(.enabled(if: ProcessInfo.processInfo.environment["BREWDESK_LIVE_CONTRACT"] == "1"))
 struct LiveEngineContractTests {
-    private let prod = URL(string: "https://venuekit-ashen.vercel.app")!
+    private let prod = URL(string: "https://venuekit.bamware.io")!
 
     @Test func liveHealthDecodesAndAdvertisesChat() async throws {
         let api = VenueAPI(baseURL: prod)

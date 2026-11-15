@@ -5,7 +5,7 @@
 # has moved; commit the result.
 set -eu
 cd "$(dirname "$0")/.."
-URL='https://venuekit-ashen.vercel.app/v1/venues?lat=40.7359&lng=-73.9911&radius_m=2500&sort=work_score&limit=50'
+URL='https://venuekit.bamware.io/v1/venues?lat=40.7359&lng=-73.9911&radius_m=2500&sort=work_score&limit=50'
 curl -fsS "$URL" | python3 -c '
 import json, sys, datetime
 url = sys.argv[1]

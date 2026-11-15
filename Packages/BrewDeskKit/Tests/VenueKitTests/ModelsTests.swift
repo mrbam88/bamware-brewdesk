@@ -456,9 +456,9 @@ import Testing
         #expect(response.photos[0].attributionUri == "https://maps.google.com/ada")
         #expect(response.photos[1].attributionUri == nil)
 
-        let base = URL(string: "https://venuekit-ashen.vercel.app")!
+        let base = URL(string: "https://venuekit.bamware.io")!
         #expect(VenueAPI.absolutePhotoURL(response.photos[0].url, base: base)
-            == "https://venuekit-ashen.vercel.app/v1/venues/v1/photos/0/media")
+            == "https://venuekit.bamware.io/v1/venues/v1/photos/0/media")
         // Absolute URLs pass through untouched.
         #expect(VenueAPI.absolutePhotoURL(response.photos[1].url, base: base)
             == "https://elsewhere.example/x.jpg")
