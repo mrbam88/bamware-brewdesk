@@ -17,7 +17,7 @@ import FoundationNetworking
 /// parallel — same reasoning `ReportBlockTests`' `PhotoStubURLProtocol`
 /// gives for its own stub.
 @Suite(.serialized) struct CommunityAuthTests {
-    static let engine = URL(string: "https://venuekit-ashen.vercel.app")!
+    static let engine = URL(string: "https://venuekit.bamware.io")!
 
     private var answers: ObservationAnswers {
         ObservationAnswers(

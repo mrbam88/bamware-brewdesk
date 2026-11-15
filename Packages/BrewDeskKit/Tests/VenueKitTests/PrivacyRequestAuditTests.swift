@@ -21,8 +21,8 @@ import Testing
 @Suite(.serialized) struct PrivacyRequestAuditTests {
     /// The Release `VenueAPI.defaultBaseURL`. Pinned literally so a future
     /// host change has to come through this suite.
-    static let engine = URL(string: "https://venuekit-ashen.vercel.app")!
-    static let engineHost = "venuekit-ashen.vercel.app"
+    static let engine = URL(string: "https://venuekit.bamware.io")!
+    static let engineHost = "venuekit.bamware.io"
 
     /// Union Square — VenuesModel.coverageCenterLat/Lng, the deterministic
     /// fallback used whenever Core Location has not supplied a coordinate.

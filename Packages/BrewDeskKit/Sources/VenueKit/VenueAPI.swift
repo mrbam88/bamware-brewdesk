@@ -80,7 +80,10 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
         #if DEBUG
         URL(string: "http://localhost:3000")!
         #else
-        URL(string: "https://venuekit-ashen.vercel.app")!
+        // A domain we own, never a host's address (ve#239): Vercel disabled
+        // the old vercel.app host and the App Store build could not follow.
+        // Hosting can now move with a DNS change and no app release.
+        URL(string: "https://venuekit.bamware.io")!
         #endif
     }
 

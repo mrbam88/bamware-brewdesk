@@ -20,7 +20,7 @@ public enum DebugEnvironment: String, CaseIterable, Identifiable {
     public var baseURL: URL {
         switch self {
         case .localhost: URL(string: "http://localhost:3000")!
-        case .production: URL(string: "https://venuekit-ashen.vercel.app")!
+        case .production: URL(string: "https://venuekit.bamware.io")!
         }
     }
 

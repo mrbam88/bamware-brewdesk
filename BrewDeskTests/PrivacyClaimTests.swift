@@ -48,7 +48,7 @@ import BrewDeskKit
         #expect(base.host == "localhost")
         #else
         #expect(base.scheme == "https")
-        #expect(base.host == "venuekit-ashen.vercel.app")
+        #expect(base.host == "venuekit.bamware.io")
         // The Debug plist carries NSAllowsLocalNetworking; Release must not
         // carry any App Transport Security exception.
         #expect(Bundle.main.infoDictionary?["NSAppTransportSecurity"] == nil)

@@ -117,7 +117,7 @@ final class PhotoStubURLProtocol: URLProtocol {
     @Test func liveAPIFiltersBlockedContributors() async throws {
         let store = ContributorBlockStore(defaults: nil)
         let api = VenueAPI(
-            baseURL: URL(string: "https://venuekit-ashen.vercel.app")!,
+            baseURL: URL(string: "https://venuekit.bamware.io")!,
             session: PhotoStubURLProtocol.makeSession(),
             blockStore: store
         )

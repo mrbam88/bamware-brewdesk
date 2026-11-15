@@ -6,7 +6,7 @@ import Testing
 /// (brewdesk#47, venue-engine PR #26) plus the ScenarioVenueService
 /// stand-in's degradation contract — the UI tests lean on these being exact.
 @Suite(.serialized) struct ObservationSubmissionTests {
-    static let engine = URL(string: "https://venuekit-ashen.vercel.app")!
+    static let engine = URL(string: "https://venuekit.bamware.io")!
 
     private func api() -> VenueAPI {
         ObservationRecordingProtocol.reset()
@@ -79,7 +79,7 @@ import Testing
             answers: answers
         )
         let request = try #require(ObservationRecordingProtocol.requests.first)
-        #expect(request.host == "venuekit-ashen.vercel.app")
+        #expect(request.host == "venuekit.bamware.io")
         #expect(request.queryNames.isEmpty)
         let coordinateKeys: Set<String> = [
             "lat", "lng", "lon", "latitude", "longitude", "ll", "location",
