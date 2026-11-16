@@ -85,20 +85,12 @@ public struct VenueDetailScreen: View {
         }
         .accessibilityIdentifier("venue-detail-screen")
         .background(theme.backgroundColor.ignoresSafeArea())
+        // brewdesk#251: "Thanks, updated" floats just above the action dock
+        // (this overlay sits inside the dock's safe-area inset), so it is on
+        // screen wherever the sheet is scrolled or resting, and confirming a
+        // correction never shifts the content underneath.
+        .overlay(alignment: .bottom) { correctionThanksBanner }
         .safeAreaInset(edge: .bottom) { actionDock }
-        // brewdesk#251: at accessibility text sizes the Workability header
-        // has no spare corner, so the confirmation floats over the screen
-        // instead (see `workability`). Either way it is an overlay —
-        // confirming a correction never shifts the content underneath.
-        .overlay(alignment: .top) {
-            if dynamicTypeSize.isAccessibilitySize {
-                correctionThanksBanner
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .brewDeskGlass(in: Capsule())
-                    .padding(.top, 8)
-            }
-        }
         .sheet(item: $correcting) { claim in
             ClaimCorrectionSheet(
                 venue: venue,
@@ -456,16 +448,6 @@ public struct VenueDetailScreen: View {
         // low-contrast elements (e.g. the header's neighborhood line) that
         // have nothing to do with the Workability card this ticket touches.
         .accessibilityIdentifier("workability-card")
-        // brewdesk#251: "Thanks, updated" lands in the header's empty
-        // trailing corner, right above the row that just changed. Applied after
-        // the card identifier above so it keeps its own.
-        .overlay(alignment: .topTrailing) {
-            if !dynamicTypeSize.isAccessibilitySize {
-                correctionThanksBanner
-                    .padding(.top, 18)
-                    .padding(.trailing, 18)
-            }
-        }
     }
 
     /// A Workability row plus its quiet "Not right?" entry (brewdesk#251).
@@ -505,16 +487,19 @@ public struct VenueDetailScreen: View {
     }
 
     /// "Thanks, updated" after a successful correction (brewdesk#251).
-    /// Transient and overlaid (placement: `workability`, or the screen top
-    /// at accessibility sizes); VoiceOver hears it through the announcement
+    /// Transient and overlaid; VoiceOver hears it through the announcement
     /// posted alongside.
     @ViewBuilder
     private var correctionThanksBanner: some View {
         if showCorrectionThanks {
             Label("Thanks, updated", systemImage: "checkmark.circle.fill")
-                .font(.footnote.weight(.semibold))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(theme.primaryColor)
-                .transition(.opacity)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .brewDeskGlass(in: Capsule())
+                .padding(.bottom, 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
                 .accessibilityIdentifier("claim-correction-thanks")
         }
     }
