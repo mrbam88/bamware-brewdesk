@@ -1,2 +1,5 @@
 • Corrige que no cargaran los cafés, las puntuaciones ni Pregunta: la app ya se conecta al servicio de BrewDesk en su nueva dirección
+• ¿Ves un dato incorrecto? Toca "¿No es correcto?" en esa línea y corrige solo ese dato
+• Pregunta avisa cuando se está iniciando, en lugar de parecer bloqueada
+• Las etiquetas se leen mejor en modo oscuro y los cafés sin puntuar lo indican con más claridad
 • Incluye todo lo de la 1.2: Pregunta, todos los cafés en el mapa, cafés que se cargan al mover el mapa y puntuaciones que indican de dónde vienen
