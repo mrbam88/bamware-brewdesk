@@ -642,21 +642,79 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         case .offline: throw Self.offlineError
         case .slow:
             try await Task.sleep(for: .seconds(6))
-            return Self.observedVenue(id: venueId)
+            return Self.observedVenue(id: venueId, answers: answers)
         case .offlineThenRecovers:
             if observationAttempts.next() == 1 { throw Self.offlineError }
-            return Self.observedVenue(id: venueId)
+            return Self.observedVenue(id: venueId, answers: answers)
         case .fixtureOK, .emptyVenues, .photosEmpty, .photosFail, .manyVenues, .communityPhotos,
              .baselineCity, .noCoverage, .cityWideSearch, .filterHonesty, .venueTypes:
-            return Self.observedVenue(id: venueId)
+            return Self.observedVenue(id: venueId, answers: answers)
         }
     }
 
     /// The "rescored venue" a successful submit returns. Lenient on unknown
     /// ids (snapshot-seeded launches submit against non-fixture venues): the
-    /// form ignores the payload, so the first fixture stands in.
-    private static func observedVenue(id: String) -> Venue {
-        fixtureVenues.first { $0.id == id } ?? fixtureVenues[0]
+    /// first fixture stands in.
+    ///
+    /// brewdesk#251: the answered claims are rewritten the way the engine
+    /// does it (documented answer → claim mapping, `user_report`, 0.7,
+    /// observed now) and every unanswered claim is returned untouched, so
+    /// the detail screen's post-correction refresh is observable in
+    /// fixture-driven UI tests. The score is left alone — the engine owns
+    /// rescoring.
+    private static func observedVenue(id: String, answers: ObservationAnswers) -> Venue {
+        let venue = fixtureVenues.first { $0.id == id } ?? fixtureVenues[0]
+        let now = ISO8601DateFormatter().string(from: Date())
+        func reported(_ value: String) -> Claim {
+            Claim(value: value, source: "user_report", confidence: 0.7, observedAt: now)
+        }
+        let current = venue.attributes
+        let attributes = VenueAttributes(
+            wifi: answers.wifiQuality.map {
+                switch $0 {
+                case .fast: reported("fast")
+                case .acceptable: reported("ok")
+                case .slow, .unusable: reported("slow")
+                }
+            } ?? current.wifi,
+            outlets: answers.outletsWorking.map { reported(Self.availabilityClaimValue($0)) }
+                ?? current.outlets,
+            laptopPolicy: answers.laptopFriendlyToday.map {
+                switch $0 {
+                case .yes: reported("unrestricted")
+                case .mixed: reported("time_limited")
+                case .no: reported("discouraged")
+                }
+            } ?? current.laptopPolicy,
+            noise: answers.noise.map {
+                switch $0 {
+                case .quiet: reported("quiet")
+                case .moderate: reported("moderate")
+                case .loud: reported("lively")
+                }
+            } ?? current.noise,
+            seating: answers.seatsAvailable.map { reported(Self.availabilityClaimValue($0)) }
+                ?? current.seating,
+            outdoorSeating: current.outdoorSeating
+        )
+        return Venue(
+            id: venue.id, name: venue.name, lat: venue.lat, lng: venue.lng,
+            address: venue.address, neighborhood: venue.neighborhood, borough: venue.borough,
+            hoursRaw: venue.hoursRaw, vertical: venue.vertical, attributes: attributes,
+            vibeTags: venue.vibeTags, workScore: venue.workScore, lastVerified: now,
+            distanceM: venue.distanceM, venueType: venue.venueType, website: venue.website,
+            phone: venue.phone, email: venue.email, tier: venue.tier, news: venue.news,
+            scoreDisplay: venue.scoreDisplay, scoreCoverage: venue.scoreCoverage,
+            scoreConfidence: venue.scoreConfidence
+        )
+    }
+
+    private static func availabilityClaimValue(_ answer: AvailabilityAnswer) -> String {
+        switch answer {
+        case .noneAvailable: "scarce"
+        case .few: "some"
+        case .plenty: "plenty"
+        }
     }
 
     // MARK: - Helpers

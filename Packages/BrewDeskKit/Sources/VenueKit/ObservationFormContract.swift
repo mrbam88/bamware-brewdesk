@@ -1,7 +1,8 @@
 import Foundation
 
-// Structured community observations (brewdesk#47, #79). The review form IS an
-// observation: five enum-valued answers, no free text anywhere — the engine's
+// Structured community observations (brewdesk#47, #79, #251). The review form
+// IS an observation: enum-valued answers (all five from the form, exactly one
+// from a single-claim correction), no free text anywhere — the engine's
 // schema is `.strict()` at both levels, so any extra key is a 400. Wire
 // contract: bamware-venue-engine PR #26, `POST /v1/venues/:id/observations`;
 // `wifiQuality` added by brewdesk#79 (optional on the wire, so pre-#79 builds
@@ -37,16 +38,36 @@ public enum WifiQualityAnswer: String, CaseIterable, Codable, Equatable, Sendabl
     case fast, acceptable, slow, unusable
 }
 
-/// All five answers — every field required, by construction (the engine
-/// accepts `wifiQuality` as optional only so pre-#79 builds keep working;
-/// this app always sends it). There is no free-text member and never should
-/// be: structure is what makes community input scoreable (epic brewdesk#25).
+/// One corrected claim (brewdesk#251): the single answer a "Not right?"
+/// correction carries. Same wire vocabulary as the five-question form — a
+/// correction IS an observation with one answer.
+public enum ClaimCorrection: Equatable, Hashable, Sendable {
+    case laptopFriendlyToday(LaptopFriendlyAnswer)
+    case seatsAvailable(AvailabilityAnswer)
+    case outletsWorking(AvailabilityAnswer)
+    case noise(NoiseAnswer)
+    case wifiQuality(WifiQualityAnswer)
+}
+
+/// The answers of one observation. Two shapes, both by construction:
+///
+/// - the five-question form — `init(laptopFriendlyToday:…wifiQuality:)`,
+///   every answer required (the engine accepts `wifiQuality` as optional only
+///   so pre-#79 builds keep working; this app always sends it);
+/// - a single-claim correction — `init(only:)`, exactly one answer
+///   (brewdesk#251; the engine accepts any non-empty subset since
+///   venue-engine PR #245 and leaves unanswered claims untouched).
+///
+/// A nil answer is omitted from the JSON entirely (synthesized
+/// `encodeIfPresent`) — never `null`, which the engine's strict schema
+/// rejects. There is no free-text member and never should be: structure is
+/// what makes community input scoreable (epic brewdesk#25).
 public struct ObservationAnswers: Codable, Equatable, Sendable {
-    public let laptopFriendlyToday: LaptopFriendlyAnswer
-    public let seatsAvailable: AvailabilityAnswer
-    public let outletsWorking: AvailabilityAnswer
-    public let noise: NoiseAnswer
-    public let wifiQuality: WifiQualityAnswer
+    public let laptopFriendlyToday: LaptopFriendlyAnswer?
+    public let seatsAvailable: AvailabilityAnswer?
+    public let outletsWorking: AvailabilityAnswer?
+    public let noise: NoiseAnswer?
+    public let wifiQuality: WifiQualityAnswer?
 
     public init(
         laptopFriendlyToday: LaptopFriendlyAnswer,
@@ -55,6 +76,28 @@ public struct ObservationAnswers: Codable, Equatable, Sendable {
         noise: NoiseAnswer,
         wifiQuality: WifiQualityAnswer
     ) {
+        self.laptopFriendlyToday = laptopFriendlyToday
+        self.seatsAvailable = seatsAvailable
+        self.outletsWorking = outletsWorking
+        self.noise = noise
+        self.wifiQuality = wifiQuality
+    }
+
+    /// Exactly one answer — every other attribute stays off the wire, so the
+    /// engine leaves those claims exactly as they are (brewdesk#251).
+    public init(only correction: ClaimCorrection) {
+        var laptopFriendlyToday: LaptopFriendlyAnswer?
+        var seatsAvailable: AvailabilityAnswer?
+        var outletsWorking: AvailabilityAnswer?
+        var noise: NoiseAnswer?
+        var wifiQuality: WifiQualityAnswer?
+        switch correction {
+        case .laptopFriendlyToday(let answer): laptopFriendlyToday = answer
+        case .seatsAvailable(let answer): seatsAvailable = answer
+        case .outletsWorking(let answer): outletsWorking = answer
+        case .noise(let answer): noise = answer
+        case .wifiQuality(let answer): wifiQuality = answer
+        }
         self.laptopFriendlyToday = laptopFriendlyToday
         self.seatsAvailable = seatsAvailable
         self.outletsWorking = outletsWorking
