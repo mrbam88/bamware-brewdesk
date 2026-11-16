@@ -35,8 +35,37 @@ public final class ChatModel {
         case failed(ChatError)
     }
 
+    /// What the sending row says while a reply is pending (brewdesk#272).
+    /// The first question after an idle spell waits on a server cold start
+    /// (3–15 s); a row that only ever says "Thinking…" looks stuck.
+    public enum WaitStage: Equatable, Sendable, CaseIterable {
+        case thinking
+        case wakingUp
+        case stillWorking
+
+        /// Time spent waiting before the row switches to this stage.
+        public var threshold: Duration {
+            switch self {
+            case .thinking: .zero
+            case .wakingUp: .seconds(5)
+            case .stillWorking: .seconds(20)
+            }
+        }
+
+        public var message: String {
+            switch self {
+            case .thinking: String(localized: "Thinking…")
+            case .wakingUp: String(localized: "Waking up BrewDesk…")
+            case .stillWorking: String(localized: "Still working on it…")
+            }
+        }
+    }
+
     public private(set) var transcript: [ChatTranscriptEntry] = []
     public private(set) var phase: Phase = .idle
+    /// Advances while `phase == .sending`; back to `.thinking` the moment
+    /// the send ends, whichever way it ends.
+    public private(set) var waitStage: WaitStage = .thinking
     /// From the last successful reply's `meta`; nil until one arrives.
     public private(set) var turnsLeftToday: Int?
 
@@ -52,13 +81,27 @@ public final class ChatModel {
     /// layer owns the `LocationService` (an app-target type), so it hands
     /// the model a closure rather than the service.
     @ObservationIgnored private let locationProvider: () -> ChatLocation?
+    /// Times the `WaitStage` steps on the injected clock (tests advance a
+    /// manual one instead of sleeping). Each call marks "now" as the start
+    /// of a wait and returns a sleep-until-this-much-has-elapsed function,
+    /// so stages are deadlines from one start, not relative sleeps that
+    /// drift.
+    @ObservationIgnored private let makeWaitTimer: () -> @Sendable (Duration) async throws -> Void
+    @ObservationIgnored private var waitTicker: Task<Void, Never>?
 
-    public init(
+    public init<C: Clock<Duration>>(
         client: any ChatClient,
-        locationProvider: @escaping () -> ChatLocation? = { nil }
+        locationProvider: @escaping () -> ChatLocation? = { nil },
+        clock: C = ContinuousClock()
     ) {
         self.client = client
         self.locationProvider = locationProvider
+        self.makeWaitTimer = {
+            let start = clock.now
+            return { elapsed in
+                try await clock.sleep(until: start.advanced(by: elapsed), tolerance: nil)
+            }
+        }
     }
 
     public var isSending: Bool { phase == .sending }
@@ -106,6 +149,8 @@ public final class ChatModel {
 
     private func perform() async {
         phase = .sending
+        startWaitTicker()
+        defer { stopWaitTicker() }
         do {
             let response = try await client.sendChat(makeRequest())
             transcript.append(
@@ -121,6 +166,31 @@ public final class ChatModel {
         } catch {
             phase = .failed(.upstream)
         }
+    }
+
+    private func startWaitTicker() {
+        waitTicker?.cancel()
+        waitStage = .thinking
+        let sleepUntilElapsed = makeWaitTimer()
+        waitTicker = Task { [weak self] in
+            for stage in WaitStage.allCases where stage != .thinking {
+                do {
+                    try await sleepUntilElapsed(stage.threshold)
+                } catch {
+                    return
+                }
+                // A sleep that finished just as the reply landed must not
+                // relabel a row that is already gone (or a later send's).
+                guard !Task.isCancelled, let self, self.phase == .sending else { return }
+                self.waitStage = stage
+            }
+        }
+    }
+
+    private func stopWaitTicker() {
+        waitTicker?.cancel()
+        waitTicker = nil
+        waitStage = .thinking
     }
 }
 

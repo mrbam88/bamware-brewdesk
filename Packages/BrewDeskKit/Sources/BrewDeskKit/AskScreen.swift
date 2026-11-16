@@ -142,13 +142,28 @@ public struct AskScreen: View {
                     ProgressView()
                         .controlSize(.small)
                         .tint(BrewDeskPalette.primaryText)
-                    Text("Thinking…")
-                        .font(.subheadline)
-                        .foregroundStyle(BrewDeskPalette.secondaryText)
+                    // brewdesk#272: every stage's text is laid out, only
+                    // the current one is visible — the bubble keeps one
+                    // size, so the row never shifts when the text changes.
+                    ZStack(alignment: .leading) {
+                        ForEach(ChatModel.WaitStage.allCases, id: \.self) { stage in
+                            Text(stage.message)
+                                .opacity(stage == model.waitStage ? 1 : 0)
+                                .accessibilityHidden(stage != model.waitStage)
+                        }
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(BrewDeskPalette.secondaryText)
                 }
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("ask-sending")
+            // One announcement per change; the reset to "Thinking…" when
+            // the send ends removes this row, so it never fires for that.
+            .onChange(of: model.waitStage) { _, stage in
+                guard stage != .thinking else { return }
+                AccessibilityNotification.Announcement(stage.message).post()
+            }
         case .failed(let error):
             errorRow(error)
         }

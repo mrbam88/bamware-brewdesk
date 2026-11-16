@@ -1677,6 +1677,22 @@
         }
       }
     },
+    "Still working on it…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Still working on it…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Seguimos en ello…"
+          }
+        }
+      }
+    },
     "Support": {
       "localizations": {
         "es": {
@@ -1908,6 +1924,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "Recordatorios de visita"
+          }
+        }
+      }
+    },
+    "Waking up BrewDesk…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waking up BrewDesk…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Despertando a BrewDesk…"
           }
         }
       }

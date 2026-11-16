@@ -84,6 +84,19 @@ struct VenueTypeBadgeViewTests {
         #expect(scoreCoverageCaption(coverage) == "Based on 1 of 5 details")
     }
 
+    /// brewdesk#256: nothing known is not a reason worth printing.
+    @Test func coverageCaptionIsNilWhenNothingIsKnown() {
+        let coverage = ScoreCoverage(known: 0, of: 5, weight: 0, attributes: [])
+        #expect(scoreCoverageCaption(coverage) == nil)
+    }
+
+    @Test func coverageCaptionIsKeptForPartialEvidence() {
+        for known in 1...4 {
+            let coverage = ScoreCoverage(known: known, of: 5, weight: Double(known) / 5, attributes: [])
+            #expect(scoreCoverageCaption(coverage) == "Based on \(known) of 5 details")
+        }
+    }
+
     @Test func coverageCaptionForFullEvidence() {
         let coverage = ScoreCoverage(known: 5, of: 5, weight: 1.0, attributes: ["wifi", "outlets", "laptopPolicy", "noise", "seating"])
         #expect(scoreCoverageCaption(coverage) == "Based on 5 of 5 details")
