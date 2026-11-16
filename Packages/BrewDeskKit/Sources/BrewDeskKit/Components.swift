@@ -158,8 +158,12 @@ func accessibilityTypeSuffix(_ badge: VenueTypeBadge) -> String {
 /// nothing) whenever the server hasn't sent coverage for this venue (older
 /// payload, non-NYC metro) — the caller falls back to its existing plain
 /// "Not rated yet" copy in that case, matching pre-#240 behavior exactly.
+///
+/// brewdesk#256: also `nil` when nothing is known — "Based on 0 of 5
+/// details" under "Not rated yet" read as a bug, and says nothing the
+/// "Not rated yet" label has not already said.
 func scoreCoverageCaption(_ coverage: ScoreCoverage?) -> String? {
-    guard let coverage else { return nil }
+    guard let coverage, coverage.known > 0 else { return nil }
     return String(
         format: String(localized: "Based on %1$lld of %2$lld details"),
         locale: .current,
@@ -684,6 +688,17 @@ struct SnapshotBanner: View {
 struct VibeChips: View {
     let tags: [String]
 
+    /// brewdesk#232: explicit tokens instead of `.thinMaterial` with the
+    /// inherited foreground, which failed the contrast audit in dark mode.
+    /// Same pair as the score tile; `ScoreBadgeContrastTests` holds both
+    /// appearances to 4.5:1.
+    static let foreground = BrewDeskPalette.clusterSurfaceText
+    static let background = BrewDeskPalette.surfaceSecondary
+    /// In dark mode the detail hero card is close to `surfaceSecondary`,
+    /// so the fill alone would leave the chips reading as loose words;
+    /// the hairline keeps the capsule shape in both appearances.
+    static let outline = BrewDeskPalette.clusterSurfaceStroke
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
@@ -692,7 +707,9 @@ struct VibeChips: View {
                         .font(.caption)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
-                        .background(.thinMaterial, in: Capsule())
+                        .foregroundStyle(Self.foreground)
+                        .background(Self.background, in: Capsule())
+                        .overlay(Capsule().strokeBorder(Self.outline, lineWidth: 1))
                 }
             }
         }

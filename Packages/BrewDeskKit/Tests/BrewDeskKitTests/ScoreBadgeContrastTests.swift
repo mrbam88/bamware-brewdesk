@@ -67,6 +67,23 @@ struct ScoreBadgeContrastTests {
         #expect(ratio < 4.5, "if this ever passes, the badge redesign's rationale (bd#209) needs re-checking")
     }
 
+    // MARK: - brewdesk#232: vibe chips
+
+    /// Chip text is caption-size, so it needs the full 4.5:1 against the
+    /// chip's own fill. The fill is opaque, so what sits behind the chip
+    /// does not change the ratio.
+    @Test func vibeChipTextMeetsFourPointFiveToOneInLightMode() {
+        let ratio = contrastRatio(VibeChips.foreground, VibeChips.background, style: .light)
+        print("vibe chip contrast (light): \(ratio):1")
+        #expect(ratio >= 4.5, "vibe chip text vs. chip fill (light): \(ratio):1")
+    }
+
+    @Test func vibeChipTextMeetsFourPointFiveToOneInDarkMode() {
+        let ratio = contrastRatio(VibeChips.foreground, VibeChips.background, style: .dark)
+        print("vibe chip contrast (dark): \(ratio):1")
+        #expect(ratio >= 4.5, "vibe chip text vs. chip fill (dark): \(ratio):1")
+    }
+
     // MARK: - bd#211: observed dot palette — single hue, lightness-ordered
 
     private func rgb(_ color: Color, style: UIUserInterfaceStyle) -> (r: Double, g: Double, b: Double) {
