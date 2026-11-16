@@ -59,6 +59,59 @@ import Testing
         #expect(answersObject.values.allSatisfy { $0 is String })
     }
 
+    /// brewdesk#251: a single-claim correction sends ONLY that attribute —
+    /// absent answers are omitted, never `null` (the strict schema rejects
+    /// null), so the engine leaves the other claims untouched.
+    @Test func correctionPostsExactlyOneAnswer() async throws {
+        _ = try await api().submitObservation(
+            venueId: "curated-devocin",
+            submittedBy: "device-test-3",
+            answers: ObservationAnswers(only: .laptopFriendlyToday(.yes))
+        )
+        let request = try #require(ObservationRecordingProtocol.requests.first)
+        #expect(request.method == "POST")
+        #expect(request.path == "/v1/venues/curated-devocin/observations")
+        #expect(request.bodyKeys == ["submittedBy", "answers"])
+
+        let body = try #require(request.body)
+        let object = try #require(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let answersObject = try #require(object["answers"] as? [String: Any])
+        #expect(answersObject.count == 1)
+        #expect(answersObject["laptopFriendlyToday"] as? String == "yes")
+        #expect(!String(decoding: body, as: UTF8.self).contains("null"))
+    }
+
+    /// Every correctable attribute encodes to its own single wire key.
+    @Test(arguments: [
+        (ClaimCorrection.laptopFriendlyToday(.mixed), "laptopFriendlyToday", "mixed"),
+        (.seatsAvailable(.noneAvailable), "seatsAvailable", "none"),
+        (.outletsWorking(.few), "outletsWorking", "few"),
+        (.noise(.loud), "noise", "loud"),
+        (.wifiQuality(.unusable), "wifiQuality", "unusable"),
+    ])
+    func eachCorrectionEncodesOnlyItsOwnKey(
+        correction: ClaimCorrection, key: String, value: String
+    ) throws {
+        let data = try JSONEncoder().encode(ObservationAnswers(only: correction))
+        let object = try #require(try JSONSerialization.jsonObject(with: data) as? [String: String])
+        #expect(object == [key: value])
+    }
+
+    /// The fixture stand-in mirrors the engine: the corrected claim becomes a
+    /// user report, every other claim is returned exactly as it was.
+    @Test func scenarioCorrectionRewritesOnlyTheAnsweredClaim() async throws {
+        let before = try #require(ScenarioVenueService.fixtureVenues.first { $0.id == "fixture-roasters" })
+        let after = try await ScenarioVenueService(scenario: .fixtureOK).submitObservation(
+            venueId: "fixture-roasters", submittedBy: "t", answers: ObservationAnswers(only: .noise(.quiet))
+        )
+        #expect(after.attributes.noise.value == "quiet")
+        #expect(after.attributes.noise.source == "user_report")
+        #expect(after.attributes.wifi == before.attributes.wifi)
+        #expect(after.attributes.outlets == before.attributes.outlets)
+        #expect(after.attributes.laptopPolicy == before.attributes.laptopPolicy)
+        #expect(after.attributes.seating == before.attributes.seating)
+    }
+
     @Test func emptySubmitterSurfacesTheEngine401() async throws {
         await #expect(throws: VenueAPIError.http(statusCode: 401)) {
             try await api().submitObservation(

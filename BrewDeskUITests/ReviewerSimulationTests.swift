@@ -140,6 +140,26 @@ final class ReviewerSimulationTests: XCTestCase {
         XCTAssertTrue(app.buttons["Save"].exists)
         XCTAssertTrue(app.buttons["Share"].exists)
         capture("07-detail-evidence")
+
+        // ── 4b. One wrong line → one question (brewdesk#251) ──────────────
+        // This run talks to the LIVE engine, so it opens the correction and
+        // cancels: a nightly test must not write claims onto a real café.
+        // The full round trip (pick → Submit → "Thanks, updated" → row
+        // refreshed) is `testReviewerCorrectsOneClaimOnFixture` below.
+        let correctLaptop = app.buttons["Not right? Correct Laptop policy"]
+        XCTAssertTrue(correctLaptop.waitForExistence(timeout: 5),
+                      "Workability rows carry no \"Not right?\" entry (brewdesk#251)")
+        scrollUntilHittable(correctLaptop, in: app)
+        correctLaptop.tap()
+        XCTAssertTrue(app.buttons["claim-correction-submit"].waitForExistence(timeout: 5),
+                      "Correction sheet did not open")
+        XCTAssertTrue(app.buttons["observation-laptop-yes"].exists,
+                      "Correction sheet does not offer the rating form's answers")
+        XCTAssertFalse(app.buttons["claim-correction-submit"].isEnabled,
+                       "Submit must wait for an answer")
+        capture("07b-correct-one-claim")
+        app.buttons["claim-correction-cancel"].tap()
+        XCTAssertTrue(app.buttons["claim-correction-submit"].waitForNonExistence(timeout: 5))
         // Detail now opens as a sheet from the Spots map (brewdesk#117) —
         // no push, no back button; swipe down to dismiss it.
         app.dismissDetailSheet()
@@ -256,7 +276,93 @@ final class ReviewerSimulationTests: XCTestCase {
         capture("cupertino-baseline-coverage-fixture")
     }
 
+    /// brewdesk#251, deterministic half of step 4b: a reviewer who sees one
+    /// wrong line corrects just that line. Fixture-driven so the submit is
+    /// real (same model, same sheet, same service seam) without writing to
+    /// production.
+    @MainActor
+    func testReviewerCorrectsOneClaimOnFixture() throws {
+        let app = XCUIApplication()
+        app.launchArguments = englishArguments + [
+            "-UITestScenario", "fixtureOK",
+            "-UITestSkipGates",
+            "-brewdesk.saved-venue-ids", "()",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.spotsTab.waitForExistence(timeout: 8))
+        let pin = app.mapPin(named: "Fixture Roasters")
+        XCTAssertTrue(pin.waitForExistence(timeout: 15))
+        pin.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["venue-detail-screen"].waitForExistence(timeout: 5))
+
+        let laptopRow = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Laptop policy, ")
+        ).firstMatch
+        XCTAssertTrue(laptopRow.waitForExistence(timeout: 5))
+        XCTAssertTrue(laptopRow.label.hasPrefix("Laptop policy, Unrestricted"),
+                      "Fixture changed: \(laptopRow.label)")
+
+        let correctLaptop = app.buttons["Not right? Correct Laptop policy"]
+        XCTAssertTrue(correctLaptop.waitForExistence(timeout: 5))
+        scrollUntilHittable(correctLaptop, in: app)
+        capture("correct-01-detail-with-not-right")
+        correctLaptop.tap()
+
+        let submit = app.buttons["claim-correction-submit"]
+        XCTAssertTrue(submit.waitForExistence(timeout: 5), "Correction sheet did not open")
+        // One question only: the other four are not on this sheet.
+        XCTAssertFalse(app.buttons["observation-noise-quiet"].exists)
+        XCTAssertFalse(app.buttons["observation-wifi-fast"].exists)
+        XCTAssertFalse(submit.isEnabled)
+        app.buttons["observation-laptop-no"].tap()
+        XCTAssertTrue(submit.isEnabled)
+        capture("correct-02-sheet-answered")
+        submit.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["claim-correction-thanks"].waitForExistence(timeout: 5),
+                      "No \"Thanks, updated\" after a successful correction")
+        XCTAssertTrue(submit.waitForNonExistence(timeout: 5), "Sheet stayed up after success")
+        let corrected = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Laptop policy, Discouraged, User report")
+        ).firstMatch
+        XCTAssertTrue(corrected.waitForExistence(timeout: 5),
+                      "Row did not refresh from the engine's response")
+        // The rows that were not corrected are untouched.
+        XCTAssertTrue(app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Outlets, Plenty, Curated")
+        ).firstMatch.exists)
+        capture("correct-03-row-updated")
+    }
+
     // MARK: - Helpers
+
+    /// The detail sheet opens at a medium detent, so a Workability row can
+    /// sit under the action dock; scroll the sheet until `element` can be
+    /// tapped.
+    @MainActor
+    private func scrollUntilHittable(_ element: XCUIElement, in app: XCUIApplication) {
+        // Drag the sheet itself, a short way and without a fling: at the
+        // medium detent the middle of the screen is the map (so
+        // `app.swipeUp()` pans that instead), and a full swipe carries a
+        // short sheet straight past the row.
+        let detail = app.descendants(matching: .any)["venue-detail-screen"]
+        // `isHittable` alone is not enough: a row sliding under the glass
+        // action dock still reports hittable, and the tap lands on Share.
+        let dock = app.descendants(matching: .any)["action-dock"]
+        func reachable() -> Bool {
+            guard element.exists, element.isHittable else { return false }
+            return !dock.exists || element.frame.maxY < dock.frame.minY
+        }
+        var drags = 0
+        while !reachable(), drags < 14 {
+            let from = detail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+            let to = detail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25))
+            from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.2)
+            drags += 1
+        }
+        XCTAssertTrue(reachable(), "\(element) not reachable on the detail screen")
+    }
 
     /// The location prompt is a system alert owned by SpringBoard; the app
     /// advances to discovery underneath it. Allow it explicitly, then nudge

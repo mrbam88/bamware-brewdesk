@@ -11,7 +11,16 @@ public struct VenueDetailScreen: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.launchEnvironment) private var launchEnvironment
     @Environment(\.requestReview) private var requestReview
-    private let venue: Venue
+    @Environment(\.venueObservationService) private var injectedObservationService
+    /// The venue as handed in by the surface that opened this screen.
+    private let initialVenue: Venue
+    // brewdesk#251: single-claim correction. `correcting` drives the sheet;
+    // the ledger holds the engine's response so the corrected row survives
+    // this screen being reopened before the opener's next fetch.
+    @State private var corrections = ClaimCorrectionLedger.shared
+    @State private var correcting: CorrectableClaim?
+    @State private var correctionThanks = 0
+    @State private var showCorrectionThanks = false
     @Bindable private var savedVenues: SavedVenuesStore
     @State private var photos: [VenuePhoto] = []
     @State private var expandedPhoto: VenuePhoto?
@@ -29,9 +38,13 @@ public struct VenueDetailScreen: View {
     private enum PhotoLoad { case loading, loaded, failed }
 
     public init(venue: Venue, savedVenues: SavedVenuesStore) {
-        self.venue = venue
+        initialVenue = venue
         self.savedVenues = savedVenues
     }
+
+    /// What every section renders: the handed-in venue with any newer
+    /// corrected claims from the engine applied (brewdesk#251).
+    private var venue: Venue { corrections.current(initialVenue) }
 
     private var theme: BrewDeskTheme { BrewDeskTheme(isDarkMode: colorScheme == .dark) }
 
@@ -72,7 +85,31 @@ public struct VenueDetailScreen: View {
         }
         .accessibilityIdentifier("venue-detail-screen")
         .background(theme.backgroundColor.ignoresSafeArea())
+        // brewdesk#251: "Thanks, updated" floats just above the action dock
+        // (this overlay sits inside the dock's safe-area inset), so it is on
+        // screen wherever the sheet is scrolled or resting, and confirming a
+        // correction never shifts the content underneath.
+        .overlay(alignment: .bottom) { correctionThanksBanner }
         .safeAreaInset(edge: .bottom) { actionDock }
+        .sheet(item: $correcting) { claim in
+            ClaimCorrectionSheet(
+                venue: venue,
+                claim: claim,
+                service: injectedObservationService ?? ObservationServiceResolver.resolve()
+            ) { response in
+                corrections.record(response)
+                correctionThanks += 1
+            }
+        }
+        .task(id: correctionThanks) {
+            guard correctionThanks > 0 else { return }
+            withAnimation(.easeOut(duration: 0.2)) { showCorrectionThanks = true }
+            AccessibilityNotification.Announcement(String(localized: "Thanks, updated")).post()
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: 0.2)) { showCorrectionThanks = false }
+        }
+        .sensoryFeedback(.success, trigger: correctionThanks)
         // bd#119 led to bd#142: printing the venue name a second time as
         // a permanent nav title duplicated the hero's own name in screenshot
         // QA. bd#197 fixes that the other way around — the hero card now
@@ -396,28 +433,13 @@ public struct VenueDetailScreen: View {
             subtitle: ClaimRow.provenanceLine(for: cardStamp)
         ) {
             VStack(spacing: 14) {
-                ClaimRow(title: "Wi-Fi", systemImage: "wifi", claim: venue.attributes.wifi, cardStampClaim: cardStamp)
+                correctableRow(.wifi, claim: venue.attributes.wifi, cardStamp: cardStamp)
                 Divider()
-                ClaimRow(
-                    title: "Outlets",
-                    systemImage: "powerplug",
-                    claim: venue.attributes.outlets,
-                    cardStampClaim: cardStamp
-                )
+                correctableRow(.outlets, claim: venue.attributes.outlets, cardStamp: cardStamp)
                 Divider()
-                ClaimRow(
-                    title: "Laptop policy",
-                    systemImage: "laptopcomputer",
-                    claim: venue.attributes.laptopPolicy,
-                    cardStampClaim: cardStamp
-                )
+                correctableRow(.laptopPolicy, claim: venue.attributes.laptopPolicy, cardStamp: cardStamp)
                 Divider()
-                ClaimRow(
-                    title: "Noise",
-                    systemImage: "speaker.wave.2",
-                    claim: venue.attributes.noise,
-                    cardStampClaim: cardStamp
-                )
+                correctableRow(.noise, claim: venue.attributes.noise, cardStamp: cardStamp)
             }
         }
         // brewdesk#216: lets a UI test scope a contrast audit (or anything
@@ -426,6 +448,60 @@ public struct VenueDetailScreen: View {
         // low-contrast elements (e.g. the header's neighborhood line) that
         // have nothing to do with the Workability card this ticket touches.
         .accessibilityIdentifier("workability-card")
+    }
+
+    /// A Workability row plus its quiet "Not right?" entry (brewdesk#251).
+    /// `ClaimRow` itself is untouched; the entry sits on its own short line
+    /// under the value it questions.
+    private func correctableRow(_ kind: CorrectableClaim, claim: Claim, cardStamp: Claim) -> some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            ClaimRow(
+                title: kind.rowTitle,
+                systemImage: kind.systemImage,
+                claim: claim,
+                cardStampClaim: cardStamp
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                correcting = kind
+            } label: {
+                // Footnote type in the contrast-verified secondary token: it
+                // reads as a quiet aside, not a second action. The 44pt hit
+                // region is real; the negative padding hands the extra
+                // height back so the row only grows by one text line.
+                Text("Not right?")
+                    .font(.footnote)
+                    .underline()
+                    .foregroundStyle(BrewDeskPalette.secondaryText)
+                    .frame(minWidth: 44, minHeight: 44, alignment: .trailing)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, -12)
+            .accessibilityLabel(Text("Not right? Correct \(String(localized: String.LocalizationValue(kind.rowTitle)))"))
+            // No identifier of its own: the card's "workability-card"
+            // identifier (brewdesk#216) propagates over every child's, so
+            // tests address this by its label.
+            .accessibilityHint(Text("Opens one question to fix this line"))
+        }
+    }
+
+    /// "Thanks, updated" after a successful correction (brewdesk#251).
+    /// Transient and overlaid; VoiceOver hears it through the announcement
+    /// posted alongside.
+    @ViewBuilder
+    private var correctionThanksBanner: some View {
+        if showCorrectionThanks {
+            Label("Thanks, updated", systemImage: "checkmark.circle.fill")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.primaryColor)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .brewDeskGlass(in: Capsule())
+                .padding(.bottom, 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .accessibilityIdentifier("claim-correction-thanks")
+        }
     }
 
     /// The Workability card's single provenance stamp (brewdesk#119): the
