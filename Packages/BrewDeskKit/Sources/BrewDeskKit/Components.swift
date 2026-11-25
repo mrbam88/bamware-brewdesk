@@ -52,11 +52,23 @@ extension ScoreTier {
 /// ring around the tile. Tier is still visible (ring hue + the number
 /// itself), it just no longer has to double as the text color.
 struct ScoreBadge: View {
-    let venue: Venue
+    /// The honest number, or `nil` for "Not rated yet" (`Venue.displayScore`
+    /// / `PickVenue.displayScore`). Never a raw `workScore`.
+    let displayScore: Int?
+
+    init(venue: Venue) {
+        displayScore = venue.displayScore
+    }
+
+    /// For a row that has no full `Venue` (a Bamware Picks row carries the
+    /// engine's compact shape): same badge, same rules.
+    init(displayScore: Int?) {
+        self.displayScore = displayScore
+    }
 
     var body: some View {
         Group {
-            if let score = venue.displayScore {
+            if let score = displayScore {
                 Text("\(score)")
                     .accessibilityLabel("Work Fit \(score) out of 100")
             } else {
@@ -83,7 +95,7 @@ struct ScoreBadge: View {
         .background(BrewDeskPalette.surfaceSecondary, in: Capsule())
         .overlay(
             Capsule().stroke(
-                venue.displayScore.map { ScoreTier(score: $0).color } ?? BrewDeskPalette.unobserved,
+                displayScore.map { ScoreTier(score: $0).color } ?? BrewDeskPalette.unobserved,
                 lineWidth: 2
             )
         )
@@ -139,6 +151,64 @@ struct VenueTypeBadgeView: View {
             .allowsHitTesting(type.showsBadge)
             .accessibilityHidden(!type.showsBadge)
     }
+}
+
+/// Bamware Picks (bamware-ai#301): the small "Pick #1" capsule on the shelf
+/// card and the detail header of a venue that is on the founder's
+/// hand-curated list. Driven only by `venue.pick`; renders nothing for a
+/// venue that is not a pick.
+///
+/// A pick is a byline, not a grade, so the badge is deliberately neutral:
+/// the same `surfaceSecondary` fill, `clusterSurfaceText` label and
+/// `clusterSurfaceStroke` hairline the vibe chips use, never a tier hue and
+/// never red or green (founder is red-green colorblind). It must not read as
+/// a second score next to the Work Fit badge. `PickBadgeContrastTests`
+/// checks the pair numerically in both appearances.
+///
+/// Structurally UNCONDITIONAL, exactly like `VenueTypeBadgeView` above and
+/// for the same reason: a conditional branch inside a shelf-card `Button`
+/// row broke tap delivery to later rows under XCUITest. It collapses to zero
+/// size instead.
+struct PickBadge: View {
+    let pick: VenuePick?
+
+    static let foreground = BrewDeskPalette.clusterSurfaceText
+    static let background = BrewDeskPalette.surfaceSecondary
+    static let outline = BrewDeskPalette.clusterSurfaceStroke
+
+    private var isShown: Bool { pick != nil }
+
+    var body: some View {
+        Label {
+            Text(PicksWording.badge(rank: pick?.rank ?? 0))
+        } icon: {
+            Image(systemName: "rosette")
+        }
+        .labelStyle(.titleAndIcon)
+        .font(.caption2.weight(.semibold))
+        .foregroundStyle(Self.foreground)
+        .lineLimit(1)
+        .fixedSize()
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(Self.background, in: Capsule())
+        .overlay(Capsule().stroke(Self.outline, lineWidth: 1))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(pick.map { PicksWording.badgeAccessibilityLabel(rank: $0.rank) } ?? "")
+        .accessibilityIdentifier("pick-badge")
+        .opacity(isShown ? 1 : 0)
+        .frame(width: isShown ? nil : 0, height: isShown ? nil : 0)
+        .clipped()
+        .allowsHitTesting(false)
+        .accessibilityHidden(!isShown)
+    }
+}
+
+/// The accessibility-label suffix a COMBINED row/card appends for a pick:
+/// `", Bamware Pick number 1"`; empty otherwise. Same job as
+/// `accessibilityTypeSuffix` below.
+func accessibilityPickSuffix(_ pick: VenuePick?) -> String {
+    pick.map { ", \(PicksWording.badgeAccessibilityLabel(rank: $0.rank))" } ?? ""
 }
 
 /// brewdesk#240: the accessibility-label suffix a COMBINED venue row/card

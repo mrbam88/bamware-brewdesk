@@ -300,6 +300,13 @@ public struct VenueDetailScreen: View {
                 }
             }
 
+            // Bamware Picks: badge, the founder's line and the visit date,
+            // only for a venue on the list. Sits apart from the score lines
+            // below on purpose: a pick is taste, the score is data.
+            if let pick = venue.pick {
+                pickNote(pick)
+            }
+
             if venue.displayScore == nil {
                 unobservedExplanation
             } else if ScoreProvenance(attributes: venue.attributes).hasEvidence {
@@ -403,6 +410,29 @@ public struct VenueDetailScreen: View {
     /// Workability stamp (`informationCard` below). Same fix: the
     /// contrast-verified `BrewDeskPalette.secondaryText` token in place of
     /// the system semantic color.
+    private func pickNote(_ pick: VenuePick) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                PickBadge(pick: pick)
+                if let visited = PicksWording.visited(pick.visitedAt) {
+                    Text(visited)
+                        .font(.caption)
+                        .foregroundStyle(BrewDeskPalette.secondaryText)
+                        .accessibilityIdentifier("venue-detail-pick-visited")
+                }
+            }
+            Text(PicksWording.quoted(pick.blurb))
+                .font(.subheadline)
+                .italic()
+                .foregroundStyle(BrewDeskPalette.clusterSurfaceText)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("venue-detail-pick-blurb")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("venue-detail-pick")
+    }
+
     private var locationSummary: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {

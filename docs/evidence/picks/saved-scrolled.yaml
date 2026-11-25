@@ -1,0 +1,13 @@
+appId: io.bamware.brewdesk
+---
+- tapOn: "Saved"
+- extendedWaitUntil:
+    visible: "Bamware Picks"
+    timeout: 30000
+- swipe:
+    start: "50%,70%"
+    end: "50%,40%"
+    duration: 600
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: ${OUT}/${TAG}-saved-scrolled-title-collapsed

@@ -736,6 +736,18 @@ struct DiscoveryShelfCard: View {
         .accessibilityLabel("Recent search: \(entry.title)")
     }
 
+    private func neighborhoodLine(_ venue: Venue) -> some View {
+        HStack(spacing: 6) {
+            Text(venue.neighborhood)
+                .font(.caption)
+                .foregroundStyle(BrewDeskPalette.secondaryText)
+            // brewdesk#240: the type badge sits right next to the
+            // neighborhood line — renders nothing for a café
+            // (`VenueTypeBadge.showsBadge`).
+            VenueTypeBadgeView(type: venue.typeBadge)
+        }
+    }
+
     private func venueButton(_ venue: Venue, fillsWidth: Bool) -> some View {
         Button {
             onVenueTap(venue)
@@ -746,6 +758,7 @@ struct DiscoveryShelfCard: View {
         .accessibilityLabel(
             "\(venue.name), \(venue.displayScore.map { "Work Fit \($0)" } ?? "not rated yet"), \(venue.neighborhood)"
             + accessibilityTypeSuffix(venue.typeBadge)
+            + accessibilityPickSuffix(venue.pick)
         )
     }
 
@@ -820,14 +833,21 @@ struct DiscoveryShelfCard: View {
                 // same root cause bd#216 already fixed for the Workability
                 // stamp, same fix: the contrast-verified
                 // `BrewDeskPalette.secondaryText` token.
-                HStack(spacing: 6) {
-                    Text(venue.neighborhood)
-                        .font(.caption)
-                        .foregroundStyle(BrewDeskPalette.secondaryText)
-                    // brewdesk#240: the type badge sits right next to the
-                    // neighborhood line — renders nothing for a café
-                    // (`VenueTypeBadge.showsBadge`).
-                    VenueTypeBadgeView(type: venue.typeBadge)
+                // Bamware Picks: "Pick #1" sits beside the neighborhood when
+                // both fit, and drops to its own line when they do not
+                // ("Financial District" + "Pick #10" is wider than the
+                // column). Same view tree on every card — `ViewThatFits`,
+                // never an `if` — and the badge is zero-size for a venue
+                // that is not a pick, so those cards lay out as before.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        neighborhoodLine(venue)
+                        PickBadge(pick: venue.pick)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        neighborhoodLine(venue)
+                        PickBadge(pick: venue.pick)
+                    }
                 }
                 // brewdesk#170: same `.secondary`-on-`surface` contrast
                 // issue as the neighborhood line above ("Unknown"/"Fast"

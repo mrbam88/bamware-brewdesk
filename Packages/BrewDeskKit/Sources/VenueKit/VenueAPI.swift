@@ -75,7 +75,7 @@ public protocol VenueMeasuring: Sendable {
 /// Async client for the bamware-venue-engine master API.
 /// The iOS Simulator reaches `http://localhost:3000` on the host Mac directly.
 /// The app target permits local HTTP networking in its Debug configuration.
-public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenuePhotoServing, VenueObservationSubmitting, ChatClient, Sendable {
+public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenuePhotoServing, VenueObservationSubmitting, ChatClient, PicksServing, Sendable {
     public static var defaultBaseURL: URL {
         #if DEBUG
         URL(string: "http://localhost:3000")!
@@ -210,6 +210,13 @@ public struct VenueAPI: VenueListing, VenueDetailServing, VenueMeasuring, VenueP
             VenueDetailResponse.self,
             from: baseURL.appendingPathComponent("/v1/venues/\(id)")
         ).venue
+    }
+
+    /// Bamware Picks (bamware-ai#301): `GET /v1/picks`. An engine that
+    /// predates the route answers 404, which surfaces as `.http(404)`;
+    /// `PicksModel` treats every failure as "no Picks section".
+    public func fetchPicks() async throws -> PicksResponse {
+        try await get(PicksResponse.self, from: baseURL.appendingPathComponent("/v1/picks"))
     }
 
     public func fetchPhotos(venueId: String) async throws -> [VenuePhoto] {

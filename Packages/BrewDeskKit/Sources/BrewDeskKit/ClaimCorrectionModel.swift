@@ -154,7 +154,10 @@ extension Venue {
             email: email, tier: tier, news: news,
             scoreDisplay: response.scoreDisplay,
             scoreCoverage: response.scoreCoverage ?? scoreCoverage,
-            scoreConfidence: response.scoreConfidence ?? scoreConfidence
+            scoreConfidence: response.scoreConfidence ?? scoreConfidence,
+            // A pick is a label on the venue, not a claim: a correction
+            // never removes it.
+            pick: response.pick ?? pick
         )
     }
 }

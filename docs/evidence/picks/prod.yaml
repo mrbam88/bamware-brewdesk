@@ -1,0 +1,22 @@
+# The Release build against the production engine (no fixtures).
+appId: io.bamware.brewdesk
+---
+- tapOn: "Saved"
+- extendedWaitUntil:
+    visible: "Bamware Picks"
+    timeout: 30000
+- takeScreenshot: ${OUT}/production-${AP}-saved
+- tapOn:
+    id: "pick-row-1"
+- extendedWaitUntil:
+    visible:
+      id: "venue-detail-pick-blurb"
+    timeout: 30000
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: ${OUT}/production-${AP}-detail
+- tapOn:
+    point: "9%,9.5%"
+- waitForAnimationToEnd:
+    timeout: 3000
+- tapOn: "Spots"

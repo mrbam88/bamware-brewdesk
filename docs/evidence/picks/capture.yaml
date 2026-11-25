@@ -1,0 +1,29 @@
+# Bamware Picks evidence capture. The app is already running with a
+# -UITestScenario (onePick or tenPicks); this only walks and photographs.
+appId: io.bamware.brewdesk
+---
+- extendedWaitUntil:
+    visible: "Spots"
+    timeout: 30000
+- extendedWaitUntil:
+    visible: "WORK FIT"
+    timeout: 30000
+- takeScreenshot: ${OUT}/${TAG}-shelf-card
+- tapOn: "Saved"
+- extendedWaitUntil:
+    visible: "Bamware Picks"
+    timeout: 20000
+- takeScreenshot: ${OUT}/${TAG}-saved
+- tapOn:
+    id: "pick-row-1"
+- extendedWaitUntil:
+    visible:
+      id: "venue-detail-pick-blurb"
+    timeout: 20000
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: ${OUT}/${TAG}-detail
+- tapOn:
+    point: "9%,9.5%"
+- waitForAnimationToEnd:
+    timeout: 3000
