@@ -28,6 +28,14 @@ pointing at the source of truth.
   is the live `ChatClient`, `ScenarioChatClient` the fixture one, and the
   tab shows only when `GET /v1/health` reports `features.chat` (or a
   Scenario is active).
+- **Bamware Picks** — the founder's short, hand-curated, ranked list of
+  work cafés (bamware-ai#301), each with a first-person line and a visit
+  date. Engine: `GET /v1/picks` and an optional `pick` on a venue
+  (`VenueKit/PicksContract.swift`). Shown above the user's spots on the
+  Saved tab (`PicksSection.swift`, `PicksModel`) and as a `PickBadge` on
+  the shelf card and detail header. Taste, not data: a pick never feeds
+  Work Fit, filtering or ordering, and picks are never sold. No picks or a
+  failed request means no section and no error.
 - **Venue / Workability score** — `Venue.workScore` (0–100) is the "can I
   work here" composite the engine computes from Wi-Fi, seating, noise, and
   outlet claims; `scoreTier` buckets it for the UI badge.

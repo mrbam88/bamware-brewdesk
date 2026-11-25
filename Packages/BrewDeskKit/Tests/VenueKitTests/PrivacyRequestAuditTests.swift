@@ -53,6 +53,9 @@ import Testing
         _ = try await api.fetchVenue(id: "curated-devocin")
         _ = try await api.fetchPhotos(venueId: "curated-devocin")
         _ = try await api.fetchNeighborhoods()
+        // Bamware Picks (Saved tab). The recording engine has no such
+        // route and answers 404; the request is recorded all the same.
+        _ = try? await api.fetchPicks()
     }
 
     // MARK: Location denied
@@ -64,7 +67,8 @@ import Testing
         try await runReadFlows(api, query: denied)
 
         let requests = RecordingURLProtocol.requests
-        #expect(requests.count == 5)
+        #expect(requests.count == 6)
+        #expect(requests.contains { $0.path == "/v1/picks" })
         #expect(requests.allSatisfy { $0.host == Self.engineHost })
 
         for request in requests {
@@ -110,7 +114,7 @@ import Testing
         let photos = try await api.fetchPhotos(venueId: "curated-devocin")
 
         let requests = RecordingURLProtocol.requests
-        #expect(requests.count == 6)
+        #expect(requests.count == 7)
 
         // 1. No request left the device for any host but the venue engine.
         #expect(Set(requests.compactMap(\.host)) == [Self.engineHost])

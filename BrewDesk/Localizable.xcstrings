@@ -183,6 +183,26 @@
         }
       }
     },
+    "Bamware Pick number %lld": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorito de Bamware número %lld"
+          }
+        }
+      }
+    },
+    "Bamware Picks": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favoritos de Bamware"
+          }
+        }
+      }
+    },
     "Baseline data here — not yet researched. NYC is fully researched.": {
       "localizations": {
         "es": {
@@ -203,13 +223,12 @@
         }
       }
     },
-    "Bookmark a spot from Explore or Nearby to keep it here.": {
-      "extractionState": "stale",
+    "Bookmark a spot from Spots to keep it here.": {
       "localizations": {
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Guarda un lugar desde Explorar o Cercanos para tenerlo aquí."
+            "value": "Guarda un lugar desde Lugares para tenerlo aquí."
           }
         }
       }
@@ -344,6 +363,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Continuar"
+          }
+        }
+      }
+    },
+    "Couldn't open this spot": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No se pudo abrir este lugar"
           }
         }
       }
@@ -628,6 +657,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Lo reciente vale más"
+          }
+        }
+      }
+    },
+    "Hand-picked by us. Never paid for.": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elegidos por nosotros. Nunca pagados."
           }
         }
       }
@@ -1267,6 +1306,16 @@
         }
       }
     },
+    "Pick #%lld": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorito n.º %lld"
+          }
+        }
+      }
+    },
     "Pick the Saved Places file here — it never leaves this device": {
       "extractionState": "stale",
       "localizations": {
@@ -1827,6 +1876,16 @@
         }
       }
     },
+    "Updated %@": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizado el %@"
+          }
+        }
+      }
+    },
     "Updated %@ · %@": {
       "extractionState": "stale",
       "localizations": {
@@ -1924,6 +1983,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Recordatorios de visita"
+          }
+        }
+      }
+    },
+    "Visited %@": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visitado el %@"
           }
         }
       }
@@ -2440,6 +2509,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Los números son Work Fit"
+          }
+        }
+      }
+    },
+    "Your saved spots": {
+      "localizations": {
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus lugares guardados"
           }
         }
       }

@@ -1,0 +1,19 @@
+appId: io.bamware.brewdesk
+---
+- extendedWaitUntil:
+    visible: "WORK FIT"
+    timeout: 30000
+- repeat:
+    times: 12
+    commands:
+      - swipe:
+          start: "85%,80%"
+          end: "10%,80%"
+          duration: 300
+- swipe:
+    start: "30%,80%"
+    end: "62%,80%"
+    duration: 900
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: ${OUT}/${TAG}-shelf-card-pick-10

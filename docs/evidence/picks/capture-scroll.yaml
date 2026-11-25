@@ -1,0 +1,18 @@
+appId: io.bamware.brewdesk
+---
+- tapOn: "Saved"
+- extendedWaitUntil:
+    visible: "Bamware Picks"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: "pick-row-3"
+    direction: DOWN
+    centerElement: true
+- takeScreenshot: ${OUT}/${TAG}-saved-rows-2-to-4
+- scrollUntilVisible:
+    element:
+      id: "saved-spots-subheader"
+    direction: DOWN
+- scroll
+- takeScreenshot: ${OUT}/${TAG}-saved-bottom

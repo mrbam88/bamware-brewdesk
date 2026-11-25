@@ -172,6 +172,12 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
     /// item 5: "low" confidence keeps the "Been here? Rate it." nudge).
     /// Additive, NYC only.
     public let scoreConfidence: ScoreConfidence?
+    /// Bamware Picks (bamware-ai#301): present only when this venue is on
+    /// the founder's hand-curated list. Additive and optional — absent on
+    /// every other venue and on engines that predate the feature.
+    /// **A pick is taste, not data**: it never feeds `workScore`,
+    /// `displayScore`, filtering or ordering.
+    public let pick: VenuePick?
 
     public init(
         id: String,
@@ -196,7 +202,8 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         news: [NewsLink]? = nil,
         scoreDisplay: ScoreDisplay = .notProvided,
         scoreCoverage: ScoreCoverage? = nil,
-        scoreConfidence: ScoreConfidence? = nil
+        scoreConfidence: ScoreConfidence? = nil,
+        pick: VenuePick? = nil
     ) {
         self.id = id
         self.name = name
@@ -221,12 +228,13 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         self.scoreDisplay = scoreDisplay
         self.scoreCoverage = scoreCoverage
         self.scoreConfidence = scoreConfidence
+        self.pick = pick
     }
 
     enum CodingKeys: String, CodingKey {
         case id, name, lat, lng, address, neighborhood, borough, hoursRaw,
              vertical, attributes, vibeTags, workScore, lastVerified, venueType,
-             website, phone, email, tier, news, scoreDisplay, scoreCoverage, scoreConfidence
+             website, phone, email, tier, news, scoreDisplay, scoreCoverage, scoreConfidence, pick
         case distanceM = "distance_m"
     }
 
@@ -263,6 +271,10 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         news = try container.decodeIfPresent([NewsLink].self, forKey: .news)
         scoreCoverage = try container.decodeIfPresent(ScoreCoverage.self, forKey: .scoreCoverage)
         scoreConfidence = try container.decodeIfPresent(ScoreConfidence.self, forKey: .scoreConfidence)
+        // Lenient on purpose: a badge is never worth failing a whole venue
+        // (and with it the whole list) over. A malformed `pick` reads as no
+        // pick.
+        pick = (try? container.decodeIfPresent(VenuePick.self, forKey: .pick)) ?? nil
 
         if container.contains(.scoreDisplay) {
             if try container.decodeNil(forKey: .scoreDisplay) {
@@ -305,6 +317,7 @@ public struct Venue: Codable, Identifiable, Hashable, Sendable {
         try container.encodeIfPresent(news, forKey: .news)
         try container.encodeIfPresent(scoreCoverage, forKey: .scoreCoverage)
         try container.encodeIfPresent(scoreConfidence, forKey: .scoreConfidence)
+        try container.encodeIfPresent(pick, forKey: .pick)
 
         switch scoreDisplay {
         case .notProvided:

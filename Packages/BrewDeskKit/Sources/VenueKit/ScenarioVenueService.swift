@@ -5,7 +5,7 @@ import Foundation
 /// slow network). It is inert unless constructed; the app only constructs it
 /// when launched with `-UITestScenario <name>` (see `UITestScenario` in the app
 /// target). No network, no persistence, no UI entry point.
-public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhotoServing, VenueObservationSubmitting, Sendable {
+public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhotoServing, VenueObservationSubmitting, PicksServing, Sendable {
     public enum Scenario: String, CaseIterable, Sendable {
         /// Three fixture venues, health OK, one photo per venue whose URL is
         /// deliberately unloadable (pins thumbnail / viewer failure states).
@@ -69,6 +69,14 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         /// visible per type, the "Place type" filter narrowing to Parks,
         /// and the header count updating. See `venueTypesVenues`.
         case venueTypes
+        /// Bamware Picks with ONE pick, the state the list ships in: the
+        /// usual fixture venues, "Fixture Roasters" carrying `pick` rank 1,
+        /// and `fetchPicks` returning that single row. See `onePickVenues`.
+        case onePick
+        /// Bamware Picks with a full list of TEN: ten "Fixture Pick …"
+        /// venues ranked 1 to 10, including an unrated one, a library, a
+        /// long name and a 140-character line. See `tenPicksVenues`.
+        case tenPicks
     }
 
     public let scenario: Scenario
@@ -475,6 +483,10 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             return Self.filterHonestyVenues
         case .venueTypes:
             return Self.venueTypesVenues
+        case .onePick:
+            return Self.onePickVenues
+        case .tenPicks:
+            return Self.tenPicksVenues
         case .baselineCity:
             return Self.baselineVenues
         case .noCoverage:
@@ -604,6 +616,12 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
                 throw VenueAPIError.http(statusCode: 404)
             }
             return venue
+        case .onePick, .tenPicks:
+            let venues = scenario == .onePick ? Self.onePickVenues : Self.tenPicksVenues
+            guard let venue = venues.first(where: { $0.id == id }) else {
+                throw VenueAPIError.http(statusCode: 404)
+            }
+            return venue
         default:
             guard let venue = Self.fixtureVenues.first(where: { $0.id == id }) else {
                 throw VenueAPIError.http(statusCode: 404)
@@ -612,13 +630,136 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
         }
     }
 
+    // MARK: - PicksServing (Bamware Picks)
+
+    /// Every scenario that predates Picks answers an EMPTY list, so the
+    /// Saved tab looks exactly as it did before the feature; the two failing
+    /// scenarios fail here too (the section then stays hidden, with no error
+    /// UI). Only `onePick` and `tenPicks` return rows.
+    public func fetchPicks() async throws -> PicksResponse {
+        switch scenario {
+        case .engineDown: throw Self.serverError
+        case .offline: throw Self.offlineError
+        case .onePick: return Self.picksResponse(from: Self.onePickVenues)
+        case .tenPicks: return Self.picksResponse(from: Self.tenPicksVenues)
+        default: return .empty
+        }
+    }
+
+    public static let fixturePicksUpdatedAt = "2026-11-24"
+
+    /// The usual four fixture venues; "Fixture Roasters" is the one pick.
+    public static let onePickVenues: [Venue] = fixtureVenues.map { venue in
+        venue.id == "fixture-roasters"
+            ? venue.settingPick(VenuePick(
+                rank: 1,
+                blurb: "Fixture line. Two floors, and I take the laptop upstairs to the big tables.",
+                visitedAt: "2026-10-27"
+            ))
+            : venue
+    }
+
+    /// Ten picks, every one named "Fixture Pick …" so a screenshot can never
+    /// be mistaken for a real list. Deliberately uneven: #3 is unrated, #5 a
+    /// library, #7 has a long name, #9 a line at the 140-character limit.
+    public static let tenPicksVenues: [Venue] = {
+        struct Row {
+            let name: String
+            let neighborhood: String
+            let score: Int
+            let blurb: String
+            let visited: String
+            var venueType = "cafe"
+            var unrated = false
+        }
+        let rows: [Row] = [
+            Row(name: "Fixture Pick One Roasters", neighborhood: "Union Square", score: 91,
+                blurb: "Fixture line one. The big table by the window is mine most mornings.", visited: "2026-11-20"),
+            Row(name: "Fixture Pick Two Cafe", neighborhood: "Greenwich Village", score: 88,
+                blurb: "Fixture line two. Quiet upstairs, and nobody minds a long stay.", visited: "2026-11-12"),
+            Row(name: "Fixture Pick Three Coffee", neighborhood: "Flatiron", score: 52,
+                blurb: "Fixture line three. Too new to have a score, already a favourite.", visited: "2026-11-02",
+                unrated: true),
+            Row(name: "Fixture Pick Four Espresso", neighborhood: "Chelsea", score: 84,
+                blurb: "Fixture line four. Outlets at every seat.", visited: "2026-10-27"),
+            Row(name: "Fixture Pick Five Reading Room", neighborhood: "Midtown", score: 82,
+                blurb: "Fixture line five. Not a cafe at all, and the best desk in the city.", visited: "2026-10-15",
+                venueType: "library"),
+            Row(name: "Fixture Pick Six Cafe", neighborhood: "SoHo", score: 79,
+                blurb: "Fixture line six. Fast Wi-Fi and a long bench along the wall.", visited: "2026-10-03"),
+            Row(name: "Fixture Pick Seven Coffee Roasters and Bakery on the Corner", neighborhood: "Lower East Side", score: 76,
+                blurb: "Fixture line seven. Go early, it fills by ten.", visited: "2026-09-21"),
+            Row(name: "Fixture Pick Eight Cafe", neighborhood: "East Village", score: 71,
+                blurb: "Fixture line eight. Loud at lunch, perfect after three.", visited: "2026-09-09"),
+            Row(name: "Fixture Pick Nine Coffee", neighborhood: "Tribeca", score: 66,
+                blurb: "Fixture line nine, written to the full length a line may run so the row shows how one hundred and forty characters wrap on a phone, in full.",
+                visited: "2026-08-30"),
+            Row(name: "Fixture Pick Ten Cafe", neighborhood: "Financial District", score: 58,
+                blurb: "Fixture line ten. Small, slow Wi-Fi, and I keep going back.", visited: "2025-12-14"),
+        ]
+        return rows.enumerated().map { index, row in
+            let rank = index + 1
+            let base = fixtureVenue(
+                id: "fixture-pick-\(rank)",
+                name: row.name,
+                // A loose ring around Union Square so pins do not stack.
+                lat: 40.7359 + 0.0016 * Double(index % 5 - 2),
+                lng: -73.9911 + 0.0022 * Double(index / 5) - 0.0011 + 0.0007 * Double(index % 3),
+                neighborhood: row.neighborhood,
+                hoursRaw: "Mo-Su 07:00-19:00",
+                workScore: row.score,
+                laptopPolicy: "unrestricted",
+                venueType: row.venueType
+            )
+            let scored = row.unrated
+                ? Venue(
+                    id: base.id, name: base.name, lat: base.lat, lng: base.lng, address: base.address,
+                    neighborhood: base.neighborhood, borough: base.borough, hoursRaw: base.hoursRaw,
+                    vertical: base.vertical, attributes: base.attributes, vibeTags: base.vibeTags,
+                    workScore: base.workScore, lastVerified: base.lastVerified, distanceM: base.distanceM,
+                    venueType: base.venueType, scoreDisplay: .notRated,
+                    scoreCoverage: ScoreCoverage(known: 1, of: 5, weight: 0.2, attributes: ["wifi"])
+                )
+                : base
+            return scored.settingPick(VenuePick(rank: rank, blurb: row.blurb, visitedAt: row.visited))
+        }
+    }()
+
+    /// The `/v1/picks` body the engine would serve for `venues`: one row per
+    /// venue that carries a pick, in the compact shape.
+    static func picksResponse(from venues: [Venue]) -> PicksResponse {
+        PicksResponse(
+            updatedAt: fixturePicksUpdatedAt,
+            curator: "Bamware",
+            picks: venues.compactMap { venue in
+                guard let pick = venue.pick else { return nil }
+                return Pick(
+                    rank: pick.rank,
+                    blurb: pick.blurb,
+                    visitedAt: pick.visitedAt,
+                    venue: PickVenue(
+                        id: venue.id,
+                        name: venue.name,
+                        neighborhood: venue.neighborhood,
+                        venueType: venue.venueType,
+                        workScore: venue.workScore,
+                        scoreDisplay: venue.scoreDisplay == .notProvided ? .rated(venue.workScore) : venue.scoreDisplay,
+                        scoreCoverage: venue.scoreCoverage,
+                        evidence: "researched"
+                    )
+                )
+            }
+        )
+    }
+
     // MARK: - VenuePhotoServing
 
     public func fetchPhotos(venueId: String) async throws -> [VenuePhoto] {
         switch scenario {
         case .engineDown, .photosFail: throw Self.serverError
         case .offline: throw Self.offlineError
-        case .emptyVenues, .photosEmpty, .manyVenues, .baselineCity, .noCoverage, .cityWideSearch, .filterHonesty, .venueTypes: return []
+        case .emptyVenues, .photosEmpty, .manyVenues, .baselineCity, .noCoverage, .cityWideSearch, .filterHonesty, .venueTypes,
+             .onePick, .tenPicks: return []
         case .fixtureOK, .slow, .offlineThenRecovers:
             return blockStore.filteringBlocked(Self.fixturePhotos)
         case .communityPhotos:
@@ -647,7 +788,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             if observationAttempts.next() == 1 { throw Self.offlineError }
             return Self.observedVenue(id: venueId, answers: answers)
         case .fixtureOK, .emptyVenues, .photosEmpty, .photosFail, .manyVenues, .communityPhotos,
-             .baselineCity, .noCoverage, .cityWideSearch, .filterHonesty, .venueTypes:
+             .baselineCity, .noCoverage, .cityWideSearch, .filterHonesty, .venueTypes, .onePick, .tenPicks:
             return Self.observedVenue(id: venueId, answers: answers)
         }
     }
@@ -705,7 +846,7 @@ public struct ScenarioVenueService: VenueListing, VenueDetailServing, VenuePhoto
             distanceM: venue.distanceM, venueType: venue.venueType, website: venue.website,
             phone: venue.phone, email: venue.email, tier: venue.tier, news: venue.news,
             scoreDisplay: venue.scoreDisplay, scoreCoverage: venue.scoreCoverage,
-            scoreConfidence: venue.scoreConfidence
+            scoreConfidence: venue.scoreConfidence, pick: venue.pick
         )
     }
 

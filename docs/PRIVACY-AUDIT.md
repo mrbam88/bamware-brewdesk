@@ -20,6 +20,7 @@ can send:
 | Photo strip / viewer (list) | `GET /v1/venues/{id}/photos` | engine | none |
 | Photo strip / viewer (bytes) | `GET <photoUri>` via `AsyncImage` | `lh3.googleusercontent.com` | none — opaque Google photo URI, no place_id, no coordinates |
 | Neighborhood chips | `GET /v1/neighborhoods` | engine | none |
+| Bamware Picks (Saved tab) | `GET /v1/picks` | engine | none — no viewport header, no identifiers |
 | Import from Takeout | `GET /v1/venues?sort&limit=200&radius_m` | engine | none — no viewport header |
 | *(not reachable in v1 UI)* speed test | `POST /v1/observations` `{venueId,kind,mbpsDown}`; probe `GET /v1/venues?limit&_speed_test_nonce` | engine | none — no viewport header |
 | Rate this visit (observation form, brewdesk#47) | `POST /v1/venues/{id}/observations` `{submittedBy, answers:{laptopFriendlyToday,seatsAvailable,outletsWorking,noise}}` — enum values only, no free text | engine | none |
