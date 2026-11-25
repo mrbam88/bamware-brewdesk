@@ -277,6 +277,7 @@ public struct CafeMapScreen: View {
 
     public var body: some View {
         let plan = cachedPlan()
+        let _ = MapPerfProbe.mapBodyEvaluated()
         // bd#267: cafés now load on their own when the camera comes to rest
         // somewhere new (`cameraCameToRest` → `VenuesModel.cameraSettled`),
         // so the "Search this area" pill (bd#192) is only the manual
@@ -379,6 +380,7 @@ public struct CafeMapScreen: View {
                         .onChanged { _ in
                             mapInteraction.isActive = true
                             mapInteraction.userDrivenCamera = true
+                            MapPerfProbe.gestureChanged()
                             stopTrackingUserLocation()
                             // bd#219 (supervisor 2nd revision): "authoritative
                             // until the user next gestures" — a real drag
@@ -389,6 +391,7 @@ public struct CafeMapScreen: View {
                         .onEnded { _ in
                             mapInteraction.isActive = false
                             userHasMovedCamera = true
+                            MapPerfProbe.gestureEnded()
                             scheduleReplan(proxy: proxy, size: geometry.size)
                         }
                 )
@@ -397,12 +400,14 @@ public struct CafeMapScreen: View {
                         .onChanged { _ in
                             mapInteraction.isActive = true
                             mapInteraction.userDrivenCamera = true
+                            MapPerfProbe.gestureChanged()
                             stopTrackingUserLocation()
                             flyTarget = nil
                         }
                         .onEnded { _ in
                             mapInteraction.isActive = false
                             userHasMovedCamera = true
+                            MapPerfProbe.gestureEnded()
                             scheduleReplan(proxy: proxy, size: geometry.size)
                         }
                 )
@@ -1888,6 +1893,7 @@ public struct CafeMapScreen: View {
         )
         planCache.key = key
         planCache.plan = plan
+        MapPerfProbe.replanned(teardrops: plan.teardrops.count)
         return plan
     }
 

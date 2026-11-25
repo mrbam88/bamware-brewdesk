@@ -6,7 +6,9 @@ import XCTest
 /// the live dataset's size) so measurements are reproducible offline in Debug
 /// and Release. Frame timing comes from the in-app CADisplayLink recorder
 /// (`-UITestFrameStats`, see `MapFrameStats.swift`); the parsed numbers are
-/// attached to the test log as the PR's on-sim evidence.
+/// attached to the test log as the PR's on-sim evidence. The headline is
+/// hitch TIME for a fixed script (brewdesk#211), with the count of map body
+/// evaluations and marker re-plans beside it.
 final class MapPerformanceUITests: XCTestCase {
     private let wait: TimeInterval = 15
 
@@ -14,81 +16,75 @@ final class MapPerformanceUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    // MARK: - Frame timing (the #54 measurement)
+    // MARK: - Hitch time (the #211 measurement)
 
+    /// Neighbourhood zoom (3.3 m/pt, what a first GPS fix opens at): rated
+    /// venues are numbered teardrops, each a hosted SwiftUI annotation.
     @MainActor
-    func testScriptedPanFrameTiming() throws {
-        let app = launchManyVenues(extra: ["-UITestFrameStats"])
+    func testScriptedPanHitchTime() throws {
+        let stats = try measureScriptedPan(metersPerPoint: "3.3", tag: "MAP-PERF")
+        XCTAssertGreaterThan(stats["teardrops"].flatMap(Int.init) ?? 0, 0, "neighbourhood zoom drew no teardrop pins")
+    }
+
+    /// City zoom (9 m/pt, past the 7.2 m/pt teardrop threshold): every venue
+    /// is a plain dot, a native `MapCircle`. `-brewdesk.debug.initial-span`
+    /// is METRES PER POINT; the old `0.05` asked for the closest zoom there
+    /// is and measured 220 teardrops instead (brewdesk#211, #275).
+    @MainActor
+    func testScriptedPanHitchTimeAtDotZoom() throws {
+        let stats = try measureScriptedPan(metersPerPoint: "9", tag: "MAP-PERF-DOTS")
+        XCTAssertEqual(stats["teardrops"].flatMap(Int.init), 0, "dot zoom still drew teardrop pins")
+    }
+
+    /// The measurement itself. Everything that used to make the number move
+    /// between runs of one binary is pinned down:
+    /// - the same eight drags every time (same points, same velocity), four
+    ///   out and four back, so the camera ends where it started;
+    /// - a fixed pause after each, long enough for the camera to rest, the
+    ///   markers to be re-planned and the auto-load (bd#267) to answer, so
+    ///   every run does the same amount of work;
+    /// - one warm-up pair first, discarded (first-use tile and glyph work);
+    /// - frames count only from the first measured drag to one second after
+    ///   the last (`MapPerfProbe`), and the headline is milliseconds, not a
+    ///   ratio over however long XCUITest happened to idle.
+    @MainActor
+    private func measureScriptedPan(metersPerPoint: String, tag: String) throws -> [String: String] {
+        let app = launchManyVenues(extra: ["-UITestFrameStats", "-brewdesk.debug.initial-span", metersPerPoint])
         let hud = app.descendants(matching: .any)["frame-stats"].firstMatch
         XCTAssertTrue(hud.waitForExistence(timeout: wait), "frame-stats HUD missing")
-
-        // Wait until the fixture set has actually rendered annotations.
         waitForAnnotations(hud, timeout: wait)
-
-        // Let load-time work settle, then zero the counters so the numbers
-        // cover only the scripted pan.
         Thread.sleep(forTimeInterval: 1.5)
+
+        scriptedPan(app, drags: 2)
+        Thread.sleep(forTimeInterval: 1.5)
+        // Tapping the HUD zeroes every counter; the window opens on the
+        // first drag after it.
         hud.tap()
 
-        // NOTE: pass `hud:` to log per-drag annotation counts when debugging
-        // representation churn — the extra accessibility snapshots perturb the
-        // measurement (~1% hitch time), so the measured run keeps them off.
-        scriptedPan(app)
+        scriptedPan(app, drags: 8)
 
-        // One publish interval so the final counters land in the label.
-        Thread.sleep(forTimeInterval: 0.5)
-        let stats = parse(hud.label)
-        let attachment = XCTAttachment(string: "map pan frame stats: \(hud.label)")
+        // Past the window's one-second tail plus a publish interval.
+        Thread.sleep(forTimeInterval: 2.0)
+        let label = hud.label
+        let stats = parse(label)
+        let attachment = XCTAttachment(string: "\(tag) \(label)")
         attachment.name = "map-pan-frame-stats"
         attachment.lifetime = .keepAlways
         add(attachment)
-        print("MAP-PERF \(hud.label)")
+        print("\(tag) \(label)")
 
-        let frames = stats["frames"].flatMap(Double.init) ?? 0
-        XCTAssertGreaterThan(frames, 100, "recorder measured too few frames to be meaningful")
-        let hitchRatio = stats["hitchRatio"].flatMap(Double.init)
-        XCTAssertNotNil(hitchRatio, "frame stats label not parseable: \(hud.label)")
-        // Loose bound: catches sustained stutter without flaking on one-off
-        // simulator scheduling blips. The PR carries the exact numbers.
-        XCTAssertLessThan(hitchRatio ?? 1, 0.20, "map pan dropped too much frame time: \(hud.label)")
+        XCTAssertGreaterThan(stats["windowMs"].flatMap(Double.init) ?? 0, 5_000, "measurement window never closed: \(label)")
+        let stallMs = try XCTUnwrap(stats["stallMs"].flatMap(Double.init), "frame stats label not parseable: \(label)")
+        // Loose bound on the time spent in frames of 100 ms or more: catches
+        // a sustained stutter without flaking on a busy machine (`hitchMs`,
+        // which also counts 34-99 ms frames, doubles when another build is
+        // running; `stallMs` does not). The PR carries the exact numbers.
+        XCTAssertLessThan(stallMs, Self.stallBudgetMs, "map pan spent too long in stalled frames: \(label)")
+        return stats
     }
 
-    /// bd#212: the old "dot zoom" measurement tapped a cluster pill to zoom
-    /// one representation step in; clusters no longer exist. The design's
-    /// own "dot zoom" is now literal — `-brewdesk.debug.initial-span` opens
-    /// the camera wide enough (>= 0.045°) that every rated venue in the
-    /// 2,180-venue `manyVenues` fixture draws as a plain 4pt dot with no
-    /// number, the exact "many small dots" density #211's regression
-    /// profiled.
-    @MainActor
-    func testScriptedPanFrameTimingAtDotZoom() throws {
-        let app = launchManyVenues(extra: ["-UITestFrameStats", "-brewdesk.debug.initial-span", "0.05"])
-        let hud = app.descendants(matching: .any)["frame-stats"].firstMatch
-        XCTAssertTrue(hud.waitForExistence(timeout: wait), "frame-stats HUD missing")
-        waitForAnnotations(hud, timeout: wait)
-
-        Thread.sleep(forTimeInterval: 1.5)
-        hud.tap()
-
-        scriptedPan(app)
-
-        Thread.sleep(forTimeInterval: 0.5)
-        let stats = parse(hud.label)
-        let attachment = XCTAttachment(string: "dot-zoom pan frame stats: \(hud.label)")
-        attachment.name = "map-pan-frame-stats-dot-zoom"
-        attachment.lifetime = .keepAlways
-        add(attachment)
-        print("MAP-PERF-DOTS \(hud.label)")
-
-        let frames = stats["frames"].flatMap(Double.init) ?? 0
-        XCTAssertGreaterThan(frames, 100, "recorder measured too few frames to be meaningful")
-        let hitchRatio = stats["hitchRatio"].flatMap(Double.init)
-        XCTAssertNotNil(hitchRatio, "frame stats label not parseable: \(hud.label)")
-        // Loose bound: catches sustained stutter without flaking on one-off
-        // simulator scheduling blips. The PR carries the exact numbers
-        // against the ticket's ≤0.12 target.
-        XCTAssertLessThan(hitchRatio ?? 1, 0.20, "dot-zoom pan dropped too much frame time: \(hud.label)")
-    }
+    /// Ceiling on stall time for the eight-drag script, in milliseconds.
+    private static let stallBudgetMs = 8_000.0
 
     // MARK: - Representation behavior (markers → detail, bd#212)
 
@@ -132,13 +128,18 @@ final class MapPerformanceUITests: XCTestCase {
         let app = launchManyVenues()
         XCTAssertTrue(app.mapPins.firstMatch.waitForExistence(timeout: wait), "map never rendered markers before the pinch")
 
-        let map = app.windows.firstMatch
+        // The MAP, not the window (brewdesk#275): a window-wide pinch puts a
+        // finger on the tab bar, which since the Ask tab shipped switches
+        // tabs and leaves no map to find markers on.
+        let map = app.maps.firstMatch
+        XCTAssertTrue(map.waitForExistence(timeout: wait), "no map element to pinch")
         for _ in 0..<5 {
             map.pinch(withScale: 3, velocity: 1.2)
             Thread.sleep(forTimeInterval: 0.6)
             map.pinch(withScale: 0.33, velocity: -1.2)
             Thread.sleep(forTimeInterval: 0.6)
         }
+        XCTAssertTrue(app.tabBars.buttons["Spots"].isSelected, "the pinch left the Spots tab")
 
         // The map (and its markers) must still be alive and interactive
         // after the gesture sequence — a real regression here would leave
@@ -170,33 +171,18 @@ final class MapPerformanceUITests: XCTestCase {
         XCTFail("map never rendered annotations: \(hud.label)")
     }
 
-    /// Eight fast drags across the map body — horizontal and vertical, kept
-    /// between the search header and the discovery shelf.
+    /// Identical fast drags across the map, alternately right-to-left and
+    /// left-to-right along one line between the search header and the
+    /// discovery shelf, with a fixed pause after each.
     @MainActor
-    private func scriptedPan(_ app: XCUIApplication, hud: XCUIElement? = nil) {
+    private func scriptedPan(_ app: XCUIApplication, drags: Int) {
         let window = app.windows.firstMatch
-        let pairs: [(CGVector, CGVector)] = [
-            (CGVector(dx: 0.80, dy: 0.48), CGVector(dx: 0.15, dy: 0.48)),
-            (CGVector(dx: 0.15, dy: 0.52), CGVector(dx: 0.80, dy: 0.52)),
-            (CGVector(dx: 0.50, dy: 0.58), CGVector(dx: 0.50, dy: 0.40)),
-            (CGVector(dx: 0.50, dy: 0.40), CGVector(dx: 0.50, dy: 0.58)),
-            (CGVector(dx: 0.80, dy: 0.45), CGVector(dx: 0.20, dy: 0.55)),
-            (CGVector(dx: 0.20, dy: 0.55), CGVector(dx: 0.80, dy: 0.45)),
-            (CGVector(dx: 0.75, dy: 0.50), CGVector(dx: 0.25, dy: 0.50)),
-            (CGVector(dx: 0.25, dy: 0.50), CGVector(dx: 0.75, dy: 0.50)),
-        ]
-        for (index, (from, to)) in pairs.enumerated() {
-            window.coordinate(withNormalizedOffset: from)
-                .press(
-                    forDuration: 0.02,
-                    thenDragTo: window.coordinate(withNormalizedOffset: to),
-                    withVelocity: .fast,
-                    thenHoldForDuration: 0.05
-                )
-            if let hud {
-                // Representation flapping shows up as annotation-count swings.
-                print("MAP-PERF-DRAG \(index) \(parse(hud.label)["annotations"] ?? "?")")
-            }
+        let left = window.coordinate(withNormalizedOffset: CGVector(dx: 0.18, dy: 0.46))
+        let right = window.coordinate(withNormalizedOffset: CGVector(dx: 0.82, dy: 0.46))
+        for index in 0..<drags {
+            let (from, to) = index.isMultiple(of: 2) ? (right, left) : (left, right)
+            from.press(forDuration: 0.02, thenDragTo: to, withVelocity: .fast, thenHoldForDuration: 0.05)
+            Thread.sleep(forTimeInterval: 1.2)
         }
     }
 
