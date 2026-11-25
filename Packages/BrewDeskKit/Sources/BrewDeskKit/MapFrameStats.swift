@@ -85,8 +85,13 @@ final class MapPerfProbe {
 ///
 /// A `CADisplayLink` on the main run loop measures the delta between vsync
 /// callbacks. The headline is hitch TIME: the summed duration of every frame
-/// longer than `longFrameMs` (and of those longer than `stallFrameMs`)
-/// inside `MapPerfProbe`'s gesture window. An absolute number of
+/// longer than `longFrameMs` (`hitchMs`), and of those longer than
+/// `stallFrameMs` (`stallMs`), inside `MapPerfProbe`'s gesture window.
+/// `stallMs` is the one to compare builds with: `hitchMs` also counts 34-99
+/// ms frames, which double when anything else on the machine is compiling.
+/// `fingerDownHitchMs` is the part of `hitchMs` that began mid-gesture, and
+/// `stalls` lists each stalled frame with the work that ran in it (P a
+/// re-plan, M the map's body, S the screen's body). An absolute number of
 /// milliseconds, so it does not move when the amount of idle time around the
 /// gestures does. `hitchRatio` (hitch time over ALL time since the reset) is
 /// still published for continuity, but it swung 0.18-0.25 on one binary and
@@ -118,7 +123,7 @@ final class FrameStatsRecorder {
     /// Frames longer than `longFrameMs` since the reset: when each began and
     /// how long it took. Windowed at publish time, because the window's end
     /// keeps moving until the last gesture has finished.
-    @ObservationIgnored private var longFrames: [(start: CFTimeInterval, ms: Double, work: String)] = []
+    @ObservationIgnored private var longFrames: [(start: CFTimeInterval, ms: Double, work: String, fingerDown: Bool)] = []
     /// The probe's counters as of the previous tick, to tell which work
     /// (M map body, S screen body, P re-plan) ran inside each frame.
     @ObservationIgnored private var seen = (map: 0, screen: 0, replans: 0)
@@ -170,7 +175,7 @@ final class FrameStatsRecorder {
             let work = (now.replans != seen.replans ? "P" : "")
                 + (now.map != seen.map ? "M" : "")
                 + (now.screen != seen.screen ? "S" : "")
-            longFrames.append((start: last, ms: delta * 1000, work: work))
+            longFrames.append((start: last, ms: delta * 1000, work: work, fingerDown: probe.gestureActive))
         }
         seen = now
         if frames % 30 == 0 { publish() }
@@ -190,10 +195,11 @@ final class FrameStatsRecorder {
         }
         summary = String(
             format: "fps=%.1f;hitchRatio=%.4f;hitches=%d;frames=%d;worstMs=%.1f;"
-                + "hitchMs=%.0f;stallMs=%.0f;longFrames=%d;stallFrames=%d;windowMs=%.0f;"
+                + "hitchMs=%.0f;stallMs=%.0f;fingerDownHitchMs=%.0f;longFrames=%d;stallFrames=%d;windowMs=%.0f;"
                 + "mapBodyEvals=%d;screenBodyEvals=%d;replans=%d;teardrops=%d;stalls=%@",
             fps, ratio, hitches, frames, worstFrameMs,
-            counted.reduce(0) { $0 + $1.ms }, stalls.reduce(0) { $0 + $1.ms }, counted.count, stalls.count,
+            counted.reduce(0) { $0 + $1.ms }, stalls.reduce(0) { $0 + $1.ms },
+            counted.filter(\.fingerDown).reduce(0) { $0 + $1.ms }, counted.count, stalls.count,
             windowMs,
             probe.mapBodyEvals, probe.screenBodyEvals, probe.replans, probe.teardrops,
             stalls.map { String(format: "%.0f", $0.ms) + $0.work }.joined(separator: ",")

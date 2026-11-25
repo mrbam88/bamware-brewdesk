@@ -84,7 +84,7 @@ final class MapPerformanceUITests: XCTestCase {
     }
 
     /// Ceiling on stall time for the eight-drag script, in milliseconds.
-    private static let stallBudgetMs = 8_000.0
+    private static let stallBudgetMs = 4_000.0
 
     // MARK: - Representation behavior (markers → detail, bd#212)
 
