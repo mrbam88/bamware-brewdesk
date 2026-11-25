@@ -76,7 +76,40 @@ public final class VenuesModel {
     /// Ordering last: `VenueOrdering` stably partitions observed venues
     /// before unobserved ones, so a search's match rank still wins inside
     /// each group (brewdesk#159).
+    ///
+    /// Memoised (brewdesk#211): filtering, searching and sorting ~2,000
+    /// venues costs about 10 ms, and views read this several times per body
+    /// evaluation. The work is redone only when an input changes; until
+    /// then every read returns the same array, which also makes comparing
+    /// two reads constant-time.
     public var venues: [Venue] {
+        let inputs = VenuesInputs(
+            loaded: loadedVenues,
+            filter: filter,
+            searchText: activeSearchText,
+            serverResults: matchingServerResults,
+            // Only a search ever reads the centre (`mergeCityWide`).
+            center: activeSearchText.isEmpty ? nil : [centerLat, centerLng]
+        )
+        if let memo = venuesMemo, memo.inputs == inputs { return memo.venues }
+        let venues = computeVenues()
+        venuesMemo = (inputs, venues)
+        return venues
+    }
+
+    /// Everything `computeVenues()` reads.
+    private struct VenuesInputs: Equatable {
+        let loaded: [Venue]
+        let filter: VenueFilter
+        let searchText: String
+        let serverResults: [Venue]
+        let center: [Double]?
+    }
+
+    @ObservationIgnored
+    private var venuesMemo: (inputs: VenuesInputs, venues: [Venue])?
+
+    private func computeVenues() -> [Venue] {
         guard !activeSearchText.isEmpty else {
             return VenueOrdering.observedFirst(localMatches)
         }
@@ -154,24 +187,37 @@ public final class VenuesModel {
     /// no venue type is explicitly chosen) cafés before other types — so
     /// nothing about that composition changes here, only which half of it a
     /// given venue lands in.
-    public var confirmedVenues: [Venue] {
-        VenueOrdering.cafeDefaultFirst(
-            venues.filter { filter.classify($0) == .confirmed },
-            venueTypeChosen: isVenueTypeFiltered
-        )
-    }
+    public var confirmedVenues: [Venue] { filterSections.confirmed }
 
     /// `venues`' complementary half: nothing constrained is known to FAIL
     /// the active filter, but at least one constrained attribute is
     /// unknown (e.g. WeWork's Wi-Fi under a "fast Wi-Fi" filter — TestFlight
     /// build 28). Always empty while `hasActiveFilter` is false — `classify`
     /// never returns `.unknown` with no active constraint.
-    public var unknownVenues: [Venue] {
-        VenueOrdering.cafeDefaultFirst(
+    public var unknownVenues: [Venue] { filterSections.unknown }
+
+    /// Both halves, memoised on the same terms as `venues` (brewdesk#211):
+    /// classified again only when `venues` or the filter changes.
+    private var filterSections: (confirmed: [Venue], unknown: [Venue]) {
+        let venues = venues
+        let filter = filter
+        if let memo = sectionsMemo, memo.venues == venues, memo.filter == filter {
+            return (memo.confirmed, memo.unknown)
+        }
+        let confirmed = VenueOrdering.cafeDefaultFirst(
+            venues.filter { filter.classify($0) == .confirmed },
+            venueTypeChosen: isVenueTypeFiltered
+        )
+        let unknown = VenueOrdering.cafeDefaultFirst(
             venues.filter { filter.classify($0) == .unknown },
             venueTypeChosen: isVenueTypeFiltered
         )
+        sectionsMemo = (venues, filter, confirmed, unknown)
+        return (confirmed, unknown)
     }
+
+    @ObservationIgnored
+    private var sectionsMemo: (venues: [Venue], filter: VenueFilter, confirmed: [Venue], unknown: [Venue])?
 
     public var confirmedCount: Int { confirmedVenues.count }
     public var unknownCount: Int { unknownVenues.count }
