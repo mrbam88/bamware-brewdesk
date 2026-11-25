@@ -24,6 +24,7 @@ final class PicksUITests: XCTestCase {
         return app
     }
 
+    @MainActor
     private func element(_ app: XCUIApplication, _ identifier: String) -> XCUIElement {
         app.descendants(matching: .any)[identifier]
     }
