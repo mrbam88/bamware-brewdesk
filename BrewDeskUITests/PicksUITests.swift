@@ -94,6 +94,102 @@ final class PicksUITests: XCTestCase {
         XCTAssertTrue(last.label.contains("Visited Dec 14, 2025"), "a visit from an earlier year names the year: \(last.label)")
     }
 
+    // MARK: The "Saved" title must actually be drawn
+
+    /// The large "Saved" title is in the accessibility tree even when
+    /// something opaque is painted over it (that is how it went missing
+    /// once: the pinned sync line's background covered it and every
+    /// existence check still passed). So this reads the pixels: the title's
+    /// own frame must contain ink that contrasts with its background.
+    @MainActor
+    private func assertSavedTitleIsDrawn(_ app: XCUIApplication, _ context: String, file: StaticString = #filePath, line: UInt = #line) {
+        let title = app.navigationBars.staticTexts["Saved"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: wait), "\(context): no \"Saved\" title element", file: file, line: line)
+        let frame = title.frame
+        XCTAssertFalse(frame.isEmpty, "\(context): the title has no frame", file: file, line: line)
+
+        let ink = Self.inkFraction(of: app.screenshot().image, in: frame, windowSize: app.windows.firstMatch.frame.size)
+        XCTAssertGreaterThan(
+            ink, 0.03,
+            "\(context): the \"Saved\" title's frame \(frame) is blank (ink \(ink)); something is drawn over it",
+            file: file, line: line
+        )
+    }
+
+    /// Share of pixels in `rect` (window points) whose brightness differs
+    /// clearly from the rect's own top-left pixel, i.e. text on a flat fill.
+    private static func inkFraction(of image: UIImage, in rect: CGRect, windowSize: CGSize) -> Double {
+        guard let source = image.cgImage, windowSize.width > 0 else { return 0 }
+        let scale = CGFloat(source.width) / windowSize.width
+        let crop = CGRect(
+            x: rect.minX * scale, y: rect.minY * scale, width: rect.width * scale, height: rect.height * scale
+        ).integral
+        guard let cropped = source.cropping(to: crop) else { return 0 }
+        let width = cropped.width, height = cropped.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        guard let context = CGContext(
+            data: &pixels, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return 0 }
+        context.draw(cropped, in: CGRect(x: 0, y: 0, width: width, height: height))
+        func brightness(_ index: Int) -> Double {
+            (0.299 * Double(pixels[index]) + 0.587 * Double(pixels[index + 1]) + 0.114 * Double(pixels[index + 2])) / 255
+        }
+        let background = brightness(0)
+        var inked = 0
+        for pixel in 0..<(width * height) where abs(brightness(pixel * 4) - background) > 0.4 {
+            inked += 1
+        }
+        return Double(inked) / Double(max(width * height, 1))
+    }
+
+    @MainActor
+    func testSavedTitleIsDrawnWithPicksAndWithout() {
+        for (scenario, saved, context) in [
+            ("onePick", "()", "one pick, nothing saved"),
+            ("tenPicks", "(\"fixture-pick-4\")", "ten picks"),
+            ("fixtureOK", "()", "no picks, nothing saved"),
+            ("fixtureOK", "(\"fixture-roasters\")", "no picks, one saved spot"),
+        ] {
+            let app = launch(scenario, savedIDs: saved)
+            if scenario != "fixtureOK" {
+                XCTAssertTrue(app.staticTexts["Bamware Picks"].waitForExistence(timeout: wait), context)
+            } else if saved == "()" {
+                XCTAssertTrue(element(app, "saved-state-empty").waitForExistence(timeout: wait), context)
+            } else {
+                XCTAssertTrue(app.staticTexts["Fixture Roasters"].waitForExistence(timeout: wait), context)
+            }
+            assertSavedTitleIsDrawn(app, context)
+            // And the sync line under it still says what it should, signed out.
+            let sync = element(app, "saved-sync-status")
+            XCTAssertTrue(sync.exists, context)
+            XCTAssertEqual(sync.label, "Local only", context)
+            app.terminate()
+        }
+    }
+
+    @MainActor
+    func testSavedTitleCollapsesIntoTheBarWhenThePicksListScrolls() {
+        let app = launch("tenPicks", savedIDs: "(\"fixture-pick-4\")")
+        XCTAssertTrue(app.staticTexts["Bamware Picks"].waitForExistence(timeout: wait))
+        let title = app.navigationBars.staticTexts["Saved"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: wait))
+        let restingY = title.frame.midY
+        let restingHeight = title.frame.height
+
+        app.swipeUp()
+        app.swipeUp()
+
+        // Collapsed: a smaller title, higher up, centred in the bar, and
+        // still drawn; the sync line stays pinned beneath it.
+        XCTAssertTrue(title.exists)
+        XCTAssertLessThan(title.frame.midY, restingY, "the title did not move up into the bar")
+        XCTAssertLessThan(title.frame.height, restingHeight, "the title did not shrink")
+        XCTAssertEqual(title.frame.midX, app.windows.firstMatch.frame.midX, accuracy: 12)
+        assertSavedTitleIsDrawn(app, "ten picks, scrolled")
+        XCTAssertEqual(element(app, "saved-sync-status").label, "Local only")
+    }
+
     @MainActor
     func testNoPicksLeavesTheSavedTabAsItWas() {
         // `fixtureOK` serves an empty list, like an engine with none.

@@ -1,0 +1,13 @@
+# Saved tab only: at rest, then scrolled so the title collapses into the bar.
+appId: io.bamware.brewdesk
+---
+- extendedWaitUntil:
+    visible: "Spots"
+    timeout: 30000
+- tapOn: "Saved"
+- extendedWaitUntil:
+    visible: ${WAIT}
+    timeout: 30000
+- waitForAnimationToEnd:
+    timeout: 3000
+- takeScreenshot: ${OUT}/${TAG}-saved

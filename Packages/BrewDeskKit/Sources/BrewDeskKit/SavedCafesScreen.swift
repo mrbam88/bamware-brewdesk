@@ -239,8 +239,15 @@ public struct SavedCafesScreen: View {
             .padding(.bottom, 6)
             // Opaque, full width: with Picks the list is long enough to
             // scroll under this pinned line, and rows showed through it.
+            //
+            // `ignoresSafeAreaEdges: []` is load-bearing. A style background
+            // ignores every safe-area edge by default, and this view sits
+            // at the top edge: the fill ran up under the navigation bar and
+            // painted over the large "Saved" title (the title is still in
+            // the accessibility tree, so only a pixel check sees it:
+            // `PicksUITests.testSavedTitleIsDrawnWithPicksAndWithout`).
             .frame(maxWidth: .infinity)
-            .background(BrewDeskPalette.page)
+            .background(BrewDeskPalette.page, ignoresSafeAreaEdges: [])
             .accessibilityIdentifier("saved-sync-status")
     }
 
