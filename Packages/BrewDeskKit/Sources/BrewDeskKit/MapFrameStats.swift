@@ -25,6 +25,8 @@ final class MapPerfProbe {
 
     /// Evaluations of the view body that builds the `Map` content.
     private(set) var mapBodyEvals = 0
+    /// Evaluations of `CafeMapScreen.body` (header, shelf, overlays).
+    private(set) var screenBodyEvals = 0
     /// Marker plans actually computed (cache misses), not cache hits.
     private(set) var replans = 0
     private(set) var teardrops = 0
@@ -35,6 +37,11 @@ final class MapPerfProbe {
     static func mapBodyEvaluated() {
         guard isEnabled else { return }
         shared.mapBodyEvals += 1
+    }
+
+    static func screenBodyEvaluated() {
+        guard isEnabled else { return }
+        shared.screenBodyEvals += 1
     }
 
     static func replanned(teardrops: Int) {
@@ -57,6 +64,7 @@ final class MapPerfProbe {
 
     func reset() {
         mapBodyEvals = 0
+        screenBodyEvals = 0
         replans = 0
         firstGestureStart = nil
         lastGestureEnd = nil
@@ -110,7 +118,10 @@ final class FrameStatsRecorder {
     /// Frames longer than `longFrameMs` since the reset: when each began and
     /// how long it took. Windowed at publish time, because the window's end
     /// keeps moving until the last gesture has finished.
-    @ObservationIgnored private var longFrames: [(start: CFTimeInterval, ms: Double)] = []
+    @ObservationIgnored private var longFrames: [(start: CFTimeInterval, ms: Double, work: String)] = []
+    /// The probe's counters as of the previous tick, to tell which work
+    /// (M map body, S screen body, P re-plan) ran inside each frame.
+    @ObservationIgnored private var seen = (map: 0, screen: 0, replans: 0)
 
     func start() {
         guard link == nil else { return }
@@ -133,6 +144,7 @@ final class FrameStatsRecorder {
         worstFrameMs = 0
         lastTimestamp = nil
         longFrames = []
+        seen = (0, 0, 0)
         MapPerfProbe.shared.reset()
         publish()
     }
@@ -152,9 +164,15 @@ final class FrameStatsRecorder {
         }
         // Everything after the first gesture is kept; the window's far end
         // is only known once the last gesture has finished (see `publish`).
-        if let first = MapPerfProbe.shared.firstGestureStart, last >= first, delta * 1000 >= Self.longFrameMs {
-            longFrames.append((start: last, ms: delta * 1000))
+        let probe = MapPerfProbe.shared
+        let now = (map: probe.mapBodyEvals, screen: probe.screenBodyEvals, replans: probe.replans)
+        if let first = probe.firstGestureStart, last >= first, delta * 1000 >= Self.longFrameMs {
+            let work = (now.replans != seen.replans ? "P" : "")
+                + (now.map != seen.map ? "M" : "")
+                + (now.screen != seen.screen ? "S" : "")
+            longFrames.append((start: last, ms: delta * 1000, work: work))
         }
+        seen = now
         if frames % 30 == 0 { publish() }
     }
 
@@ -173,11 +191,12 @@ final class FrameStatsRecorder {
         summary = String(
             format: "fps=%.1f;hitchRatio=%.4f;hitches=%d;frames=%d;worstMs=%.1f;"
                 + "hitchMs=%.0f;stallMs=%.0f;longFrames=%d;stallFrames=%d;windowMs=%.0f;"
-                + "mapBodyEvals=%d;replans=%d;teardrops=%d",
+                + "mapBodyEvals=%d;screenBodyEvals=%d;replans=%d;teardrops=%d;stalls=%@",
             fps, ratio, hitches, frames, worstFrameMs,
             counted.reduce(0) { $0 + $1.ms }, stalls.reduce(0) { $0 + $1.ms }, counted.count, stalls.count,
             windowMs,
-            probe.mapBodyEvals, probe.replans, probe.teardrops
+            probe.mapBodyEvals, probe.screenBodyEvals, probe.replans, probe.teardrops,
+            stalls.map { String(format: "%.0f", $0.ms) + $0.work }.joined(separator: ",")
         )
     }
 }
